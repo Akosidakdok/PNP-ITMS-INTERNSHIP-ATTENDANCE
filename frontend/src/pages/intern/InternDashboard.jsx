@@ -6,6 +6,20 @@ import api from '../../utils/api.js';
 import { formatDistanceToNow } from 'date-fns';
 import { useNotifications } from '../../context/NotificationContext.jsx';
 
+const safeFormatDistanceToNow = (dateStr) => {
+  try {
+    if (!dateStr) return 'just now';
+    let str = String(dateStr).trim();
+    if (str.includes(' ') && !str.includes('T')) {
+      str = str.replace(' ', 'T');
+    }
+    const d = new Date(str);
+    return isNaN(d.getTime()) ? 'recently' : formatDistanceToNow(d, { addSuffix: true });
+  } catch {
+    return 'recently';
+  }
+};
+
 export default function InternDashboard() {
   const { user } = useAuth();
   const { notifications } = useNotifications();
@@ -127,7 +141,7 @@ export default function InternDashboard() {
                 <div key={n.id} className="p-3 bg-blue-50 rounded-xl">
                   <p className="text-sm font-medium text-blue-800">{n.title}</p>
                   <p className="text-xs text-blue-600 mt-0.5">{n.message}</p>
-                  <p className="text-xs text-blue-400 mt-1">{formatDistanceToNow(new Date(n.created_at), { addSuffix: true })}</p>
+                  <p className="text-xs text-blue-400 mt-1">{safeFormatDistanceToNow(n.created_at)}</p>
                 </div>
               ))}
             </div>

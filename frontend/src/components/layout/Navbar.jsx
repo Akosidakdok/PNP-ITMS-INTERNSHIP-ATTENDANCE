@@ -5,6 +5,20 @@ import { useAuth } from '../../context/AuthContext.jsx';
 import { useNotifications } from '../../context/NotificationContext.jsx';
 import { formatDistanceToNow } from 'date-fns';
 
+const safeFormatDistanceToNow = (dateStr) => {
+  try {
+    if (!dateStr) return 'just now';
+    let str = String(dateStr).trim();
+    if (str.includes(' ') && !str.includes('T')) {
+      str = str.replace(' ', 'T');
+    }
+    const d = new Date(str);
+    return isNaN(d.getTime()) ? 'recently' : formatDistanceToNow(d, { addSuffix: true });
+  } catch {
+    return 'recently';
+  }
+};
+
 export default function Navbar({ onMenuClick }) {
   const { user } = useAuth();
   const { notifications, unreadCount, markAsRead, markAllRead } = useNotifications();
@@ -107,7 +121,7 @@ export default function Navbar({ onMenuClick }) {
                         <p className="text-sm font-medium text-gray-800 truncate">{n.title}</p>
                         <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{n.message}</p>
                         <p className="text-xs text-gray-400 mt-1">
-                          {formatDistanceToNow(new Date(n.created_at), { addSuffix: true })}
+                          {safeFormatDistanceToNow(n.created_at)}
                         </p>
                       </div>
                     </div>

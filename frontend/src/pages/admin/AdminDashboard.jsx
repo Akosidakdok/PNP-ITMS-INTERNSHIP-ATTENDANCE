@@ -23,6 +23,20 @@ function StatCard({ icon: Icon, label, value, gradient, trend }) {
   );
 }
 
+const safeFormatDistanceToNow = (dateStr) => {
+  try {
+    if (!dateStr) return 'just now';
+    let str = String(dateStr).trim();
+    if (str.includes(' ') && !str.includes('T')) {
+      str = str.replace(' ', 'T');
+    }
+    const d = new Date(str);
+    return isNaN(d.getTime()) ? 'recently' : formatDistanceToNow(d, { addSuffix: true });
+  } catch {
+    return 'recently';
+  }
+};
+
 export default function AdminDashboard() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -91,7 +105,7 @@ export default function AdminDashboard() {
                       {log.scan_type === 'time_in' ? 'Time In' : 'Time Out'}
                     </span>
                     <p className="text-xs text-gray-400 mt-1">
-                      {formatDistanceToNow(new Date(log.scan_time), { addSuffix: true })}
+                      {safeFormatDistanceToNow(log.scan_time)}
                     </p>
                   </div>
                 </div>
