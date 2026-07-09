@@ -35,12 +35,14 @@ export default function InternDashboard() {
       api.get('/interns/me/profile'),
       api.get('/dtr', { params: { limit: 5 } }),
     ]).then(([profRes, dtrRes]) => {
-      setProfile(profRes.data.intern);
-      setDtrRecords(dtrRes.data.records);
+      setProfile(profRes.data?.intern);
+      setDtrRecords(dtrRes.data?.records || []);
       setError(null);
-    }).catch(() => {
-      setError('Failed to load your dashboard data. Please refresh the page.');
-    }).finally(() => setLoading(false));
+    }).catch((err) => {
+      const message = err.response?.data?.error || 'Failed to load your dashboard data. Please refresh the page.';
+      setError(message);
+      console.error(err);
+    }).finally(() => { setLoading(false); });
   }, []);
 
   const intern = profile;
