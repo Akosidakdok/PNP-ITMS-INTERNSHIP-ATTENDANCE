@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import api from '../../utils/api.js';
 import DTRPrint from '../../components/dtr/DTRPrint.jsx';
 import { Clock, Calendar } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 export default function MyDTR() {
   const [records, setRecords] = useState([]);
@@ -21,7 +22,9 @@ export default function MyDTR() {
       ]);
       setRecords(dtrRes.data.records);
       setIntern(profRes.data.intern);
-    } catch {} finally { setLoading(false); }
+    } catch {
+      toast.error('Failed to load your DTR data.');
+    } finally { setLoading(false); }
   }, [filters]);
 
   useEffect(() => { fetchData(); }, [fetchData]);

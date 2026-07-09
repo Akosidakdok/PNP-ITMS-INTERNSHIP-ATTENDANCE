@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Award, Star, TrendingUp } from 'lucide-react';
 import api from '../../utils/api.js';
 import { format } from 'date-fns';
+import toast from 'react-hot-toast';
 
 const CRITERIA = [
   { key: 'work_quality', label: 'Work Quality' },
@@ -38,7 +39,11 @@ export default function MyEvaluation() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.get('/evaluations').then(r => setEvaluations(r.data.evaluations)).finally(() => setLoading(false));
+    api.get('/evaluations')
+      .then(r => setEvaluations(r.data.evaluations))
+      .catch(() => {
+        toast.error('Failed to load evaluations.');
+      }).finally(() => setLoading(false));
   }, []);
 
   const ratingBadge = { 'Outstanding': 'badge-approved', 'Very Satisfactory': 'badge-accepted', 'Satisfactory': 'badge-active', 'Fair': 'badge-pending', 'Needs Improvement': 'badge-rejected' };
