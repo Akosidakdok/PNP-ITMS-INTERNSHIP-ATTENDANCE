@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext.jsx';
-import { Clock, CheckCircle, FileText, Award, QrCode, TrendingUp, Calendar, Bell } from 'lucide-react';
+import { Clock, CheckCircle, FileText, Award, QrCode, TrendingUp, Calendar, Bell, AlertCircle } from 'lucide-react';
 import api from '../../utils/api.js';
 import { formatDistanceToNow } from 'date-fns';
 import { useNotifications } from '../../context/NotificationContext.jsx';
@@ -26,16 +26,21 @@ export default function InternDashboard() {
   const [profile, setProfile] = useState(null);
   const [dtrRecords, setDtrRecords] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const navigate = useNavigate();
 
   useEffect(() => {
+    setLoading(true);
     Promise.all([
       api.get('/interns/me/profile'),
       api.get('/dtr', { params: { limit: 5 } }),
     ]).then(([profRes, dtrRes]) => {
       setProfile(profRes.data.intern);
       setDtrRecords(dtrRes.data.records);
-    }).catch(() => {}).finally(() => setLoading(false));
+      setError(null);
+    }).catch(() => {
+      setError('Failed to load your dashboard data. Please refresh the page.');
+    }).finally(() => setLoading(false));
   }, []);
 
   const intern = profile;
@@ -61,6 +66,13 @@ export default function InternDashboard() {
           <span className="badge bg-white/20 text-white">{intern?.course || '—'}</span>
         </div>
       </div>
+
+      {error && (
+        <div className="card p-4 flex items-center gap-3 text-red-600 bg-red-50 border border-red-200">
+          <AlertCircle className="w-5 h-5" />
+          <p className="text-sm font-medium">{error}</p>
+        </div>
+      )}
 
       {/* Stats Row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">

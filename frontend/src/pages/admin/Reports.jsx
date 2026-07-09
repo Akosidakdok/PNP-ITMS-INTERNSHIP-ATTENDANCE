@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { BarChart3, Download, Filter } from 'lucide-react';
 import api from '../../utils/api.js';
 import { format } from 'date-fns';
+import toast from 'react-hot-toast';
 
 export default function Reports() {
   const [report, setReport] = useState([]);
@@ -10,7 +11,9 @@ export default function Reports() {
   const [filters, setFilters] = useState({ month: new Date().getMonth() + 1, year: new Date().getFullYear(), department_id: '' });
 
   useEffect(() => {
-    api.get('/departments').then(r => setDepartments(r.data.departments));
+    api.get('/departments')
+      .then(r => setDepartments(r.data.departments))
+      .catch(() => toast.error('Could not load department list.'));
     fetchReport();
   }, []);
 
@@ -19,7 +22,9 @@ export default function Reports() {
     try {
       const res = await api.get('/admin/reports/attendance', { params: filters });
       setReport(res.data.report);
-    } catch {} finally { setLoading(false); }
+    } catch {
+      toast.error('Failed to generate report.');
+    } finally { setLoading(false); }
   };
 
   const exportCSV = () => {

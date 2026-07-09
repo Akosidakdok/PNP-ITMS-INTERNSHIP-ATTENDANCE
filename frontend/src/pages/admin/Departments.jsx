@@ -14,9 +14,13 @@ export default function Departments() {
 
   const fetch = async () => {
     setLoading(true);
-    const res = await api.get('/departments');
-    setDepartments(res.data.departments);
-    setLoading(false);
+    try {
+      const res = await api.get('/departments');
+      setDepartments(res.data.departments);
+    } catch {
+      toast.error('Failed to load departments.');
+    }
+    finally { setLoading(false); }
   };
 
   useEffect(() => { fetch(); }, []);

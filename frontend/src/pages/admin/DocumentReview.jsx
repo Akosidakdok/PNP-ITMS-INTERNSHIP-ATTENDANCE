@@ -115,7 +115,7 @@ export default function DocumentReview() {
         total={docs.length}
         page={1}
         limit={docs.length || 1}
-        onPageChange={() => {}}
+        onPageChange={() => {}} // No-op as pagination is not implemented here
         emptyMessage="No documents found"
       />
 

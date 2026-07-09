@@ -40,11 +40,14 @@ const safeFormatDistanceToNow = (dateStr) => {
 export default function AdminDashboard() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
+    setLoading(true);
     api.get('/admin/dashboard-stats').then(res => {
       setData(res.data);
-    }).catch(() => {}).finally(() => setLoading(false));
+      setError(null);
+    }).catch(() => { setError('Failed to load dashboard data. Please try again later.'); }).finally(() => setLoading(false));
   }, []);
 
   const stats = data?.stats || {};
@@ -80,6 +83,12 @@ export default function AdminDashboard() {
             </h2>
             <a href="/admin/attendance" className="text-xs text-blue-600 hover:underline">View all →</a>
           </div>
+          {error && (
+            <div className="flex flex-col items-center justify-center py-8 text-center text-red-500 bg-red-50 rounded-lg">
+              <AlertCircle className="w-8 h-8 mx-auto mb-2 opacity-50" />
+              <p className="font-semibold">{error}</p>
+            </div>
+          )}
           <div className="space-y-2">
             {loading ? (
               Array.from({ length: 5 }).map((_, i) => (
@@ -90,7 +99,7 @@ export default function AdminDashboard() {
                 <Calendar className="w-8 h-8 mx-auto mb-2 opacity-40" />
                 <p className="text-sm">No recent attendance records</p>
               </div>
-            ) : (
+            ) : !error && (
               data?.recentAttendance?.map(log => (
                 <div key={log.id} className="flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 transition-colors">
                   <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${log.scan_type === 'time_in' ? 'bg-blue-100' : 'bg-pink-100'}`}>
@@ -126,7 +135,7 @@ export default function AdminDashboard() {
             <div className="space-y-2">
               {loading ? (
                 Array.from({ length: 3 }).map((_, i) => <div key={i} className="skeleton h-10 rounded-lg" />)
-              ) : data?.recentDocuments?.length === 0 ? (
+              ) : !error && data?.recentDocuments?.length === 0 ? (
                 <p className="text-xs text-gray-400 text-center py-3">No documents uploaded</p>
               ) : (
                 data?.recentDocuments?.map(doc => (

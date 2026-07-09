@@ -55,7 +55,9 @@ export default function InternManagement() {
   }, [search, page]);
 
   useEffect(() => {
-    api.get('/departments').then(r => setDepartments(r.data.departments));
+    api.get('/departments')
+      .then(r => setDepartments(r.data.departments))
+      .catch(() => toast.error('Could not load department list.'));
   }, []);
 
   useEffect(() => { fetchInterns(); }, [fetchInterns]);
