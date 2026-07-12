@@ -31,28 +31,6 @@ export function NotificationProvider({ children }) {
     }
 
     fetchNotifications();
-
-    // SSE connection
-    const token = localStorage.getItem('pnp_token');
-    const es = new EventSource(`/api/notifications/stream?token=${token}`);
-    eventSourceRef.current = es;
-
-    es.onmessage = (e) => {
-      try {
-        const data = JSON.parse(e.data);
-        if (data.type !== 'connected') {
-          fetchNotifications();
-        }
-      } catch {}
-    };
-
-    es.onerror = () => {
-      // Auto-reconnect handled by browser
-    };
-
-    return () => {
-      es.close();
-    };
   }, [user, fetchNotifications]);
 
   const markAsRead = async (id) => {
