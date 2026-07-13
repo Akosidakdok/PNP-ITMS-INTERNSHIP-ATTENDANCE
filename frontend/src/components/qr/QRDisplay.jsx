@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import QRCode from 'qrcode';
 import { Download, RefreshCw } from 'lucide-react';
-import api from '../../utils/api.js';
+import backendApi from '../../utils/backendApi.js';
 import toast from 'react-hot-toast';
 
 export default function QRDisplay() {
@@ -12,7 +12,7 @@ export default function QRDisplay() {
   const fetchAndRender = async () => {
     setLoading(true);
     try {
-      const res = await api.get('/attendance/qr-code');
+      const res = await backendApi.get('/attendance/qr-code');
       setQrData(res.data.qr);
     } catch {
       toast.error('Failed to load QR code');
@@ -40,7 +40,7 @@ export default function QRDisplay() {
   const handleRegenerate = async () => {
     if (!confirm('Regenerate QR code? All interns must scan the new code.')) return;
     try {
-      await api.post('/attendance/qr-code/regenerate');
+      await backendApi.post('/attendance/qr-code/regenerate');
       toast.success('QR code regenerated');
       fetchAndRender();
     } catch {

@@ -1,0 +1,574 @@
+import bcrypt from 'bcryptjs';
+import { supabase } from './supabaseClient.js';
+
+const INTERN_ROLE = 'intern';
+const ADMIN_ROLE = 'admin';
+
+export async function getDepartments() {
+  const { data: departments, error } = await supabase
+    .from('departments')
+    .select('*')
+    .order('name', { ascending: true });
+
+  if (error) throw error;
+
+  const { data: interns, error: internsError } = await supabase
+    .from('accounts')
+    .select('department_id')
+    .eq('role', INTERN_ROLE);
+
+  if (internsError) throw internsError;
+
+  const counts = interns.reduce((acc, intern) => {
+    const id = intern.department_id || 0;
+    acc[id] = (acc[id] || 0) + 1;
+    return acc;
+  }, {});
+
+  return departments.map((department) => ({
+    ...department,
+    intern_count: counts[department.id] || 0,
+  }));
+}
+
+export async function createDepartment(payload) {
+  const { data, error } = await supabase
+    .from('departments')
+    .insert([{ ...payload }])
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function updateDepartment(id, payload) {
+  const { data, error } = await supabase
+    .from('departments')
+    .update({ ...payload })
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteDepartment(id) {
+  const { error } = await supabase
+    .from('departments')
+    .delete()
+    .eq('id', id);
+
+  if (error) throw error;
+  return { success: true };
+}
+
+export async function findDepartmentById(id) {
+  const { data, error } = await supabase
+    .from('departments')
+    .select('*')
+    .eq('id', id)
+    .single();
+
+  if (error && error.code !== 'PGRST116') throw error;
+  return data;
+}
+
+export async function getInterns({ search, page = 1, limit = 10 } = {}) {
+  let query = supabase
+    .from('accounts')
+    .select(
+      'id, username, full_name, email, role, school, course, department_id, department_name, status, start_date, end_date, required_hours, rendered_hours, student_id, year_level, phone, home_address, emergency_name, emergency_relation, emergency_phone',
+      { count: 'exact' }
+    )
+    .eq('role', INTERN_ROLE)
+    .order('full_name', { ascending: true });
+
+  if (search) {
+    query = query.or(`full_name.ilike.%${search}%,username.ilike.%${search}%,email.ilike.%${search}%`);
+  }
+
+  const from = (page - 1) * limit;
+  const to = from + limit - 1;
+  query = query.range(from, to);
+
+  const { data, error, count } = await query;
+  if (error) throw error;
+  return { interns: data || [], total: count || 0 };
+}
+
+export async function getInternById(id) {
+  const { data, error } = await supabase
+    .from('accounts')
+    .select('id, username, full_name, email, role, school, course, department_id, department_name, status, start_date, end_date, required_hours, rendered_hours, student_id, year_level, phone, home_address, emergency_name, emergency_relation, emergency_phone')
+    .eq('id', id)
+    .eq('role', INTERN_ROLE)
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+function normalizeDepartmentName(departmentId, departmentName) {
+  if (departmentId) {
+    return departmentId;
+  }
+  return null;
+}
+
+export async function createIntern(payload) {
+  const { password, department_id, ...rest } = payload;
+  if (!password) throw new Error('Password is required');
+
+  const password_hash = await bcrypt.hash(password, 10);
+  const department = department_id ? await findDepartmentById(department_id) : null;
+  const departmentName = department?.name || rest.department_name || null;
+
+  const { data, error } = await supabase
+    .from('accounts')
+    .insert([{ ...rest, password_hash, role: INTERN_ROLE, department_id, department_name: departmentName }])
+    .select('id, username, full_name, email, role, school, course, department_id, department_name, status, start_date, end_date, required_hours, rendered_hours, student_id, year_level, phone, home_address, emergency_name, emergency_relation, emergency_phone')
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function updateIntern(id, payload) {
+  const { password, department_id, ...rest } = payload;
+  const updates = { ...rest };
+
+  if (password) {
+    updates.password_hash = await bcrypt.hash(password, 10);
+  }
+
+  if (department_id) {
+    const department = await findDepartmentById(department_id);
+    updates.department_name = department?.name || rest.department_name || null;
+    updates.department_id = department_id;
+  }
+
+  const { data, error } = await supabase
+    .from('accounts')
+    .update(updates)
+    .eq('id', id)
+    .eq('role', INTERN_ROLE)
+    .select('id, username, full_name, email, role, school, course, department_id, department_name, status, start_date, end_date, required_hours, rendered_hours, student_id, year_level, phone, home_address, emergency_name, emergency_relation, emergency_phone')
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteIntern(id) {
+  const { error } = await supabase
+    .from('accounts')
+    .delete()
+    .eq('id', id)
+    .eq('role', INTERN_ROLE);
+
+  if (error) throw error;
+  return { success: true };
+}
+
+export async function resetInternPassword(id, newPassword) {
+  const password_hash = await bcrypt.hash(newPassword, 10);
+  const { error } = await supabase
+    .from('accounts')
+    .update({ password_hash })
+    .eq('id', id)
+    .eq('role', INTERN_ROLE);
+
+  if (error) throw error;
+  return { success: true };
+}
+
+export async function getCurrentUserProfile(userId) {
+  const { data, error } = await supabase
+    .from('accounts')
+    .select('id, username, full_name, email, role, school, course, department_id, department_name, status, start_date, end_date, required_hours, rendered_hours, student_id, year_level, phone, home_address, emergency_name, emergency_relation, emergency_phone')
+    .eq('id', userId)
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function updateCurrentUserProfile(userId, updates) {
+  const payload = { ...updates };
+  if (payload.department_id) {
+    const department = await findDepartmentById(payload.department_id);
+    payload.department_name = department?.name || payload.department_name || null;
+  }
+
+  const { data, error } = await supabase
+    .from('accounts')
+    .update(payload)
+    .eq('id', userId)
+    .select('id, username, full_name, email, role, school, course, department_id, department_name, status, start_date, end_date, required_hours, rendered_hours, student_id, year_level, phone, home_address, emergency_name, emergency_relation, emergency_phone')
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function changePassword(userId, currentPassword, newPassword) {
+  const { data, error } = await supabase
+    .from('accounts')
+    .select('password_hash')
+    .eq('id', userId)
+    .single();
+
+  if (error) throw error;
+  const isValid = await bcrypt.compare(currentPassword, data.password_hash);
+  if (!isValid) throw new Error('Current password is incorrect');
+
+  const newHash = await bcrypt.hash(newPassword, 10);
+  const { error: updateError } = await supabase
+    .from('accounts')
+    .update({ password_hash: newHash })
+    .eq('id', userId);
+
+  if (updateError) throw updateError;
+  return { success: true };
+}
+
+export async function getAttendanceLogs({ status, date, page = 1, limit = 15 } = {}) {
+  let query = supabase
+    .from('attendance_logs')
+    .select('*', { count: 'exact' })
+    .order('scan_time', { ascending: false });
+
+  if (status) {
+    query = query.eq('approval_status', status);
+  }
+
+  if (date) {
+    const start = new Date(date);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(date);
+    end.setHours(23, 59, 59, 999);
+    query = query.gte('scan_time', start.toISOString()).lte('scan_time', end.toISOString());
+  }
+
+  const from = (page - 1) * limit;
+  const to = from + limit - 1;
+  const { data, error, count } = await query.range(from, to);
+
+  if (error) throw error;
+  return { logs: data || [], total: count || 0 };
+}
+
+export async function setAttendanceApproval(attendanceId, status, remarks) {
+  const { data, error } = await supabase
+    .from('attendance_logs')
+    .update({ approval_status: status, remarks })
+    .eq('id', attendanceId)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function getAdminDashboardStats() {
+  const today = new Date();
+  const start = new Date(today);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(today);
+  end.setHours(23, 59, 59, 999);
+
+  const [internsRes, attendanceRes, pendingDocsRes, departmentsRes] = await Promise.all([
+    supabase.from('accounts').select('id', { count: 'exact', head: false }).eq('role', INTERN_ROLE),
+    supabase.from('attendance_logs').select('id, intern_id, scan_time, approval_status', { count: 'exact' })
+      .gte('scan_time', start.toISOString())
+      .lte('scan_time', end.toISOString()),
+    supabase.from('documents').select('id', { count: 'exact' }).eq('status', 'pending'),
+    supabase.from('departments').select('id', { count: 'exact', head: false })
+  ]);
+
+  if (internsRes.error) throw internsRes.error;
+  if (attendanceRes.error) throw attendanceRes.error;
+  if (pendingDocsRes.error) throw pendingDocsRes.error;
+  if (departmentsRes.error) throw departmentsRes.error;
+
+  const todayLogs = attendanceRes.data || [];
+  const presentSet = new Set(todayLogs
+    .filter((log) => log.approval_status !== 'rejected')
+    .map((log) => log.intern_id));
+
+  const approvedToday = todayLogs.filter((log) => log.approval_status === 'approved').length;
+  const pendingAttendance = todayLogs.filter((log) => log.approval_status === 'pending').length;
+
+  const { data: recentAttendance, error: recentAttendanceError } = await supabase
+    .from('attendance_logs')
+    .select('*')
+    .order('scan_time', { ascending: false })
+    .limit(5);
+
+  if (recentAttendanceError) throw recentAttendanceError;
+
+  const { data: recentDocuments, error: recentDocumentsError } = await supabase
+    .from('documents')
+    .select('*')
+    .order('upload_date', { ascending: false })
+    .limit(3);
+
+  if (recentDocumentsError) throw recentDocumentsError;
+
+  return {
+    stats: {
+      total_interns: internsRes.count || 0,
+      present_today: presentSet.size,
+      pending_attendance: pendingAttendance,
+      approved_today: approvedToday,
+      total_departments: departmentsRes.count || 0,
+      pending_documents: pendingDocsRes.count || 0,
+    },
+    recentAttendance: recentAttendance || [],
+    recentDocuments: recentDocuments || [],
+  };
+}
+
+export async function getAttendanceReport({ month, year, department_id } = {}) {
+  const filters = { role: INTERN_ROLE };
+  let internQuery = supabase
+    .from('accounts')
+    .select('id, full_name, school, course, department_name, department_id, required_hours, rendered_hours')
+    .eq('role', INTERN_ROLE)
+    .order('full_name', { ascending: true });
+
+  if (department_id) {
+    internQuery = internQuery.eq('department_id', department_id);
+  }
+
+  const { data: interns, error: internsError } = await internQuery;
+  if (internsError) throw internsError;
+
+  let logQuery = supabase
+    .from('attendance_logs')
+    .select('intern_id, scan_time, approval_status');
+
+  if (month && year) {
+    const start = new Date(year, month - 1, 1);
+    const end = new Date(year, month, 0, 23, 59, 59, 999);
+    logQuery = logQuery.gte('scan_time', start.toISOString()).lte('scan_time', end.toISOString());
+  }
+
+  const { data: logs, error: logsError } = await logQuery;
+  if (logsError) throw logsError;
+
+  const attendanceByIntern = logs.reduce((acc, log) => {
+    const dateKey = log.scan_time.slice(0, 10);
+    const key = `${log.intern_id}-${dateKey}`;
+    acc[key] = true;
+    return acc;
+  }, {});
+
+  const dailyCounts = Object.keys(attendanceByIntern).reduce((acc, key) => {
+    const internId = Number(key.split('-')[0]);
+    acc[internId] = (acc[internId] || 0) + 1;
+    return acc;
+  }, {});
+
+  return interns.map((intern) => ({
+    id: intern.id,
+    full_name: intern.full_name,
+    school: intern.school,
+    department_name: intern.department_name,
+    days_present: dailyCounts[intern.id] || 0,
+    total_hours: Number(intern.rendered_hours || 0),
+    required_hours: Number(intern.required_hours || 0),
+    rendered_hours: Number(intern.rendered_hours || 0),
+  }));
+}
+
+export async function getDtrRecords(userId, { month, year, limit = 31 } = {}) {
+  let query = supabase
+    .from('attendance_logs')
+    .select('scan_time, scan_type, approval_status, remarks')
+    .eq('intern_id', userId)
+    .order('scan_time', { ascending: true });
+
+  if (month && year) {
+    const start = new Date(year, month - 1, 1);
+    const end = new Date(year, month, 0, 23, 59, 59, 999);
+    query = query.gte('scan_time', start.toISOString()).lte('scan_time', end.toISOString());
+  } else {
+    const since = new Date(Date.now() - limit * 24 * 60 * 60 * 1000);
+    query = query.gte('scan_time', since.toISOString());
+  }
+
+  const { data: logs, error } = await query;
+  if (error) throw error;
+
+  const grouped = logs.reduce((acc, log) => {
+    const dateKey = log.scan_time.slice(0, 10);
+    acc[dateKey] = acc[dateKey] || [];
+    acc[dateKey].push(log);
+    return acc;
+  }, {});
+
+  return Object.entries(grouped).map(([date, entries], index) => {
+    const timeIn = entries.find((entry) => entry.scan_type === 'time_in');
+    const timeOut = [...entries].reverse().find((entry) => entry.scan_type === 'time_out');
+    const inTime = timeIn?.scan_time ? new Date(timeIn.scan_time) : null;
+    const outTime = timeOut?.scan_time ? new Date(timeOut.scan_time) : null;
+    const totalHours = inTime && outTime ? Math.max(0, (outTime - inTime) / 3600000) : 0;
+    let approvalStatus = 'pending';
+    if (entries.every((entry) => entry.approval_status === 'approved')) approvalStatus = 'approved';
+    if (entries.some((entry) => entry.approval_status === 'rejected')) approvalStatus = 'rejected';
+
+    return {
+      id: `${date}-${index}`,
+      date,
+      time_in: inTime ? inTime.toISOString().slice(11, 16) : null,
+      time_out: outTime ? outTime.toISOString().slice(11, 16) : null,
+      total_hours: Number(totalHours.toFixed(1)),
+      approval_status: approvalStatus,
+    };
+  }).sort((a, b) => b.date.localeCompare(a.date));
+}
+
+export async function getNotifications(userId, isAdmin) {
+  let query = supabase
+    .from('notifications')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  if (!isAdmin) {
+    query = query.eq('user_id', userId);
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+  const notifications = data || [];
+  const unread_count = notifications.filter((n) => !n.is_read).length;
+  return { notifications, unread_count };
+}
+
+export async function markNotificationRead(notificationId, userId, isAdmin) {
+  let query = supabase.from('notifications').update({ is_read: true }).eq('id', notificationId);
+  if (!isAdmin) query = query.eq('user_id', userId);
+  const { error } = await query;
+  if (error) throw error;
+  return { success: true };
+}
+
+export async function markAllNotificationsRead(userId, isAdmin) {
+  let query = supabase.from('notifications').update({ is_read: true });
+  if (!isAdmin) query = query.eq('user_id', userId);
+  const { error } = await query;
+  if (error) throw error;
+  return { success: true };
+}
+
+export async function getEvaluations(userId, isAdmin) {
+  let query = supabase
+    .from('evaluations')
+    .select('*')
+    .order('evaluation_date', { ascending: false });
+
+  if (!isAdmin) {
+    query = query.eq('intern_id', userId);
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+  return data || [];
+}
+
+export async function createEvaluation(payload, evaluatorId, evaluatorName) {
+  const row = {
+    ...payload,
+    evaluator_id: evaluatorId,
+    evaluator_name: evaluatorName,
+    evaluation_date: new Date().toISOString(),
+    created_at: new Date().toISOString(),
+  };
+
+  const { data, error } = await supabase
+    .from('evaluations')
+    .insert([row])
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function updateEvaluation(id, payload) {
+  const { data, error } = await supabase
+    .from('evaluations')
+    .update(payload)
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function getDocuments(userId, isAdmin, status) {
+  let query = supabase
+    .from('documents')
+    .select('*')
+    .order('upload_date', { ascending: false });
+
+  if (!isAdmin) {
+    query = query.eq('intern_id', userId);
+  }
+
+  if (status) {
+    query = query.eq('status', status);
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+  return data || [];
+}
+
+export async function createDocument({ userId, file, document_type }) {
+  if (!file) throw new Error('File upload is required');
+  const { fieldname, originalname, mimetype, size, path: filePath } = file;
+
+  const { data, error } = await supabase
+    .from('documents')
+    .insert([{
+      intern_id: userId,
+      document_type,
+      original_name: originalname,
+      file_name: file.filename,
+      file_type: mimetype.split('/').pop(),
+      file_size: size,
+      file_path: filePath,
+      upload_date: new Date().toISOString(),
+      status: 'pending',
+    }])
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function updateDocumentStatus(id, status, adminRemarks) {
+  const { data, error } = await supabase
+    .from('documents')
+    .update({ status, admin_remarks: adminRemarks })
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteDocument(id, userId, isAdmin) {
+  let query = supabase.from('documents').delete().eq('id', id);
+  if (!isAdmin) query = query.eq('intern_id', userId);
+  const { error } = await query;
+  if (error) throw error;
+  return { success: true };
+}

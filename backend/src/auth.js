@@ -14,7 +14,11 @@ export async function loginUser(username, password) {
     .eq('username', username)
     .single();
 
-  if (error || !data) {
+  if (error) {
+    throw new Error(error.details || error.message || 'Login error');
+  }
+
+  if (!data) {
     throw new Error('Invalid username or password');
   }
 
@@ -23,7 +27,7 @@ export async function loginUser(username, password) {
     throw new Error('Invalid username or password');
   }
 
-  const token = jwt.sign({ userId: data.id, role: data.role }, JWT_SECRET, { expiresIn: '8h' });
+  const token = jwt.sign({ id: data.id, username: data.username, full_name: data.full_name, email: data.email, role: data.role }, JWT_SECRET, { expiresIn: '8h' });
 
   return {
     user: {

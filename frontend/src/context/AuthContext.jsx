@@ -1,48 +1,50 @@
 import { createContext, useContext, useState, useEffect } from 'react';
+import backendApi from '../utils/backendApi.js';
 
 const AuthContext = createContext(null);
-
-// ─── Mock users (no backend needed) ────────────────────────────────────────
-// username "admin"  → role: admin
-// any other username → role: intern
-const buildMockUser = (username) => {
-  const isAdmin = username.toLowerCase() === 'admin';
-  return {
-    id: isAdmin ? 1 : 2,
-    username,
-    full_name: isAdmin ? 'Demo Admin' : `Demo Intern (${username})`,
-    role: isAdmin ? 'admin' : 'intern',
-    email: isAdmin ? 'admin@pnp-itms.gov.ph' : `${username}@pnp-itms.gov.ph`,
-  };
-};
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Restore session from localStorage on mount
   useEffect(() => {
-    const stored = localStorage.getItem('pnp_mock_user');
-    if (stored) {
-      try { setUser(JSON.parse(stored)); } catch {}
+    const token = localStorage.getItem('pnp_token');
+    if (!token) {
+      setLoading(false);
+      return;
     }
-    setLoading(false);
+
+    backendApi.get('/auth/me')
+      .then((res) => setUser(res.data.user))
+      .catch(() => {
+        localStorage.removeItem('pnp_token');
+      })
+      .finally(() => setLoading(false));
   }, []);
 
-  // username "admin" → admin role, anything else → intern role
-  const login = async (username) => {
-    const mockUser = buildMockUser(username);
-    localStorage.setItem('pnp_mock_user', JSON.stringify(mockUser));
-    setUser(mockUser);
-    return mockUser;
+  const login = async (username, password) => {
+    const uname = String(username || '').trim().toLowerCase();
+    const pwd = String(password || '').trim();
+    const { data } = await backendApi.post('/auth/login', { username: uname, password: pwd });
+    localStorage.setItem('pnp_token', data.token);
+    setUser(data.user);
+    return data.user;
   };
 
   const logout = async () => {
-    localStorage.removeItem('pnp_mock_user');
+    localStorage.removeItem('pnp_token');
     setUser(null);
   };
 
-  const refreshUser = () => {};
+  const refreshUser = async () => {
+    try {
+      const { data } = await backendApi.get('/auth/me');
+      setUser(data.user);
+    } catch {
+      setUser(null);
+      localStorage.removeItem('pnp_token');
+    }
+  };
 
   return (
     <AuthContext.Provider value={{ user, loading, login, logout, refreshUser }}>

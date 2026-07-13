@@ -11,19 +11,27 @@ export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
 
+  const [error, setError] = useState('');
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.username || !form.password) {
+      setError('Please fill in all fields');
       toast.error('Please fill in all fields');
       return;
     }
     setLoading(true);
+    setError('');
     try {
-      const user = await login(form.username, form.password);
+      const username = form.username.trim().toLowerCase();
+      const password = String(form.password).trim();
+      const user = await login(username, password);
       toast.success(`Welcome back, ${user.full_name || user.username}!`);
       navigate(user.role === 'admin' ? '/admin' : '/intern', { replace: true });
     } catch (err) {
-      toast.error(err?.response?.data?.error || 'Login failed. Please check your credentials.');
+      const message = err?.response?.data?.error || 'Login failed. Please check your credentials.';
+      setError(message);
+      toast.error(message);
     } finally {
       setLoading(false);
     }
@@ -146,6 +154,9 @@ export default function Login() {
                   </span>
                 ) : 'Sign In'}
               </button>
+              {error && (
+                <p className="mt-3 text-sm text-red-600">{error}</p>
+              )}
             </form>
 
             <div className="divider mt-8" />
