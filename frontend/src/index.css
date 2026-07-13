@@ -504,3 +504,43 @@ body {
   .content-area { margin-left: 0; }
   .page-content { padding: 1rem; }
 }
+
+/* === Print / DTR Export === */
+@media print {
+  /* Hide everything except the DTR form */
+  .sidebar,
+  .navbar,
+  .no-print,
+  .page-header,
+  .space-y-6 > *:not(:has(#dtr-print-root)),
+  button {
+    display: none !important;
+  }
+
+  body {
+    background: #fff !important;
+    margin: 0;
+    padding: 0;
+  }
+
+  .content-area {
+    margin-left: 0 !important;
+    padding: 0 !important;
+  }
+
+  .page-content {
+    padding: 0 !important;
+  }
+
+  #dtr-print-root {
+    max-width: 100% !important;
+    padding: 10mm !important;
+    font-size: 10pt !important;
+  }
+
+  @page {
+    size: A4 portrait;
+    margin: 10mm;
+  }
+}
+

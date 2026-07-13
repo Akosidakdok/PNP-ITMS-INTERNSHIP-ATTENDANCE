@@ -1,6 +1,5 @@
 import express from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
 import multer from 'multer';
 import { loginUser } from './auth.js';
 import { getActiveQrCode, regenerateQrCode, scanAttendance, getTodayScanStatus } from './attendance.js';
@@ -36,7 +35,7 @@ import {
   deleteDocument,
 } from './data.js';
 
-dotenv.config();
+// dotenv already loaded via 'dotenv/config' import at the top
 
 const app = express();
 const port = process.env.PORT || 3000;
