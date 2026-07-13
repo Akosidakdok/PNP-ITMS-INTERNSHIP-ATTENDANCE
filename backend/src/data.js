@@ -122,7 +122,7 @@ export async function createIntern(payload) {
   if (!password) throw new Error('Password is required');
 
   const password_hash = await bcrypt.hash(password, 10);
-  const department = department_id ? await findDepartmentById(department_id) : null;
+  const department = department_id ? await findDepartmentById(Number(department_id)) : null;
   const departmentName = department?.name || rest.department_name || null;
 
   const { data, error } = await supabase

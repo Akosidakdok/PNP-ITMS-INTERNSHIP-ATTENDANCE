@@ -6,7 +6,7 @@ import Modal from '../../components/common/Modal.jsx';
 import toast from 'react-hot-toast';
 
 const INIT_FORM = {
-  username: '', password: '', full_name: '', email: '', phone: '',
+  username: '', password: '', full_name: '', email: '', phone: '', // email was missing here in your file
   school: '', course: '', year_level: '4th Year', department_id: '',
   required_hours: 300, start_date: '', end_date: '', status: 'active',
   student_id: '', home_address: '', emergency_name: '', emergency_relation: '', emergency_phone: ''
@@ -91,6 +91,10 @@ export default function InternManagement() {
       }
       if (!form.password || !form.password.trim()) {
         toast.error('Initial Password is required');
+        return;
+      }
+      if (!form.email || !form.email.trim()) {
+        toast.error('Email Address is required');
         return;
       }
     }

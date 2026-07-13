@@ -184,20 +184,20 @@ export default function DTRTable({ records, intern, month, year }) {
         fontSize: '10px',
         tableLayout: 'fixed',
       }}>
-        <colgroup>
-          <col style={{ width: '6%' }} />  {/* Date */}
-          {/* AM */}
-          <col style={{ width: '10%' }} /> {/* AM Time In */}
-          <col style={{ width: '7%' }} />  {/* AM Sig */}
-          <col style={{ width: '10%' }} /> {/* AM Time Out */}
-          <col style={{ width: '7%' }} />  {/* AM Sig */}
-          {/* PM */}
-          <col style={{ width: '10%' }} /> {/* PM Time In */}
-          <col style={{ width: '7%' }} />  {/* PM Sig */}
-          <col style={{ width: '10%' }} /> {/* PM Time Out */}
-          <col style={{ width: '7%' }} />  {/* PM Sig */}
-          <col style={{ width: '12%' }} /> {/* Total Hrs */}
-          <col style={{ width: '14%' }} /> {/* Sig of Supervisor */}
+        <colgroup
+          ><col style={{ width: '6%' }} />  {/* Date */}
+          {/* AM */
+          }<col style={{ width: '10%' }} /> {/* AM Time In */
+          }<col style={{ width: '7%' }} />  {/* AM Sig */
+          }<col style={{ width: '10%' }} /> {/* AM Time Out */
+          }<col style={{ width: '7%' }} />  {/* AM Sig */}
+          {/* PM */
+          }<col style={{ width: '10%' }} /> {/* PM Time In */
+          }<col style={{ width: '7%' }} />  {/* PM Sig */
+          }<col style={{ width: '10%' }} /> {/* PM Time Out */
+          }<col style={{ width: '7%' }} />  {/* PM Sig */
+          }<col style={{ width: '12%' }} /> {/* Total Hrs */
+          }<col style={{ width: '14%' }} /> {/* Sig of Supervisor */}
         </colgroup>
         <thead>
           {/* Group headers: AM and PM */}

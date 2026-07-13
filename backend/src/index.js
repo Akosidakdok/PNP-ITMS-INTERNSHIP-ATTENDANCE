@@ -198,6 +198,7 @@ app.post('/interns', authMiddleware, adminMiddleware, async (req, res) => {
     const intern = await createIntern(req.body);
     return res.json({ intern });
   } catch (error) {
+    console.error('Error creating intern:', error);
     return res.status(500).json({ error: error.message });
   }
 });
