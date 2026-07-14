@@ -39,6 +39,7 @@ import {
 
 const app = express();
 const port = process.env.PORT || 3000;
+const host = process.env.HOST || '0.0.0.0';
 const upload = multer({ dest: 'uploads/' });
 
 app.use(cors());
@@ -388,6 +389,7 @@ app.get('/', (req, res) => {
   res.json({ status: 'ok', message: 'PNP ITMS backend is running' });
 });
 
-app.listen(port, () => {
-  console.log(`Backend listening on http://localhost:${port}`);
+app.listen(port, host, () => {
+  console.log(`Backend listening on port ${port} at host ${host}.`);
+  console.log(`To access on your local network, use http://<your-local-ip>:${port}`);
 });
