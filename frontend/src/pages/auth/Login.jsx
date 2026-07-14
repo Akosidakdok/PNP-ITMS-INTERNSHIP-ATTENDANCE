@@ -38,9 +38,11 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex" style={{ background: 'linear-gradient(135deg, #001240 0%, #002060 50%, #003087 100%)' }}>
+    <div className="min-h-screen flex relative" style={{ backgroundImage: 'url(/ITMS_BACKGROUND.jpg)', backgroundSize: 'cover', backgroundPosition: 'center', backgroundRepeat: 'no-repeat' }}>
+      {/* Dark overlay for readability */}
+      <div className="absolute inset-0 z-0" style={{ background: 'rgba(0, 18, 64, 0.72)' }} />
       {/* Left Panel */}
-      <div className="hidden lg:flex lg:w-1/2 flex-col items-center justify-center p-12 relative overflow-hidden">
+      <div className="hidden lg:flex lg:w-1/2 flex-col items-center justify-center p-12 relative z-10 overflow-hidden">
         {/* Background decorations */}
         <div className="absolute inset-0 opacity-10">
           <div className="absolute top-20 left-20 w-64 h-64 rounded-full" style={{ background: 'radial-gradient(circle, #2d80ff, transparent)' }} />
@@ -49,37 +51,26 @@ export default function Login() {
 
         <div className="relative z-10 text-center animate-fade-in">
           {/* PNP Logo/Shield */}
-          <div className="mx-auto mb-8 flex items-center justify-center w-28 h-28 rounded-full glass-dark border-2 border-gold-400 shadow-2xl">
-            <Shield className="w-16 h-16 text-yellow-400" strokeWidth={1.5} />
+          <div className="mx-auto mb-8 flex items-center justify-center w-38 h-38 rounded-full glass-dark border-2 border-gold-400 shadow-2xl overflow-hidden">
+            <img src="/ITMS_LOGO.jpg" alt="ITMS Logo" className="w-full h-full object-cover" />
           </div>
           <h1 className="text-4xl font-bold text-white mb-3" style={{ fontFamily: 'Outfit, sans-serif' }}>
-            PNP – ITMS
+            P-DITMS
           </h1>
-          <p className="text-xl text-blue-200 mb-2 font-medium">Internship Management System</p>
+          <p className="text-xl text-blue-200 mb-2 font-medium">PNP - Database Internship Management System</p>
           <p className="text-blue-300 text-sm max-w-xs mx-auto leading-relaxed">
             Philippine National Police<br />
             Information Technology Management Service
           </p>
 
-          <div className="mt-12 grid grid-cols-3 gap-4 text-center">
-            {[
-              { label: 'QR Attendance', icon: '📱' },
-              { label: 'Auto DTR', icon: '📋' },
-              { label: 'Secure Access', icon: '🔐' },
-            ].map(f => (
-              <div key={f.label} className="glass-dark rounded-xl p-4">
-                <div className="text-2xl mb-1">{f.icon}</div>
-                <p className="text-xs text-blue-200 font-medium">{f.label}</p>
-              </div>
-            ))}
-          </div>
+          
         </div>
       </div>
 
       {/* Right Panel — Login Form */}
-      <div className="w-full lg:w-1/2 flex items-center justify-center p-6 lg:p-12">
+      <div className="w-full lg:w-1/2 flex items-center justify-center p-6 lg:p-12 relative z-10">
         <div className="w-full max-w-md animate-scale-in">
-          <div className="card card-elevated p-8 lg:p-10">
+          <div className="p-8 lg:p-10 rounded-2xl" style={{ background: 'rgba(10, 25, 70, 0.72)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', boxShadow: '0 8px 32px rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.12)' }}>
             {/* Mobile logo */}
             <div className="flex lg:hidden items-center gap-3 mb-8">
               <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #003087, #0060e6)' }}>
@@ -91,20 +82,21 @@ export default function Login() {
               </div>
             </div>
 
-            <h2 className="text-2xl font-bold mb-1" style={{ color: '#001240', fontFamily: 'Outfit, sans-serif' }}>
+            <h2 className="text-2xl font-bold mb-1 text-white" style={{ fontFamily: 'Outfit, sans-serif' }}>
               Sign In
             </h2>
-            <p className="text-gray-500 text-sm mb-8">Enter your credentials to access the system</p>
+            <p className="text-blue-200 text-sm mb-8">Enter your credentials to access the system</p>
 
             <form onSubmit={handleSubmit} className="space-y-5">
               <div className="form-group">
-                <label className="form-label" htmlFor="username">Username</label>
+                <label className="form-label" htmlFor="username" style={{ color: '#bfdbfe' }}>Username</label>
                 <div className="relative">
-                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-blue-300 pointer-events-none" style={{ zIndex: 1 }} />
                   <input
                     id="username"
                     type="text"
-                    className="form-input pl-10"
+                    className="form-input"
+                    style={{ paddingLeft: '2.25rem', background: 'rgba(255,255,255,0.92)', color: '#1e293b' }}
                     placeholder="Enter your username"
                     value={form.username}
                     onChange={e => setForm(f => ({ ...f, username: e.target.value }))}
@@ -115,13 +107,14 @@ export default function Login() {
               </div>
 
               <div className="form-group">
-                <label className="form-label" htmlFor="password">Password</label>
+                <label className="form-label" htmlFor="password" style={{ color: '#bfdbfe' }}>Password</label>
                 <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-blue-300 pointer-events-none" style={{ zIndex: 1 }} />
                   <input
                     id="password"
                     type={showPass ? 'text' : 'password'}
-                    className="form-input pl-10 pr-10"
+                    className="form-input"
+                    style={{ paddingLeft: '2.25rem', paddingRight: '2.5rem', background: 'rgba(255,255,255,0.92)', color: '#1e293b' }}
                     placeholder="Enter your password"
                     value={form.password}
                     onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
@@ -129,7 +122,7 @@ export default function Login() {
                   />
                   <button
                     type="button"
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
                     onClick={() => setShowPass(v => !v)}
                     tabIndex={-1}
                   >
@@ -159,8 +152,8 @@ export default function Login() {
               )}
             </form>
 
-            <div className="divider mt-8" />
-            <p className="text-center text-xs text-gray-400">
+            <div className="divider mt-8" style={{ borderColor: 'rgba(255,255,255,0.15)' }} />
+            <p className="text-center text-xs text-blue-300 opacity-70">
               PNP-ITMS &copy; {new Date().getFullYear()} &middot; Philippine National Police
             </p>
           </div>
@@ -170,6 +163,11 @@ export default function Login() {
           </p>
         </div>
       </div>
+
+      {/* Bottom-left credit */}
+      <p className="absolute bottom-4 left-5 text-blue-300 text-xs opacity-60 select-none" style={{ fontFamily: 'Outfit, sans-serif' }}>
+        Created by Students of Pamantasan ng Lungsod Ng Valenzuela
+      </p>
     </div>
   );
 }
