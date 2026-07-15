@@ -35,16 +35,16 @@ import {
   deleteDocument,
 } from './data.js';
 
-// dotenv already loaded via 'dotenv/config' import at the top
-
 const app = express();
 const port = process.env.PORT || 3000;
 const host = process.env.HOST || '0.0.0.0';
-const upload = multer({ dest: 'uploads/' });
+
+// Use memoryStorage for multer to pass file buffer to Supabase Storage
+const storage = multer.memoryStorage();
+const upload = multer({ storage: storage });
 
 app.use(cors());
 app.use(express.json());
-app.use('/uploads', express.static('uploads'));
 
 app.post('/auth/login', async (req, res) => {
   const { username, password } = req.body;

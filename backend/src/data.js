@@ -1,4 +1,5 @@
 import bcrypt from 'bcryptjs';
+import { v4 as uuidv4 } from 'uuid';
 import { supabase } from './supabaseClient.js';
 
 const INTERN_ROLE = 'intern';
@@ -513,7 +514,11 @@ export async function updateEvaluation(id, payload) {
 export async function getDocuments(userId, isAdmin, status) {
   let query = supabase
     .from('documents')
-    .select('*')
+    // Select all columns from documents, and the full_name from the joined accounts table
+    .select(`
+      *,
+      account:accounts(full_name)
+    `)
     .order('upload_date', { ascending: false });
 
   if (!isAdmin) {
@@ -524,33 +529,23 @@ export async function getDocuments(userId, isAdmin, status) {
     query = query.eq('status', status);
   }
 
-  const { data, error } = await query;
+  const { data: documents, error } = await query;
   if (error) throw error;
-  return data || [];
-}
 
-export async function createDocument({ userId, file, document_type }) {
-  if (!file) throw new Error('File upload is required');
-  const { fieldname, originalname, mimetype, size, path: filePath } = file;
+  // Augment documents with their public URL from Supabase Storage
+  return (documents || []).map(doc => {
+    const { data: publicUrlData } = supabase
+      .storage
+      .from('documents') // Your bucket name
+      .getPublicUrl(doc.file_path);
 
-  const { data, error } = await supabase
-    .from('documents')
-    .insert([{
-      intern_id: userId,
-      document_type,
-      original_name: originalname,
-      file_name: file.filename,
-      file_type: mimetype.split('/').pop(),
-      file_size: size,
-      file_path: filePath,
-      upload_date: new Date().toISOString(),
-      status: 'pending',
-    }])
-    .select()
-    .single();
-
-  if (error) throw error;
-  return data;
+    // Un-nest the account object to make `full_name` a top-level property
+    return {
+      ...doc,
+      full_name: doc.account?.full_name || 'Unknown Intern',
+      public_url: publicUrlData.publicUrl,
+    };
+  });
 }
 
 export async function updateDocumentStatus(id, status, adminRemarks) {
@@ -565,10 +560,67 @@ export async function updateDocumentStatus(id, status, adminRemarks) {
   return data;
 }
 
+export async function createDocument({ userId, file, document_type }) {
+  if (!file) throw new Error('File upload is required');
+  const { originalname, mimetype, size, buffer } = file;
+  const fileExtension = originalname.split('.').pop();
+  const newFileName = `${uuidv4()}.${fileExtension}`;
+  const filePath = `user-documents/${userId}/${newFileName}`;
+
+  // 1. Upload file to Supabase Storage
+  const { error: uploadError } = await supabase
+    .storage
+    .from('documents') // Your bucket name
+    .upload(filePath, buffer, {
+      contentType: mimetype,
+      upsert: false,
+    });
+
+  if (uploadError) {
+    console.error('Supabase Storage Error:', uploadError);
+    throw new Error('Failed to upload file to storage. Check backend logs for details.');
+  }
+
+  // 2. Save metadata to the database
+  const { data, error } = await supabase
+    .from('documents')
+    .insert([{
+      intern_id: userId,
+      document_type,
+      original_name: originalname,
+      file_name: newFileName,
+      file_type: mimetype.split('/').pop(),
+      file_size: size,
+      file_path: filePath,
+      upload_date: new Date().toISOString(),
+      status: 'pending',
+    }])
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
 export async function deleteDocument(id, userId, isAdmin) {
-  let query = supabase.from('documents').delete().eq('id', id);
-  if (!isAdmin) query = query.eq('intern_id', userId);
-  const { error } = await query;
+  // 1. Get the document to find its file_path
+  const { data: doc, error: findError } = await supabase
+    .from('documents')
+    .select('file_path, intern_id')
+    .eq('id', id)
+    .single();
+
+  if (findError) throw findError;
+  if (!isAdmin && doc.intern_id !== userId) throw new Error('Permission denied');
+
+  // 2. Delete the file from Supabase Storage
+  const { error: storageError } = await supabase.storage.from('documents').remove([doc.file_path]);
+  if (storageError) {
+    console.warn(`Could not delete file from storage: ${storageError.message}`);
+  }
+
+  // 3. Delete the record from the database
+  const { error } = await supabase.from('documents').delete().eq('id', id);
   if (error) throw error;
   return { success: true };
 }

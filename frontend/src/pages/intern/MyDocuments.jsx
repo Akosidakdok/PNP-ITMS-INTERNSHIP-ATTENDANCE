@@ -21,7 +21,7 @@ export default function MyDocuments() {
   const [uploadModal, setUploadModal] = useState(false);
   const [uploadForm, setUploadForm] = useState({ document_type: '', file: null });
   const [uploading, setUploading] = useState(false);
-  const [preview, setPreview] = useState(null);
+  const [previewDoc, setPreviewDoc] = useState(null);
   const fileRef = useRef(null);
 
   const fetchDocs = useCallback(async () => {
@@ -45,13 +45,17 @@ export default function MyDocuments() {
     fd.append('document_type', uploadForm.document_type);
 
     try {
-      await api.post('/documents/upload', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
-      toast.success('Document uploaded successfully!');
-      setUploadModal(false);
-      setUploadForm({ document_type: '', file: null });
-      fetchDocs();
+      const response = await api.post('/documents/upload', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+      if (response.data && response.data.document) {
+        toast.success('Document uploaded successfully!');
+        setUploadModal(false);
+        setUploadForm({ document_type: '', file: null });
+        fetchDocs();
+      } else {
+        throw new Error(response.data?.error || 'Upload failed with an unknown error.');
+      }
     } catch (err) {
-      toast.error(err?.response?.data?.error || 'Upload failed');
+      toast.error(err?.response?.data?.error || err.message || 'Upload failed');
     } finally { setUploading(false); }
   };
 
@@ -125,7 +129,7 @@ export default function MyDocuments() {
                 <div className="flex items-center justify-between">
                   <span className={`badge badge-${doc.status}`}>{doc.status}</span>
                   <div className="flex gap-1">
-                    <button id={`preview-my-doc-${doc.id}`} className="btn btn-secondary btn-sm" onClick={() => setPreview(doc)}>
+                    <button id={`preview-my-doc-${doc.id}`} className="btn btn-secondary btn-sm" onClick={() => setPreviewDoc(doc)}>
                       <Eye className="w-3.5 h-3.5" /> Preview
                     </button>
                     <button className="btn btn-ghost btn-sm text-red-500" onClick={() => handleDelete(doc)}>
@@ -200,7 +204,7 @@ export default function MyDocuments() {
         </div>
       </Modal>
 
-      <DocumentPreview isOpen={!!preview} onClose={() => setPreview(null)} document={preview} />
+      <DocumentPreview isOpen={!!previewDoc} onClose={() => setPreviewDoc(null)} document={previewDoc} />
     </div>
   );
 }
