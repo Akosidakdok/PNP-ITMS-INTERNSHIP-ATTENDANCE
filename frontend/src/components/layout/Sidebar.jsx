@@ -31,6 +31,7 @@ const internNav = [
 const supervisorNav = [
   { to: '/admin', icon: LayoutDashboard, label: 'Dashboard', end: true },
   { to: '/admin/attendance', icon: CalendarCheck, label: 'Attendance' },
+  { to: '/admin/calendar', icon: Calendar, label: 'Calendar' },
   { to: '/admin/documents', icon: FileText, label: 'Documents' },
   { to: '/admin/evaluations', icon: Star, label: 'Evaluations' },
   { to: '/admin/reports', icon: BarChart3, label: 'Reports' },

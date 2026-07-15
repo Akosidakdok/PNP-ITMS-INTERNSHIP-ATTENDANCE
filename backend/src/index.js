@@ -35,6 +35,7 @@ import {
   deleteDocument,
   getCalendarEvents,
   createCalendarEvent,
+  getSupervisorDashboardStats,
   updateCalendarEvent,
   deleteCalendarEvent,
 } from './data.js';
@@ -92,6 +93,16 @@ app.get('/auth/me', authMiddleware, async (req, res) => {
 app.get('/admin/dashboard-stats', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const stats = await getAdminDashboardStats();
+    return res.json(stats);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/supervisor/dashboard-stats', authMiddleware, async (req, res) => {
+  if (req.user.role !== 'supervisor') return res.status(403).json({ error: 'Permission denied' });
+  try {
+    const stats = await getSupervisorDashboardStats(req.user);
     return res.json(stats);
   } catch (error) {
     return res.status(500).json({ error: error.message });
@@ -373,7 +384,10 @@ app.get('/calendar-events', authMiddleware, async (req, res) => {
   }
 });
 
-app.post('/calendar-events', authMiddleware, adminMiddleware, async (req, res) => {
+app.post('/calendar-events', authMiddleware, async (req, res) => {
+  if (!['admin', 'supervisor'].includes(req.user.role)) {
+    return res.status(403).json({ error: 'Permission denied' });
+  }
   try {
     const event = await createCalendarEvent(req.body, req.user.id);
     return res.status(201).json({ event });
@@ -382,7 +396,10 @@ app.post('/calendar-events', authMiddleware, adminMiddleware, async (req, res) =
   }
 });
 
-app.put('/calendar-events/:id', authMiddleware, adminMiddleware, async (req, res) => {
+app.put('/calendar-events/:id', authMiddleware, async (req, res) => {
+  if (!['admin', 'supervisor'].includes(req.user.role)) {
+    return res.status(403).json({ error: 'Permission denied' });
+  }
   try {
     const event = await updateCalendarEvent(Number(req.params.id), req.body);
     return res.json({ event });
@@ -391,7 +408,10 @@ app.put('/calendar-events/:id', authMiddleware, adminMiddleware, async (req, res
   }
 });
 
-app.delete('/calendar-events/:id', authMiddleware, adminMiddleware, async (req, res) => {
+app.delete('/calendar-events/:id', authMiddleware, async (req, res) => {
+  if (!['admin', 'supervisor'].includes(req.user.role)) {
+    return res.status(403).json({ error: 'Permission denied' });
+  }
   try {
     const result = await deleteCalendarEvent(Number(req.params.id));
     return res.json(result);

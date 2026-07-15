@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const rawBaseUrl = import.meta.env.VITE_BACKEND_URL || window.location.origin;
+const rawBaseUrl = import.meta.env.DEV ? '/api' : (import.meta.env.VITE_BACKEND_URL || window.location.origin);
 const API_BASE_URL = rawBaseUrl.endsWith('/') ? rawBaseUrl.slice(0, -1) : rawBaseUrl;
 
 const backendApi = axios.create({

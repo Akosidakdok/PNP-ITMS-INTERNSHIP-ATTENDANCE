@@ -385,6 +385,72 @@ export async function getAdminDashboardStats() {
   };
 }
 
+export async function getSupervisorDashboardStats(user) {
+  if (!user || user.role !== 'supervisor' || !user.department_id) {
+    throw new Error('Permission denied or supervisor is not assigned to a department.');
+  }
+
+  const departmentId = user.department_id;
+
+  // Get all intern IDs in the supervisor's department
+  const { data: departmentInterns, error: deptInternsError } = await supabase
+    .from('accounts')
+    .select('id')
+    .eq('role', 'intern')
+    .eq('department_id', departmentId);
+
+  if (deptInternsError) throw deptInternsError;
+  const departmentInternIds = departmentInterns.map(i => i.id);
+
+  let pendingAttendanceCount = 0;
+  let pendingDocumentsCount = 0;
+  let recentAttendance = [];
+
+  if (departmentInternIds.length > 0) {
+    // Get pending attendance logs for the department's interns
+    const { count: pendingLogsCount, error: pendingLogsError } = await supabase
+      .from('attendance_logs')
+      .select('id', { count: 'exact', head: true })
+      .in('intern_id', departmentInternIds)
+      .eq('approval_status', 'pending');
+
+    if (pendingLogsError) throw pendingLogsError;
+    pendingAttendanceCount = pendingLogsCount || 0;
+
+    // Get pending documents for the department's interns
+    const { count: pendingDocsCount, error: pendingDocsError } = await supabase
+      .from('documents')
+      .select('id', { count: 'exact', head: true })
+      .in('intern_id', departmentInternIds)
+      .eq('status', 'pending');
+
+    if (pendingDocsError) throw pendingDocsError;
+    pendingDocumentsCount = pendingDocsCount || 0;
+
+    // Get recent attendance logs for the department's interns
+    const { data: recentLogs, error: recentLogsError } = await supabase
+      .from('attendance_logs')
+      .select('*')
+      .in('intern_id', departmentInternIds)
+      .order('scan_time', { ascending: false })
+      .limit(5);
+
+    if (recentLogsError) throw recentLogsError;
+    recentAttendance = recentLogs || [];
+  }
+
+  return {
+    stats: {
+      total_interns: departmentInternIds.length,
+      pending_attendance: pendingAttendanceCount,
+      pending_documents: pendingDocumentsCount,
+      department_name: user.department_name || 'Your Department',
+    },
+    recentAttendance,
+    departmentInterns: departmentInterns || [],
+  };
+}
+
 export async function getAttendanceReport({ month, year, department_id } = {}) {
   const filters = { role: INTERN_ROLE };
   let internQuery = supabase
