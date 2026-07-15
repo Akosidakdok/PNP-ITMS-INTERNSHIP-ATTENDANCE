@@ -76,7 +76,7 @@ export async function findDepartmentById(id) {
   return data;
 }
 
-export async function getInterns({ search, page = 1, limit = 10 } = {}) {
+export async function getInterns({ search, page = 1, limit = 10, department_id } = {}) {
   let query = supabase
     .from('accounts')
     .select(
@@ -88,6 +88,10 @@ export async function getInterns({ search, page = 1, limit = 10 } = {}) {
 
   if (search) {
     query = query.or(`full_name.ilike.%${search}%,username.ilike.%${search}%,email.ilike.%${search}%`);
+  }
+
+  if (department_id) {
+    query = query.eq('department_id', department_id);
   }
 
   const from = (page - 1) * limit;
@@ -258,7 +262,32 @@ export async function getAttendanceLogs({ status, date, page = 1, limit = 15 } =
   const { data, error, count } = await query.range(from, to);
 
   if (error) throw error;
-  return { logs: data || [], total: count || 0 };
+
+  const internIds = [...new Set((data || []).map(log => log.intern_id).filter(Boolean))];
+  let accountsMap = {};
+  if (internIds.length > 0) {
+    const { data: accounts, error: accountsError } = await supabase
+      .from('accounts')
+      .select('id, full_name, department_name')
+      .in('id', internIds);
+    if (!accountsError && accounts) {
+      accountsMap = accounts.reduce((acc, accObj) => {
+        acc[accObj.id] = accObj;
+        return acc;
+      }, {});
+    }
+  }
+
+  const mappedData = (data || []).map(log => {
+    const accObj = accountsMap[log.intern_id];
+    return {
+      ...log,
+      full_name: accObj?.full_name || log.intern_name,
+      department_name: accObj?.department_name
+    };
+  });
+
+  return { logs: mappedData, total: count || 0 };
 }
 
 export async function setAttendanceApproval(attendanceId, status, remarks) {
@@ -310,6 +339,30 @@ export async function getAdminDashboardStats() {
 
   if (recentAttendanceError) throw recentAttendanceError;
 
+  const internIds = [...new Set((recentAttendance || []).map(log => log.intern_id).filter(Boolean))];
+  let accountsMap = {};
+  if (internIds.length > 0) {
+    const { data: accounts, error: accountsError } = await supabase
+      .from('accounts')
+      .select('id, full_name, department_name')
+      .in('id', internIds);
+    if (!accountsError && accounts) {
+      accountsMap = accounts.reduce((acc, accObj) => {
+        acc[accObj.id] = accObj;
+        return acc;
+      }, {});
+    }
+  }
+
+  const mappedRecent = (recentAttendance || []).map(log => {
+    const accObj = accountsMap[log.intern_id];
+    return {
+      ...log,
+      full_name: accObj?.full_name || log.intern_name,
+      department_name: accObj?.department_name
+    };
+  });
+
   const { data: recentDocuments, error: recentDocumentsError } = await supabase
     .from('documents')
     .select('*')
@@ -327,7 +380,7 @@ export async function getAdminDashboardStats() {
       total_departments: departmentsRes.count || 0,
       pending_documents: pendingDocsRes.count || 0,
     },
-    recentAttendance: recentAttendance || [],
+    recentAttendance: mappedRecent,
     recentDocuments: recentDocuments || [],
   };
 }

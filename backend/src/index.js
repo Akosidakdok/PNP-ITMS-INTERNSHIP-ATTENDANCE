@@ -160,7 +160,12 @@ app.get('/admin/reports/attendance', authMiddleware, adminMiddleware, async (req
 
 app.get('/interns', authMiddleware, adminMiddleware, async (req, res) => {
   try {
-    const result = await getInterns({ search: req.query.search, page: Number(req.query.page) || 1, limit: Number(req.query.limit) || 10 });
+    const result = await getInterns({
+      search: req.query.search,
+      page: Number(req.query.page) || 1,
+      limit: Number(req.query.limit) || 10,
+      department_id: req.query.department_id ? Number(req.query.department_id) : undefined
+    });
     return res.json(result);
   } catch (error) {
     return res.status(500).json({ error: error.message });

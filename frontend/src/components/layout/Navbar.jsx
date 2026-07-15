@@ -48,22 +48,6 @@ export default function Navbar({ onMenuClick }) {
     <header className="navbar">
       {/* Left */}
       <div className="flex items-center gap-3 flex-1">
-        <button
-          id="sidebar-toggle"
-          className="btn btn-ghost btn-icon lg:hidden"
-          onClick={onMenuClick}
-          aria-label="Toggle sidebar"
-        >
-          <Menu className="w-5 h-5" />
-        </button>
-        <div className="hidden md:flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 flex-1 max-w-xs">
-          <Search className="w-4 h-4 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Search..."
-            className="bg-transparent outline-none text-sm text-gray-600 placeholder-gray-400 w-full"
-          />
-        </div>
       </div>
 
       {/* Right */}
