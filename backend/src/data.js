@@ -1,4 +1,5 @@
 import bcrypt from 'bcryptjs';
+import { v4 as uuidv4 } from 'uuid';
 import { supabase } from './supabaseClient.js';
 
 const INTERN_ROLE = 'intern';
@@ -75,7 +76,7 @@ export async function findDepartmentById(id) {
   return data;
 }
 
-export async function getInterns({ search, page = 1, limit = 10 } = {}) {
+export async function getInterns({ search, page = 1, limit = 10, department_id } = {}) {
   let query = supabase
     .from('accounts')
     .select(
@@ -87,6 +88,10 @@ export async function getInterns({ search, page = 1, limit = 10 } = {}) {
 
   if (search) {
     query = query.or(`full_name.ilike.%${search}%,username.ilike.%${search}%,email.ilike.%${search}%`);
+  }
+
+  if (department_id) {
+    query = query.eq('department_id', department_id);
   }
 
   const from = (page - 1) * limit;
@@ -257,7 +262,32 @@ export async function getAttendanceLogs({ status, date, page = 1, limit = 15 } =
   const { data, error, count } = await query.range(from, to);
 
   if (error) throw error;
-  return { logs: data || [], total: count || 0 };
+
+  const internIds = [...new Set((data || []).map(log => log.intern_id).filter(Boolean))];
+  let accountsMap = {};
+  if (internIds.length > 0) {
+    const { data: accounts, error: accountsError } = await supabase
+      .from('accounts')
+      .select('id, full_name, department_name')
+      .in('id', internIds);
+    if (!accountsError && accounts) {
+      accountsMap = accounts.reduce((acc, accObj) => {
+        acc[accObj.id] = accObj;
+        return acc;
+      }, {});
+    }
+  }
+
+  const mappedData = (data || []).map(log => {
+    const accObj = accountsMap[log.intern_id];
+    return {
+      ...log,
+      full_name: accObj?.full_name || log.intern_name,
+      department_name: accObj?.department_name
+    };
+  });
+
+  return { logs: mappedData, total: count || 0 };
 }
 
 export async function setAttendanceApproval(attendanceId, status, remarks) {
@@ -309,6 +339,30 @@ export async function getAdminDashboardStats() {
 
   if (recentAttendanceError) throw recentAttendanceError;
 
+  const internIds = [...new Set((recentAttendance || []).map(log => log.intern_id).filter(Boolean))];
+  let accountsMap = {};
+  if (internIds.length > 0) {
+    const { data: accounts, error: accountsError } = await supabase
+      .from('accounts')
+      .select('id, full_name, department_name')
+      .in('id', internIds);
+    if (!accountsError && accounts) {
+      accountsMap = accounts.reduce((acc, accObj) => {
+        acc[accObj.id] = accObj;
+        return acc;
+      }, {});
+    }
+  }
+
+  const mappedRecent = (recentAttendance || []).map(log => {
+    const accObj = accountsMap[log.intern_id];
+    return {
+      ...log,
+      full_name: accObj?.full_name || log.intern_name,
+      department_name: accObj?.department_name
+    };
+  });
+
   const { data: recentDocuments, error: recentDocumentsError } = await supabase
     .from('documents')
     .select('*')
@@ -326,7 +380,7 @@ export async function getAdminDashboardStats() {
       total_departments: departmentsRes.count || 0,
       pending_documents: pendingDocsRes.count || 0,
     },
-    recentAttendance: recentAttendance || [],
+    recentAttendance: mappedRecent,
     recentDocuments: recentDocuments || [],
   };
 }
@@ -385,6 +439,25 @@ export async function getAttendanceReport({ month, year, department_id } = {}) {
 }
 
 export async function getDtrRecords(userId, { month, year, limit = 31 } = {}) {
+  const MNL_OFFSET_MS = 8 * 60 * 60 * 1000; // UTC+8 in milliseconds
+
+  // Shift a UTC Date forward by 8 hours so UTC methods read Manila clock time
+  function toMNLDate(date) {
+    return new Date(date.getTime() + MNL_OFFSET_MS);
+  }
+
+  // Return HH:MM from a Date already shifted to Manila clock
+  function toHHMM(mnlDate) {
+    if (!mnlDate) return null;
+    return mnlDate.toISOString().slice(11, 16);
+  }
+
+  // Convert any raw UTC Date to a Manila HH:MM display string
+  function mnlTimeStr(rawUTC) {
+    if (!rawUTC) return null;
+    return toHHMM(toMNLDate(rawUTC));
+  }
+
   let query = supabase
     .from('attendance_logs')
     .select('scan_time, scan_type, approval_status, remarks')
@@ -392,9 +465,10 @@ export async function getDtrRecords(userId, { month, year, limit = 31 } = {}) {
     .order('scan_time', { ascending: true });
 
   if (month && year) {
-    const start = new Date(year, month - 1, 1);
-    const end = new Date(year, month, 0, 23, 59, 59, 999);
-    query = query.gte('scan_time', start.toISOString()).lte('scan_time', end.toISOString());
+    // Boundaries in Manila time (Manila midnight = UTC - 8 h)
+    const startUTC = new Date(Date.UTC(year, month - 1, 1,  0,  0,  0,   0) - MNL_OFFSET_MS);
+    const endUTC   = new Date(Date.UTC(year, month,     0, 23, 59, 59, 999) - MNL_OFFSET_MS);
+    query = query.gte('scan_time', startUTC.toISOString()).lte('scan_time', endUTC.toISOString());
   } else {
     const since = new Date(Date.now() - limit * 24 * 60 * 60 * 1000);
     query = query.gte('scan_time', since.toISOString());
@@ -403,33 +477,97 @@ export async function getDtrRecords(userId, { month, year, limit = 31 } = {}) {
   const { data: logs, error } = await query;
   if (error) throw error;
 
+  // Group by Manila calendar date (YYYY-MM-DD)
   const grouped = logs.reduce((acc, log) => {
-    const dateKey = log.scan_time.slice(0, 10);
-    acc[dateKey] = acc[dateKey] || [];
+    const mnlDate = toMNLDate(new Date(log.scan_time));
+    const dateKey = mnlDate.toISOString().slice(0, 10);
+    if (!acc[dateKey]) acc[dateKey] = [];
     acc[dateKey].push(log);
     return acc;
   }, {});
 
-  return Object.entries(grouped).map(([date, entries], index) => {
-    const timeIn = entries.find((entry) => entry.scan_type === 'time_in');
-    const timeOut = [...entries].reverse().find((entry) => entry.scan_type === 'time_out');
-    const inTime = timeIn?.scan_time ? new Date(timeIn.scan_time) : null;
-    const outTime = timeOut?.scan_time ? new Date(timeOut.scan_time) : null;
-    const totalHours = inTime && outTime ? Math.max(0, (outTime - inTime) / 3600000) : 0;
-    let approvalStatus = 'pending';
-    if (entries.every((entry) => entry.approval_status === 'approved')) approvalStatus = 'approved';
-    if (entries.some((entry) => entry.approval_status === 'rejected')) approvalStatus = 'rejected';
+  return Object.entries(grouped).map(([date, entries]) => {
+    // Sort scans chronologically; take at most 4 slots
+    entries.sort((a, b) => new Date(a.scan_time) - new Date(b.scan_time));
+    const [s1, s2, s3, s4] = entries;
+
+    // Positional slot assignment: AM-in, AM-out, PM-in, PM-out
+    const amInRaw  = s1?.scan_type === 'time_in'  ? new Date(s1.scan_time) : null;
+    const amOutRaw = s2?.scan_type === 'time_out' ? new Date(s2.scan_time) : null;
+    const pmInRaw  = s3?.scan_type === 'time_in'  ? new Date(s3.scan_time) : null;
+    const pmOutRaw = s4?.scan_type === 'time_out' ? new Date(s4.scan_time) : null;
+
+    // ── Time-floor rules (Manila clock) ─────────────────────────────────────
+    // AM Time In: any scan strictly before 08:00 MNL → register as 08:00 MNL
+    let effectiveAmIn = null;
+    if (amInRaw) {
+      const m = toMNLDate(amInRaw);
+      effectiveAmIn = m.getUTCHours() < 8
+        ? new Date(`${date}T08:00:00+08:00`)   // UTC = date T00:00:00Z
+        : amInRaw;
+    }
+
+    // PM Time In: scan at or before 13:00 MNL → register as 13:00 MNL (no grace)
+    let effectivePmIn = null;
+    if (pmInRaw) {
+      const m = toMNLDate(pmInRaw);
+      const h = m.getUTCHours(), min = m.getUTCMinutes();
+      effectivePmIn = (h < 13 || (h === 13 && min === 0))
+        ? new Date(`${date}T13:00:00+08:00`)   // UTC = date T05:00:00Z
+        : pmInRaw;
+    }
+
+    // PM Time Out: honored as-is (overtime counted)
+    const effectivePmOut = pmOutRaw;
+
+    // ── Total hours calculation ──────────────────────────────────────────────
+    // Manila noon anchor for AM session end
+    const noon = new Date(`${date}T12:00:00+08:00`); // UTC = date T04:00:00Z
+
+    let totalHours = 0;
+
+    if (effectiveAmIn && effectivePmIn && effectivePmOut) {
+      // Full day: AM session (effectiveAmIn → noon) + PM session (effectivePmIn → effectivePmOut)
+      const amSession = Math.max(0, (noon - effectiveAmIn) / 3600000);
+      const pmSession = Math.max(0, (effectivePmOut - effectivePmIn) / 3600000);
+      totalHours = amSession + pmSession;
+    } else if (effectiveAmIn && amOutRaw) {
+      // AM only (scan 1 + 2 present, no PM)
+      const amEnd = amOutRaw < noon ? amOutRaw : noon;
+      totalHours = Math.max(0, (amEnd - effectiveAmIn) / 3600000);
+    } else if (effectivePmIn && effectivePmOut) {
+      // PM only (rare edge case)
+      totalHours = Math.max(0, (effectivePmOut - effectivePmIn) / 3600000);
+    }
+
+    // ── Statuses ─────────────────────────────────────────────────────────────
+    const amStatus      = s1?.approval_status || 'pending';
+    const pmStatus      = s4?.approval_status || s3?.approval_status || 'pending';
+    const allStatuses   = entries.map(e => e.approval_status).filter(Boolean);
+    let overallStatus   = 'pending';
+    if (allStatuses.length && allStatuses.every(s => s === 'approved')) overallStatus = 'approved';
+    if (allStatuses.some(s => s === 'rejected')) overallStatus = 'rejected';
 
     return {
-      id: `${date}-${index}`,
       date,
-      time_in: inTime ? inTime.toISOString().slice(11, 16) : null,
-      time_out: outTime ? outTime.toISOString().slice(11, 16) : null,
-      total_hours: Number(totalHours.toFixed(1)),
-      approval_status: approvalStatus,
+      // Display times in Manila (HH:MM) — caps already applied
+      am_time_in:  mnlTimeStr(effectiveAmIn),
+      am_time_out: mnlTimeStr(amOutRaw),
+      pm_time_in:  mnlTimeStr(effectivePmIn),
+      pm_time_out: mnlTimeStr(effectivePmOut),
+      // Per-slot statuses
+      am_status:   amStatus,
+      pm_status:   pmStatus,
+      // Overall for the day
+      approval_status: overallStatus,
+      total_hours: Number(totalHours.toFixed(2)),
+      // Backward-compat fields used by MyDTR summary stats
+      time_in:  mnlTimeStr(effectiveAmIn),
+      time_out: mnlTimeStr(effectivePmOut),
     };
   }).sort((a, b) => b.date.localeCompare(a.date));
 }
+
 
 export async function getNotifications(userId, isAdmin) {
   let query = supabase
@@ -513,7 +651,11 @@ export async function updateEvaluation(id, payload) {
 export async function getDocuments(userId, isAdmin, status) {
   let query = supabase
     .from('documents')
-    .select('*')
+    // Select all columns from documents, and the full_name from the joined accounts table
+    .select(`
+      *,
+      account:accounts(full_name)
+    `)
     .order('upload_date', { ascending: false });
 
   if (!isAdmin) {
@@ -524,33 +666,23 @@ export async function getDocuments(userId, isAdmin, status) {
     query = query.eq('status', status);
   }
 
-  const { data, error } = await query;
+  const { data: documents, error } = await query;
   if (error) throw error;
-  return data || [];
-}
 
-export async function createDocument({ userId, file, document_type }) {
-  if (!file) throw new Error('File upload is required');
-  const { fieldname, originalname, mimetype, size, path: filePath } = file;
+  // Augment documents with their public URL from Supabase Storage
+  return (documents || []).map(doc => {
+    const { data: publicUrlData } = supabase
+      .storage
+      .from('documents') // Your bucket name
+      .getPublicUrl(doc.file_path);
 
-  const { data, error } = await supabase
-    .from('documents')
-    .insert([{
-      intern_id: userId,
-      document_type,
-      original_name: originalname,
-      file_name: file.filename,
-      file_type: mimetype.split('/').pop(),
-      file_size: size,
-      file_path: filePath,
-      upload_date: new Date().toISOString(),
-      status: 'pending',
-    }])
-    .select()
-    .single();
-
-  if (error) throw error;
-  return data;
+    // Un-nest the account object to make `full_name` a top-level property
+    return {
+      ...doc,
+      full_name: doc.account?.full_name || 'Unknown Intern',
+      public_url: publicUrlData.publicUrl,
+    };
+  });
 }
 
 export async function updateDocumentStatus(id, status, adminRemarks) {
@@ -565,10 +697,67 @@ export async function updateDocumentStatus(id, status, adminRemarks) {
   return data;
 }
 
+export async function createDocument({ userId, file, document_type }) {
+  if (!file) throw new Error('File upload is required');
+  const { originalname, mimetype, size, buffer } = file;
+  const fileExtension = originalname.split('.').pop();
+  const newFileName = `${uuidv4()}.${fileExtension}`;
+  const filePath = `user-documents/${userId}/${newFileName}`;
+
+  // 1. Upload file to Supabase Storage
+  const { error: uploadError } = await supabase
+    .storage
+    .from('documents') // Your bucket name
+    .upload(filePath, buffer, {
+      contentType: mimetype,
+      upsert: false,
+    });
+
+  if (uploadError) {
+    console.error('Supabase Storage Error:', uploadError);
+    throw new Error('Failed to upload file to storage. Check backend logs for details.');
+  }
+
+  // 2. Save metadata to the database
+  const { data, error } = await supabase
+    .from('documents')
+    .insert([{
+      intern_id: userId,
+      document_type,
+      original_name: originalname,
+      file_name: newFileName,
+      file_type: mimetype.split('/').pop(),
+      file_size: size,
+      file_path: filePath,
+      upload_date: new Date().toISOString(),
+      status: 'pending',
+    }])
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
 export async function deleteDocument(id, userId, isAdmin) {
-  let query = supabase.from('documents').delete().eq('id', id);
-  if (!isAdmin) query = query.eq('intern_id', userId);
-  const { error } = await query;
+  // 1. Get the document to find its file_path
+  const { data: doc, error: findError } = await supabase
+    .from('documents')
+    .select('file_path, intern_id')
+    .eq('id', id)
+    .single();
+
+  if (findError) throw findError;
+  if (!isAdmin && doc.intern_id !== userId) throw new Error('Permission denied');
+
+  // 2. Delete the file from Supabase Storage
+  const { error: storageError } = await supabase.storage.from('documents').remove([doc.file_path]);
+  if (storageError) {
+    console.warn(`Could not delete file from storage: ${storageError.message}`);
+  }
+
+  // 3. Delete the record from the database
+  const { error } = await supabase.from('documents').delete().eq('id', id);
   if (error) throw error;
   return { success: true };
 }

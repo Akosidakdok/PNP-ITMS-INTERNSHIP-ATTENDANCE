@@ -33,7 +33,7 @@ export default function InternDashboard() {
     setLoading(true);
     Promise.all([
       api.get('/interns/me/profile'),
-      api.get('/dtr', { params: { limit: 5 } }),
+      api.get('/dtr', { params: { limit: 500 } }),
     ]).then(([profRes, dtrRes]) => {
       setProfile(profRes.data?.intern);
       setDtrRecords(dtrRes.data?.records || []);
@@ -46,8 +46,16 @@ export default function InternDashboard() {
   }, []);
 
   const intern = profile;
-  const pct = intern ? Math.min(100, ((intern.rendered_hours || 0) / (intern.required_hours || 486)) * 100) : 0;
-  const remaining = intern ? Math.max(0, (intern.required_hours || 486) - (intern.rendered_hours || 0)) : 0;
+
+  // Calculate hours from DTR records (same source as the DTR page)
+  const totalRendered  = dtrRecords.reduce((s, r) => s + (r.total_hours || 0), 0);
+  const approvedRendered = dtrRecords
+    .filter(r => r.approval_status === 'approved')
+    .reduce((s, r) => s + (r.total_hours || 0), 0);
+
+  const requiredHours = intern?.required_hours || 486;
+  const pct       = Math.min(100, (approvedRendered / requiredHours) * 100);
+  const remaining = Math.max(0, requiredHours - approvedRendered);
 
   const recentNotifs = notifications.filter(n => !n.is_read).slice(0, 3);
 
@@ -79,10 +87,10 @@ export default function InternDashboard() {
       {/* Stats Row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { icon: CheckCircle, label: 'Hours Rendered', value: loading ? '—' : `${(intern?.rendered_hours || 0).toFixed(1)}h`, color: 'text-green-600', bg: 'bg-green-50' },
-          { icon: Clock, label: 'Hours Required', value: loading ? '—' : `${intern?.required_hours || 486}h`, color: 'text-blue-600', bg: 'bg-blue-50' },
-          { icon: TrendingUp, label: 'Remaining', value: loading ? '—' : `${remaining.toFixed(1)}h`, color: 'text-orange-600', bg: 'bg-orange-50' },
-          { icon: Calendar, label: 'Progress', value: loading ? '—' : `${pct.toFixed(0)}%`, color: 'text-purple-600', bg: 'bg-purple-50' },
+          { icon: CheckCircle, label: 'Hours Rendered',  value: loading ? '—' : `${approvedRendered.toFixed(1)}h`,  color: 'text-green-600',  bg: 'bg-green-50'  },
+          { icon: Clock,        label: 'Hours Required',  value: loading ? '—' : `${requiredHours}h`,                color: 'text-blue-600',   bg: 'bg-blue-50'   },
+          { icon: TrendingUp,   label: 'Remaining',       value: loading ? '—' : `${remaining.toFixed(1)}h`,         color: 'text-orange-600', bg: 'bg-orange-50' },
+          { icon: Calendar,     label: 'Progress',        value: loading ? '—' : `${pct.toFixed(0)}%`,               color: 'text-purple-600', bg: 'bg-purple-50' },
         ].map(s => (
           <div key={s.label} className="card p-4 flex items-center gap-3">
             <div className={`p-2 rounded-xl ${s.bg}`}>
@@ -106,7 +114,7 @@ export default function InternDashboard() {
           <div className="progress-fill" style={{ width: `${pct}%` }} />
         </div>
         <div className="flex justify-between text-xs text-gray-400">
-          <span>{(intern?.rendered_hours || 0).toFixed(1)} hours completed</span>
+          <span>{approvedRendered.toFixed(1)} hours completed</span>
           <span>{remaining.toFixed(1)} hours remaining</span>
         </div>
         {intern?.start_date && intern?.end_date && (

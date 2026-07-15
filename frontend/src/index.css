@@ -517,10 +517,12 @@ body {
     display: none !important;
   }
 
-  body {
+  html, body {
     background: #fff !important;
-    margin: 0;
-    padding: 0;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    height: 100% !important;
   }
 
   .content-area {
@@ -534,13 +536,18 @@ body {
 
   #dtr-print-root {
     max-width: 100% !important;
-    padding: 10mm !important;
-    font-size: 10pt !important;
+    padding: 5mm 10mm !important;
+    font-size: 9pt !important;
+    height: 100% !important;
+    box-sizing: border-box !important;
+    page-break-inside: avoid !important;
+    page-break-after: avoid !important;
+    page-break-before: avoid !important;
   }
 
   @page {
     size: A4 portrait;
-    margin: 10mm;
+    margin: 0;
   }
 }
 

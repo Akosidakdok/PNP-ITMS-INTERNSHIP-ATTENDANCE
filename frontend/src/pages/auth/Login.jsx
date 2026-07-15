@@ -51,13 +51,13 @@ export default function Login() {
 
         <div className="relative z-10 text-center animate-fade-in">
           {/* PNP Logo/Shield */}
-          <div className="mx-auto mb-8 flex items-center justify-center w-38 h-38 rounded-full glass-dark border-2 border-gold-400 shadow-2xl overflow-hidden">
+          <div className="mx-auto mb-8 flex items-center justify-center w-48 h-48 rounded-full glass-dark border-2 border-gold-400 shadow-2xl overflow-hidden">
             <img src="/ITMS_LOGO.jpg" alt="ITMS Logo" className="w-full h-full object-cover" />
           </div>
           <h1 className="text-4xl font-bold text-white mb-3" style={{ fontFamily: 'Outfit, sans-serif' }}>
             P-DITMS
           </h1>
-          <p className="text-xl text-blue-200 mb-2 font-medium">PNP - Database Internship Tracking Management System</p>
+          <p className="text-xl text-blue-200 mb-2 font-medium">PNP - Database Internship Tracking  Management System</p>
           <p className="text-blue-300 text-sm max-w-xs mx-auto leading-relaxed">
             Philippine National Police<br />
             Information Technology Management Service

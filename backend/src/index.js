@@ -35,16 +35,16 @@ import {
   deleteDocument,
 } from './data.js';
 
-// dotenv already loaded via 'dotenv/config' import at the top
-
 const app = express();
 const port = process.env.PORT || 3000;
 const host = process.env.HOST || '0.0.0.0';
-const upload = multer({ dest: 'uploads/' });
+
+// Use memoryStorage for multer to pass file buffer to Supabase Storage
+const storage = multer.memoryStorage();
+const upload = multer({ storage: storage });
 
 app.use(cors());
 app.use(express.json());
-app.use('/uploads', express.static('uploads'));
 
 app.post('/auth/login', async (req, res) => {
   const { username, password } = req.body;
@@ -160,7 +160,12 @@ app.get('/admin/reports/attendance', authMiddleware, adminMiddleware, async (req
 
 app.get('/interns', authMiddleware, adminMiddleware, async (req, res) => {
   try {
-    const result = await getInterns({ search: req.query.search, page: Number(req.query.page) || 1, limit: Number(req.query.limit) || 10 });
+    const result = await getInterns({
+      search: req.query.search,
+      page: Number(req.query.page) || 1,
+      limit: Number(req.query.limit) || 10,
+      department_id: req.query.department_id ? Number(req.query.department_id) : undefined
+    });
     return res.json(result);
   } catch (error) {
     return res.status(500).json({ error: error.message });

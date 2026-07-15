@@ -11,7 +11,7 @@ export default function DocumentReview() {
   const [docs, setDocs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('pending');
-  const [preview, setPreview] = useState(null);
+  const [previewDoc, setPreviewDoc] = useState(null);
   const [reviewModal, setReviewModal] = useState(null);
   const [reviewForm, setReviewForm] = useState({ status: 'accepted', admin_remarks: '' });
   const [saving, setSaving] = useState(false);
@@ -78,7 +78,7 @@ export default function DocumentReview() {
       key: 'id', label: 'Actions',
       render: (_, row) => (
         <div className="flex gap-1">
-          <button id={`preview-doc-${row.id}`} className="btn btn-secondary btn-sm" onClick={() => setPreview(row)}>
+          <button id={`preview-doc-${row.id}`} className="btn btn-secondary btn-sm" onClick={() => setPreviewDoc(row)}>
             <Eye className="w-3.5 h-3.5" /> Preview
           </button>
           <button id={`review-doc-${row.id}`} className="btn btn-primary btn-sm" onClick={() => { setReviewModal(row); setReviewForm({ status: 'accepted', admin_remarks: '' }); }}>
@@ -157,7 +157,7 @@ export default function DocumentReview() {
       </Modal>
 
       {/* Document Preview */}
-      <DocumentPreview isOpen={!!preview} onClose={() => setPreview(null)} document={preview} />
+      <DocumentPreview isOpen={!!previewDoc} onClose={() => setPreviewDoc(null)} document={previewDoc} />
     </div>
   );
 }
