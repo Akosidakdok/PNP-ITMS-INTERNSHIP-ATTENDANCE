@@ -3,12 +3,13 @@ import { useAuth } from '../../context/AuthContext.jsx';
 import {
   LayoutDashboard, Users, CalendarCheck, FileText, Star,
   Building2, BarChart3, QrCode, Clock, Upload, Award, Calendar,
-  Shield, ChevronLeft, LogOut, X, User
+  Shield, ChevronLeft, LogOut, X, User, Briefcase
 } from 'lucide-react';
 
 const adminNav = [
   { to: '/admin', icon: LayoutDashboard, label: 'Dashboard', end: true },
   { to: '/admin/interns', icon: Users, label: 'Interns' },
+  { to: '/admin/supervisors', icon: Briefcase, label: 'Supervisors' },
   { to: '/admin/attendance', icon: CalendarCheck, label: 'Attendance' },
   { to: '/admin/documents', icon: FileText, label: 'Documents' },
   { to: '/admin/evaluations', icon: Star, label: 'Evaluations' },

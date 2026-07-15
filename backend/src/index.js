@@ -38,6 +38,12 @@ import {
   getSupervisorDashboardStats,
   updateCalendarEvent,
   deleteCalendarEvent,
+  getSupervisors,
+  getSupervisorById,
+  createSupervisor,
+  updateSupervisor,
+  deleteSupervisor,
+  resetSupervisorPassword,
 } from './data.js';
 
 const app = express();
@@ -257,6 +263,71 @@ app.post('/interns/:id/reset-password', authMiddleware, adminMiddleware, async (
 
   try {
     const result = await resetInternPassword(Number(req.params.id), new_password);
+    return res.json(result);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/supervisors', authMiddleware, adminOnlyMiddleware, async (req, res) => {
+  try {
+    const result = await getSupervisors({
+      search: req.query.search,
+      page: Number(req.query.page) || 1,
+      limit: Number(req.query.limit) || 10,
+      department_id: req.query.department_id ? Number(req.query.department_id) : undefined
+    });
+    return res.json(result);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/supervisors/:id', authMiddleware, adminOnlyMiddleware, async (req, res) => {
+  try {
+    const supervisor = await getSupervisorById(Number(req.params.id));
+    return res.json({ supervisor });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/supervisors', authMiddleware, adminOnlyMiddleware, async (req, res) => {
+  try {
+    const supervisor = await createSupervisor(req.body);
+    return res.json({ supervisor });
+  } catch (error) {
+    console.error('Error creating supervisor:', error);
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/supervisors/:id', authMiddleware, adminOnlyMiddleware, async (req, res) => {
+  try {
+    const supervisor = await updateSupervisor(Number(req.params.id), req.body);
+    return res.json({ supervisor });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/supervisors/:id', authMiddleware, adminOnlyMiddleware, async (req, res) => {
+  try {
+    const result = await deleteSupervisor(Number(req.params.id));
+    return res.json(result);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/supervisors/:id/reset-password', authMiddleware, adminOnlyMiddleware, async (req, res) => {
+  const { new_password } = req.body;
+  if (!new_password) {
+    return res.status(400).json({ error: 'New password is required' });
+  }
+
+  try {
+    const result = await resetSupervisorPassword(Number(req.params.id), new_password);
     return res.json(result);
   } catch (error) {
     return res.status(500).json({ error: error.message });

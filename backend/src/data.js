@@ -915,3 +915,110 @@ export async function deleteCalendarEvent(id) {
   if (error) throw error;
   return { success: true };
 }
+
+export async function getSupervisors({ search, page = 1, limit = 10, department_id } = {}) {
+  let query = supabase
+    .from('accounts')
+    .select(
+      'id, username, full_name, email, role, department_id, department_name, status, phone, home_address',
+      { count: 'exact' }
+    )
+    .eq('role', 'supervisor')
+    .order('full_name', { ascending: true });
+
+  if (search) {
+    query = query.or(`full_name.ilike.%${search}%,username.ilike.%${search}%,email.ilike.%${search}%`);
+  }
+
+  if (department_id) {
+    query = query.eq('department_id', department_id);
+  }
+
+  const from = (page - 1) * limit;
+  const to = from + limit - 1;
+  query = query.range(from, to);
+
+  const { data, error, count } = await query;
+  if (error) throw error;
+  return { supervisors: data || [], total: count || 0 };
+}
+
+export async function getSupervisorById(id) {
+  const { data, error } = await supabase
+    .from('accounts')
+    .select('id, username, full_name, email, role, department_id, department_name, status, phone, home_address')
+    .eq('id', id)
+    .eq('role', 'supervisor')
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function createSupervisor(payload) {
+  const { password, department_id, ...rest } = payload;
+  if (!password) throw new Error('Password is required');
+
+  const password_hash = await bcrypt.hash(password, 10);
+  const department = department_id ? await findDepartmentById(Number(department_id)) : null;
+  const departmentName = department?.name || rest.department_name || null;
+
+  const { data, error } = await supabase
+    .from('accounts')
+    .insert([{ ...rest, password_hash, role: 'supervisor', department_id, department_name: departmentName }])
+    .select('id, username, full_name, email, role, department_id, department_name, status, phone, home_address')
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function updateSupervisor(id, payload) {
+  const { password, department_id, ...rest } = payload;
+  const updates = { ...rest };
+
+  if (password) {
+    updates.password_hash = await bcrypt.hash(password, 10);
+  }
+
+  if (department_id) {
+    const department = await findDepartmentById(department_id);
+    updates.department_name = department?.name || rest.department_name || null;
+    updates.department_id = department_id;
+  }
+
+  const { data, error } = await supabase
+    .from('accounts')
+    .update(updates)
+    .eq('id', id)
+    .eq('role', 'supervisor')
+    .select('id, username, full_name, email, role, department_id, department_name, status, phone, home_address')
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteSupervisor(id) {
+  const { error } = await supabase
+    .from('accounts')
+    .delete()
+    .eq('id', id)
+    .eq('role', 'supervisor');
+
+  if (error) throw error;
+  return { success: true };
+}
+
+export async function resetSupervisorPassword(id, newPassword) {
+  const password_hash = await bcrypt.hash(newPassword, 10);
+  const { error } = await supabase
+    .from('accounts')
+    .update({ password_hash })
+    .eq('id', id)
+    .eq('role', 'supervisor');
+
+  if (error) throw error;
+  return { success: true };
+}
+

@@ -11,6 +11,7 @@ import Login from './pages/auth/Login.jsx';
 import AdminDashboard from './pages/admin/AdminDashboard.jsx';
 import SupervisorDashboard from './SupervisorDashboard.jsx';
 import InternManagement from './pages/admin/InternManagement.jsx';
+import SupervisorManagement from './pages/admin/SupervisorManagement.jsx';
 import AttendanceApproval from './pages/admin/AttendanceApproval.jsx';
 import DocumentReview from './pages/admin/DocumentReview.jsx';
 import PerformanceEval from './pages/admin/PerformanceEval.jsx';
@@ -75,6 +76,7 @@ function AppRoutes() {
             </ProtectedRoute>
           } />
         <Route path="interns" element={<InternManagement />} />
+        <Route path="supervisors" element={<ProtectedRoute roles={['admin']}><SupervisorManagement /></ProtectedRoute>} />
         <Route path="attendance" element={<AttendanceApproval />} />
         <Route path="documents" element={<DocumentReview />} />
         <Route path="evaluations" element={<PerformanceEvalWrapper />} />
