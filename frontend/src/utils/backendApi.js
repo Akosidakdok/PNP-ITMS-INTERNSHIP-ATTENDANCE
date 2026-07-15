@@ -1,7 +1,7 @@
 import axios from 'axios';
 
-// Use a relative path to leverage the Vite proxy configured in vite.config.js
-const API_BASE_URL = '/api';
+const rawBaseUrl = import.meta.env.VITE_BACKEND_URL || window.location.origin;
+const API_BASE_URL = rawBaseUrl.endsWith('/') ? rawBaseUrl.slice(0, -1) : rawBaseUrl;
 
 const backendApi = axios.create({
   baseURL: API_BASE_URL,
