@@ -2,7 +2,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext.jsx';
 import {
   LayoutDashboard, Users, CalendarCheck, FileText, Star,
-  Building2, BarChart3, QrCode, Clock, Upload, Award,
+  Building2, BarChart3, QrCode, Clock, Upload, Award, Calendar,
   Shield, ChevronLeft, LogOut, X, User
 } from 'lucide-react';
 
@@ -13,6 +13,7 @@ const adminNav = [
   { to: '/admin/documents', icon: FileText, label: 'Documents' },
   { to: '/admin/evaluations', icon: Star, label: 'Evaluations' },
   { to: '/admin/departments', icon: Building2, label: 'Departments' },
+  { to: '/admin/calendar', icon: Calendar, label: 'Calendar' },
   { to: '/admin/reports', icon: BarChart3, label: 'Reports' },
   { to: '/admin/profile', icon: User, label: 'My Profile' },
 ];
@@ -23,6 +24,7 @@ const internNav = [
   { to: '/intern/dtr', icon: Clock, label: 'My DTR' },
   { to: '/intern/documents', icon: Upload, label: 'Documents' },
   { to: '/intern/evaluation', icon: Award, label: 'Evaluation' },
+  { to: '/intern/calendar', icon: Calendar, label: 'Calendar' },
   { to: '/intern/profile', icon: User, label: 'My Profile' },
 ];
 

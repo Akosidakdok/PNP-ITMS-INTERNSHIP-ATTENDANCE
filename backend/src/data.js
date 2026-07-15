@@ -624,3 +624,91 @@ export async function deleteDocument(id, userId, isAdmin) {
   if (error) throw error;
   return { success: true };
 }
+
+export async function getCalendarEvents({ year, month }) {
+  if (!year || !month) throw new Error('Year and month are required');
+
+  const startDate = new Date(year, month - 1, 1);
+  const endDate = new Date(year, month, 0);
+
+  const { data, error } = await supabase
+    .from('calendar_events')
+    .select(`
+      *,
+      creator:accounts(full_name)
+    `)
+    .gte('event_date', startDate.toISOString().slice(0, 10))
+    .lte('event_date', endDate.toISOString().slice(0, 10))
+    .order('event_date', { ascending: true });
+
+  if (error) throw error;
+  return data || [];
+}
+
+export async function createCalendarEvent(payload, userId) {
+  const eventRow = {
+    title: payload.title,
+    description: payload.description || '',
+    event_date: payload.event_date,
+    event_type: payload.event_type,
+    created_by: userId,
+    created_at: new Date().toISOString(),
+  };
+
+  const { data: event, error } = await supabase
+    .from('calendar_events')
+    .insert([eventRow])
+    .select()
+    .single();
+
+  if (error) throw error;
+
+  if (event) {
+    try {
+      const { data: interns, error: internsError } = await supabase
+        .from('accounts')
+        .select('id')
+        .eq('role', INTERN_ROLE)
+        .eq('status', 'active');
+
+      if (internsError) throw internsError;
+
+      if (interns && interns.length > 0) {
+        const notifications = interns.map((intern) => ({
+          user_id: intern.id,
+          title: `New ${event.event_type}: ${event.title}`,
+          message: `A new ${event.event_type} has been posted on the calendar for ${event.event_date}.`,
+          created_at: new Date().toISOString(),
+        }));
+
+        const { error: notificationError } = await supabase.from('notifications').insert(notifications);
+        if (notificationError) throw notificationError;
+      }
+    } catch (notificationError) {
+      console.error('Failed to create notifications for new calendar event:', notificationError.message);
+    }
+  }
+
+  return event;
+}
+
+export async function updateCalendarEvent(id, payload) {
+  const { data, error } = await supabase
+    .from('calendar_events')
+    .update(payload)
+    .eq('id', id)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteCalendarEvent(id) {
+  const { error } = await supabase
+    .from('calendar_events')
+    .delete()
+    .eq('id', id);
+
+  if (error) throw error;
+  return { success: true };
+}
