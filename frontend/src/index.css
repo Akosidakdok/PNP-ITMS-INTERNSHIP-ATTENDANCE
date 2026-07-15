@@ -497,12 +497,17 @@ body {
 }
 [data-tooltip]:hover::after { opacity: 1; }
 
+.mobile-menu-toggle {
+  display: none !important;
+}
+
 /* === Responsive === */
 @media (max-width: 768px) {
   .sidebar { transform: translateX(-100%); }
   .sidebar.open { transform: translateX(0); }
   .content-area { margin-left: 0; }
   .page-content { padding: 1rem; }
+  .mobile-menu-toggle { display: inline-flex !important; }
 }
 
 /* === Print / DTR Export === */
