@@ -35,10 +35,19 @@ import {
   deleteDocument,
   getCalendarEvents,
   createCalendarEvent,
+  getSupervisorDashboardStats,
   updateCalendarEvent,
   deleteCalendarEvent,
-  setDtrOverride,
-  setBulkDtrOverride,
+  getSupervisors,
+  getSupervisorById,
+  createSupervisor,
+  updateSupervisor,
+  deleteSupervisor,
+  resetSupervisorPassword,
+  getSchools,
+  createSchool,
+  updateSchool,
+  deleteSchool,
 } from './data.js';
 
 const app = express();
@@ -94,6 +103,16 @@ app.get('/auth/me', authMiddleware, async (req, res) => {
 app.get('/admin/dashboard-stats', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const stats = await getAdminDashboardStats();
+    return res.json(stats);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/supervisor/dashboard-stats', authMiddleware, async (req, res) => {
+  if (req.user.role !== 'supervisor') return res.status(403).json({ error: 'Permission denied' });
+  try {
+    const stats = await getSupervisorDashboardStats(req.user);
     return res.json(stats);
   } catch (error) {
     return res.status(500).json({ error: error.message });
@@ -162,6 +181,42 @@ app.delete('/departments/:id', authMiddleware, adminMiddleware, async (req, res)
   }
 });
 
+app.get('/schools', authMiddleware, async (req, res) => {
+  try {
+    const schools = await getSchools();
+    return res.json({ schools });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/schools', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const school = await createSchool(req.body);
+    return res.json({ school });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/schools/:id', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const school = await updateSchool(Number(req.params.id), req.body);
+    return res.json({ school });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/schools/:id', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const result = await deleteSchool(Number(req.params.id));
+    return res.json(result);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
 app.get('/admin/reports/attendance', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const report = await getAttendanceReport({ month: Number(req.query.month), year: Number(req.query.year), department_id: req.query.department_id ? Number(req.query.department_id) : undefined });
@@ -177,7 +232,8 @@ app.get('/interns', authMiddleware, adminMiddleware, async (req, res) => {
       search: req.query.search,
       page: Number(req.query.page) || 1,
       limit: Number(req.query.limit) || 10,
-      department_id: req.query.department_id ? Number(req.query.department_id) : undefined
+      department_id: req.query.department_id ? Number(req.query.department_id) : undefined,
+      school_id: req.query.school_id ? Number(req.query.school_id) : undefined
     });
     return res.json(result);
   } catch (error) {
@@ -248,6 +304,71 @@ app.post('/interns/:id/reset-password', authMiddleware, adminMiddleware, async (
 
   try {
     const result = await resetInternPassword(Number(req.params.id), new_password);
+    return res.json(result);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/supervisors', authMiddleware, adminOnlyMiddleware, async (req, res) => {
+  try {
+    const result = await getSupervisors({
+      search: req.query.search,
+      page: Number(req.query.page) || 1,
+      limit: Number(req.query.limit) || 10,
+      department_id: req.query.department_id ? Number(req.query.department_id) : undefined
+    });
+    return res.json(result);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/supervisors/:id', authMiddleware, adminOnlyMiddleware, async (req, res) => {
+  try {
+    const supervisor = await getSupervisorById(Number(req.params.id));
+    return res.json({ supervisor });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/supervisors', authMiddleware, adminOnlyMiddleware, async (req, res) => {
+  try {
+    const supervisor = await createSupervisor(req.body);
+    return res.json({ supervisor });
+  } catch (error) {
+    console.error('Error creating supervisor:', error);
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/supervisors/:id', authMiddleware, adminOnlyMiddleware, async (req, res) => {
+  try {
+    const supervisor = await updateSupervisor(Number(req.params.id), req.body);
+    return res.json({ supervisor });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/supervisors/:id', authMiddleware, adminOnlyMiddleware, async (req, res) => {
+  try {
+    const result = await deleteSupervisor(Number(req.params.id));
+    return res.json(result);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/supervisors/:id/reset-password', authMiddleware, adminOnlyMiddleware, async (req, res) => {
+  const { new_password } = req.body;
+  if (!new_password) {
+    return res.status(400).json({ error: 'New password is required' });
+  }
+
+  try {
+    const result = await resetSupervisorPassword(Number(req.params.id), new_password);
     return res.json(result);
   } catch (error) {
     return res.status(500).json({ error: error.message });
@@ -406,7 +527,10 @@ app.get('/calendar-events', authMiddleware, async (req, res) => {
   }
 });
 
-app.post('/calendar-events', authMiddleware, adminMiddleware, async (req, res) => {
+app.post('/calendar-events', authMiddleware, async (req, res) => {
+  if (!['admin', 'supervisor'].includes(req.user.role)) {
+    return res.status(403).json({ error: 'Permission denied' });
+  }
   try {
     const event = await createCalendarEvent(req.body, req.user.id);
     return res.status(201).json({ event });
@@ -415,7 +539,10 @@ app.post('/calendar-events', authMiddleware, adminMiddleware, async (req, res) =
   }
 });
 
-app.put('/calendar-events/:id', authMiddleware, adminMiddleware, async (req, res) => {
+app.put('/calendar-events/:id', authMiddleware, async (req, res) => {
+  if (!['admin', 'supervisor'].includes(req.user.role)) {
+    return res.status(403).json({ error: 'Permission denied' });
+  }
   try {
     const event = await updateCalendarEvent(Number(req.params.id), req.body);
     return res.json({ event });
@@ -424,7 +551,10 @@ app.put('/calendar-events/:id', authMiddleware, adminMiddleware, async (req, res
   }
 });
 
-app.delete('/calendar-events/:id', authMiddleware, adminMiddleware, async (req, res) => {
+app.delete('/calendar-events/:id', authMiddleware, async (req, res) => {
+  if (!['admin', 'supervisor'].includes(req.user.role)) {
+    return res.status(403).json({ error: 'Permission denied' });
+  }
   try {
     const result = await deleteCalendarEvent(Number(req.params.id));
     return res.json(result);

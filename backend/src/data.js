@@ -76,11 +76,84 @@ export async function findDepartmentById(id) {
   return data;
 }
 
-export async function getInterns({ search, page = 1, limit = 10, department_id } = {}) {
+export async function getSchools() {
+  const { data: schools, error } = await supabase
+    .from('schools')
+    .select('*')
+    .order('name', { ascending: true });
+
+  if (error) throw error;
+  
+  const { data: interns, error: internsError } = await supabase
+    .from('accounts')
+    .select('school_id')
+    .eq('role', INTERN_ROLE);
+
+  if (internsError) throw internsError;
+
+  const counts = interns.reduce((acc, intern) => {
+    const id = intern.school_id || 0;
+    if (id) {
+      acc[id] = (acc[id] || 0) + 1;
+    }
+    return acc;
+  }, {});
+
+  return schools.map((school) => ({
+    ...school,
+    intern_count: counts[school.id] || 0,
+  }));
+}
+
+export async function createSchool(payload) {
+  const { data, error } = await supabase
+    .from('schools')
+    .insert([{ ...payload }])
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function updateSchool(id, payload) {
+  const { data, error } = await supabase
+    .from('schools')
+    .update({ ...payload })
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteSchool(id) {
+  const { error } = await supabase
+    .from('schools')
+    .delete()
+    .eq('id', id);
+
+  if (error) throw error;
+  return { success: true };
+}
+
+export async function findSchoolById(id) {
+  const { data, error } = await supabase
+    .from('schools')
+    .select('*')
+    .eq('id', id)
+    .single();
+
+  if (error && error.code !== 'PGRST116') throw error;
+  return data;
+}
+
+export async function getInterns({ search, page = 1, limit = 10, department_id, school_id } = {}) {
   let query = supabase
     .from('accounts')
     .select(
-      'id, username, full_name, email, role, school, course, department_id, department_name, status, start_date, end_date, required_hours, rendered_hours, student_id, year_level, phone, home_address, emergency_name, emergency_relation, emergency_phone',
+      'id, username, full_name, email, role, school, school_id, course, department_id, department_name, status, start_date, end_date, required_hours, rendered_hours, student_id, year_level, phone, home_address, emergency_name, emergency_relation, emergency_phone',
       { count: 'exact' }
     )
     .eq('role', INTERN_ROLE)
@@ -92,6 +165,10 @@ export async function getInterns({ search, page = 1, limit = 10, department_id }
 
   if (department_id) {
     query = query.eq('department_id', department_id);
+  }
+
+  if (school_id) {
+    query = query.eq('school_id', school_id);
   }
 
   const from = (page - 1) * limit;
@@ -123,17 +200,20 @@ function normalizeDepartmentName(departmentId, departmentName) {
 }
 
 export async function createIntern(payload) {
-  const { password, department_id, ...rest } = payload;
+  const { password, department_id, school_id, ...rest } = payload;
   if (!password) throw new Error('Password is required');
 
   const password_hash = await bcrypt.hash(password, 10);
   const department = department_id ? await findDepartmentById(Number(department_id)) : null;
   const departmentName = department?.name || rest.department_name || null;
 
+  const school = school_id ? await findSchoolById(Number(school_id)) : null;
+  const schoolName = school?.name || rest.school || null;
+
   const { data, error } = await supabase
     .from('accounts')
-    .insert([{ ...rest, password_hash, role: INTERN_ROLE, department_id, department_name: departmentName }])
-    .select('id, username, full_name, email, role, school, course, department_id, department_name, status, start_date, end_date, required_hours, rendered_hours, student_id, year_level, phone, home_address, emergency_name, emergency_relation, emergency_phone')
+    .insert([{ ...rest, password_hash, role: INTERN_ROLE, department_id, department_name: departmentName, school_id, school: schoolName }])
+    .select('id, username, full_name, email, role, school, school_id, course, department_id, department_name, status, start_date, end_date, required_hours, rendered_hours, student_id, year_level, phone, home_address, emergency_name, emergency_relation, emergency_phone')
     .single();
 
   if (error) throw error;
@@ -141,7 +221,7 @@ export async function createIntern(payload) {
 }
 
 export async function updateIntern(id, payload) {
-  const { password, department_id, ...rest } = payload;
+  const { password, department_id, school_id, ...rest } = payload;
   const updates = { ...rest };
 
   if (password) {
@@ -154,12 +234,18 @@ export async function updateIntern(id, payload) {
     updates.department_id = department_id;
   }
 
+  if (school_id) {
+    const school = await findSchoolById(school_id);
+    updates.school = school?.name || rest.school || null;
+    updates.school_id = school_id;
+  }
+
   const { data, error } = await supabase
     .from('accounts')
     .update(updates)
     .eq('id', id)
     .eq('role', INTERN_ROLE)
-    .select('id, username, full_name, email, role, school, course, department_id, department_name, status, start_date, end_date, required_hours, rendered_hours, student_id, year_level, phone, home_address, emergency_name, emergency_relation, emergency_phone')
+    .select('id, username, full_name, email, role, school, school_id, course, department_id, department_name, status, start_date, end_date, required_hours, rendered_hours, student_id, year_level, phone, home_address, emergency_name, emergency_relation, emergency_phone')
     .single();
 
   if (error) throw error;
@@ -382,6 +468,72 @@ export async function getAdminDashboardStats() {
     },
     recentAttendance: mappedRecent,
     recentDocuments: recentDocuments || [],
+  };
+}
+
+export async function getSupervisorDashboardStats(user) {
+  if (!user || user.role !== 'supervisor' || !user.department_id) {
+    throw new Error('Permission denied or supervisor is not assigned to a department.');
+  }
+
+  const departmentId = user.department_id;
+
+  // Get all intern IDs in the supervisor's department
+  const { data: departmentInterns, error: deptInternsError } = await supabase
+    .from('accounts')
+    .select('id')
+    .eq('role', 'intern')
+    .eq('department_id', departmentId);
+
+  if (deptInternsError) throw deptInternsError;
+  const departmentInternIds = departmentInterns.map(i => i.id);
+
+  let pendingAttendanceCount = 0;
+  let pendingDocumentsCount = 0;
+  let recentAttendance = [];
+
+  if (departmentInternIds.length > 0) {
+    // Get pending attendance logs for the department's interns
+    const { count: pendingLogsCount, error: pendingLogsError } = await supabase
+      .from('attendance_logs')
+      .select('id', { count: 'exact', head: true })
+      .in('intern_id', departmentInternIds)
+      .eq('approval_status', 'pending');
+
+    if (pendingLogsError) throw pendingLogsError;
+    pendingAttendanceCount = pendingLogsCount || 0;
+
+    // Get pending documents for the department's interns
+    const { count: pendingDocsCount, error: pendingDocsError } = await supabase
+      .from('documents')
+      .select('id', { count: 'exact', head: true })
+      .in('intern_id', departmentInternIds)
+      .eq('status', 'pending');
+
+    if (pendingDocsError) throw pendingDocsError;
+    pendingDocumentsCount = pendingDocsCount || 0;
+
+    // Get recent attendance logs for the department's interns
+    const { data: recentLogs, error: recentLogsError } = await supabase
+      .from('attendance_logs')
+      .select('*')
+      .in('intern_id', departmentInternIds)
+      .order('scan_time', { ascending: false })
+      .limit(5);
+
+    if (recentLogsError) throw recentLogsError;
+    recentAttendance = recentLogs || [];
+  }
+
+  return {
+    stats: {
+      total_interns: departmentInternIds.length,
+      pending_attendance: pendingAttendanceCount,
+      pending_documents: pendingDocumentsCount,
+      department_name: user.department_name || 'Your Department',
+    },
+    recentAttendance,
+    departmentInterns: departmentInterns || [],
   };
 }
 
@@ -942,102 +1094,109 @@ export async function deleteCalendarEvent(id) {
   return { success: true };
 }
 
-export async function setDtrOverride(internId, { date, type, hours, remarks }) {
-  const scanTime = new Date(`${date}T00:00:00+08:00`).toISOString();
-  
-  // Date boundaries in UTC
-  const startUTC = new Date(new Date(`${date}T00:00:00+08:00`).getTime() - 1000).toISOString();
-  const endUTC = new Date(new Date(`${date}T23:59:59+08:00`).getTime() + 1000).toISOString();
-
-  const { data: existingLogs, error: fetchError } = await supabase
-    .from('attendance_logs')
-    .select('*')
-    .eq('intern_id', internId)
-    .gte('scan_time', startUTC)
-    .lte('scan_time', endUTC);
-
-  if (fetchError) throw fetchError;
-
-  const overrideLog = (existingLogs || []).find(l => l.remarks && l.remarks.startsWith('OVERRIDE:'));
-
-  if (type === 'none' || !type) {
-    if (overrideLog) {
-      const { error: deleteError } = await supabase
-        .from('attendance_logs')
-        .delete()
-        .eq('id', overrideLog.id);
-      if (deleteError) throw deleteError;
-    }
-    return { success: true, deleted: true };
-  }
-
-  let formattedRemarks = '';
-  if (type === 'suspended') {
-    formattedRemarks = `OVERRIDE:SUSPENDED:${remarks || ''}`;
-  } else if (type === 'excused') {
-    formattedRemarks = `OVERRIDE:EXCUSED:${remarks || ''}`;
-  } else if (type === 'hours') {
-    formattedRemarks = `OVERRIDE:HOURS:${Number(hours || 0).toFixed(2)}:${remarks || ''}`;
-  } else if (type === 'others') {
-    formattedRemarks = `OVERRIDE:OTHERS:${Number(hours || 0).toFixed(2)}:${remarks || ''}`;
-  }
-
-  if (overrideLog) {
-    const { data, error: updateError } = await supabase
-      .from('attendance_logs')
-      .update({
-        remarks: formattedRemarks,
-        scan_time: scanTime,
-        scan_type: 'time_in',
-        approval_status: 'approved'
-      })
-      .eq('id', overrideLog.id)
-      .select()
-      .single();
-
-    if (updateError) throw updateError;
-    return { success: true, data };
-  } else {
-    const { data: internAcc } = await supabase
-      .from('accounts')
-      .select('full_name')
-      .eq('id', internId)
-      .single();
-
-    const row = {
-      intern_id: internId,
-      intern_name: internAcc?.full_name || 'Intern',
-      scan_type: 'time_in',
-      scan_time: scanTime,
-      approval_status: 'approved',
-      remarks: formattedRemarks,
-      created_at: new Date().toISOString()
-    };
-
-    const { data, error: insertError } = await supabase
-      .from('attendance_logs')
-      .insert([row])
-      .select()
-      .single();
-
-    if (insertError) throw insertError;
-    return { success: true, data };
-  }
-}
-
-export async function setBulkDtrOverride({ date, type, hours, remarks }) {
-  const { data: interns, error: fetchError } = await supabase
+export async function getSupervisors({ search, page = 1, limit = 10, department_id } = {}) {
+  let query = supabase
     .from('accounts')
-    .select('id')
-    .eq('role', 'intern')
-    .eq('status', 'active');
+    .select(
+      'id, username, full_name, email, role, department_id, department_name, status, phone, home_address',
+      { count: 'exact' }
+    )
+    .eq('role', 'supervisor')
+    .order('full_name', { ascending: true });
 
-  if (fetchError) throw fetchError;
-
-  if (interns && interns.length > 0) {
-    await Promise.all(
-      interns.map(i => setDtrOverride(i.id, { date, type, hours, remarks }))
-    );
+  if (search) {
+    query = query.or(`full_name.ilike.%${search}%,username.ilike.%${search}%,email.ilike.%${search}%`);
   }
-  return { success: true, count: interns?.length || 0 };
+
+  if (department_id) {
+    query = query.eq('department_id', department_id);
+  }
+
+  const from = (page - 1) * limit;
+  const to = from + limit - 1;
+  query = query.range(from, to);
+
+  const { data, error, count } = await query;
+  if (error) throw error;
+  return { supervisors: data || [], total: count || 0 };
 }
+
+export async function getSupervisorById(id) {
+  const { data, error } = await supabase
+    .from('accounts')
+    .select('id, username, full_name, email, role, department_id, department_name, status, phone, home_address')
+    .eq('id', id)
+    .eq('role', 'supervisor')
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function createSupervisor(payload) {
+  const { password, department_id, ...rest } = payload;
+  if (!password) throw new Error('Password is required');
+
+  const password_hash = await bcrypt.hash(password, 10);
+  const department = department_id ? await findDepartmentById(Number(department_id)) : null;
+  const departmentName = department?.name || rest.department_name || null;
+
+  const { data, error } = await supabase
+    .from('accounts')
+    .insert([{ ...rest, password_hash, role: 'supervisor', department_id, department_name: departmentName }])
+    .select('id, username, full_name, email, role, department_id, department_name, status, phone, home_address')
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function updateSupervisor(id, payload) {
+  const { password, department_id, ...rest } = payload;
+  const updates = { ...rest };
+
+  if (password) {
+    updates.password_hash = await bcrypt.hash(password, 10);
+  }
+
+  if (department_id) {
+    const department = await findDepartmentById(department_id);
+    updates.department_name = department?.name || rest.department_name || null;
+    updates.department_id = department_id;
+  }
+
+  const { data, error } = await supabase
+    .from('accounts')
+    .update(updates)
+    .eq('id', id)
+    .eq('role', 'supervisor')
+    .select('id, username, full_name, email, role, department_id, department_name, status, phone, home_address')
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteSupervisor(id) {
+  const { error } = await supabase
+    .from('accounts')
+    .delete()
+    .eq('id', id)
+    .eq('role', 'supervisor');
+
+  if (error) throw error;
+  return { success: true };
+}
+
+export async function resetSupervisorPassword(id, newPassword) {
+  const password_hash = await bcrypt.hash(newPassword, 10);
+  const { error } = await supabase
+    .from('accounts')
+    .update({ password_hash })
+    .eq('id', id)
+    .eq('role', 'supervisor');
+
+  if (error) throw error;
+  return { success: true };
+}
+

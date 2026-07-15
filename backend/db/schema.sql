@@ -6,7 +6,7 @@ create table if not exists accounts (
   password_hash text not null,
   full_name text not null,
   email text not null unique,
-  role text not null check (role in ('admin','intern')),
+  role text not null check (role in ('admin','intern','supervisor')),
   school text,
   course text,
   department_id bigint,
@@ -159,10 +159,10 @@ create policy "Allow admins full access"
 on public.calendar_events for all
 to authenticated
 using (
-  (SELECT role FROM public.accounts WHERE email = auth.email()) = 'admin'
+  (SELECT role FROM public.accounts WHERE email = auth.email()) in ('admin', 'supervisor')
 )
 with check (
-  (SELECT role FROM public.accounts WHERE email = auth.email()) = 'admin'
+  (SELECT role FROM public.accounts WHERE email = auth.email()) in ('admin', 'supervisor')
 );
 
 -- Example seed data for admin and intern users (password = "password")
