@@ -37,6 +37,8 @@ import {
   createCalendarEvent,
   updateCalendarEvent,
   deleteCalendarEvent,
+  setDtrOverride,
+  setBulkDtrOverride,
 } from './data.js';
 
 const app = express();
@@ -265,6 +267,37 @@ app.get('/dtr', authMiddleware, async (req, res) => {
   }
 });
 
+app.get('/admin/dtr/:internId', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const records = await getDtrRecords(Number(req.params.internId), {
+      month: req.query.month ? Number(req.query.month) : undefined,
+      year: req.query.year ? Number(req.query.year) : undefined,
+      limit: req.query.limit ? Number(req.query.limit) : 31,
+    });
+    return res.json({ records });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/admin/dtr/:internId/override', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const result = await setDtrOverride(Number(req.params.internId), req.body);
+    return res.json(result);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/admin/dtr/bulk-override', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const result = await setBulkDtrOverride(req.body);
+    return res.json(result);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
 app.get('/notifications', authMiddleware, async (req, res) => {
   try {
     const notifications = await getNotifications(req.user.id, req.user.role === 'admin' || req.user.role === 'supervisor');
@@ -301,7 +334,7 @@ app.get('/evaluations', authMiddleware, async (req, res) => {
   }
 });
 
-app.post('/evaluations', authMiddleware, adminOnlyMiddleware, async (req, res) => {
+app.post('/evaluations', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const evaluation = await createEvaluation(req.body, req.user.id, req.user.full_name || req.user.username);
     return res.json({ evaluation });
@@ -310,7 +343,7 @@ app.post('/evaluations', authMiddleware, adminOnlyMiddleware, async (req, res) =
   }
 });
 
-app.put('/evaluations/:id', authMiddleware, adminOnlyMiddleware, async (req, res) => {
+app.put('/evaluations/:id', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const evaluation = await updateEvaluation(Number(req.params.id), req.body);
     return res.json({ evaluation });

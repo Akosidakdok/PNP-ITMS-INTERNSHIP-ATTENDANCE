@@ -16,6 +16,7 @@ import PerformanceEval from './pages/admin/PerformanceEval.jsx';
 import Departments from './pages/admin/Departments.jsx';
 import Reports from './pages/admin/Reports.jsx';
 import AdminCalendar from './pages/admin/Calendar.jsx';
+import AdminDTRViewer from './pages/admin/AdminDTRViewer.jsx';
 
 // Intern pages
 import InternDashboard from './pages/intern/InternDashboard.jsx';
@@ -71,6 +72,7 @@ function AppRoutes() {
         <Route path="departments" element={<Departments />} />
         <Route path="calendar" element={<AdminCalendar />} />
         <Route path="reports" element={<Reports />} />
+        <Route path="dtr" element={<AdminDTRViewer />} />
         <Route path="profile" element={<Profile role="admin" />} />
       </Route>
 

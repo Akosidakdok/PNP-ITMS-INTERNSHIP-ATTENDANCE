@@ -389,7 +389,7 @@ export async function getAttendanceReport({ month, year, department_id } = {}) {
   const filters = { role: INTERN_ROLE };
   let internQuery = supabase
     .from('accounts')
-    .select('id, full_name, school, course, department_name, department_id, required_hours, rendered_hours')
+    .select('id, full_name, school, course, department_name, department_id, required_hours')
     .eq('role', INTERN_ROLE)
     .order('full_name', { ascending: true });
 
@@ -400,42 +400,42 @@ export async function getAttendanceReport({ month, year, department_id } = {}) {
   const { data: interns, error: internsError } = await internQuery;
   if (internsError) throw internsError;
 
-  let logQuery = supabase
-    .from('attendance_logs')
-    .select('intern_id, scan_time, approval_status');
+  const reportData = await Promise.all(
+    interns.map(async (intern) => {
+      const mNum = month ? Number(month) : undefined;
+      const yNum = year ? Number(year) : undefined;
 
-  if (month && year) {
-    const start = new Date(year, month - 1, 1);
-    const end = new Date(year, month, 0, 23, 59, 59, 999);
-    logQuery = logQuery.gte('scan_time', start.toISOString()).lte('scan_time', end.toISOString());
-  }
+      // 1. Get DTR records for the selected month/year
+      const monthlyDtr = await getDtrRecords(intern.id, { month: mNum, year: yNum });
+      
+      // 2. Get all-time DTR records for cumulative approved hours (limit 500 days)
+      const allTimeDtr = await getDtrRecords(intern.id, { limit: 500 });
 
-  const { data: logs, error: logsError } = await logQuery;
-  if (logsError) throw logsError;
+      // Sum of hours for the selected month
+      const monthlyTotalHours = monthlyDtr.reduce((sum, r) => sum + (r.total_hours || 0), 0);
 
-  const attendanceByIntern = logs.reduce((acc, log) => {
-    const dateKey = log.scan_time.slice(0, 10);
-    const key = `${log.intern_id}-${dateKey}`;
-    acc[key] = true;
-    return acc;
-  }, {});
+      // Sum of approved hours for all-time (determines overall progress)
+      const cumulativeApprovedHours = allTimeDtr
+        .filter(r => r.approval_status === 'approved')
+        .reduce((sum, r) => sum + (r.total_hours || 0), 0);
 
-  const dailyCounts = Object.keys(attendanceByIntern).reduce((acc, key) => {
-    const internId = Number(key.split('-')[0]);
-    acc[internId] = (acc[internId] || 0) + 1;
-    return acc;
-  }, {});
+      // Days present = number of days with DTR logs in the selected month
+      const daysPresent = monthlyDtr.length;
 
-  return interns.map((intern) => ({
-    id: intern.id,
-    full_name: intern.full_name,
-    school: intern.school,
-    department_name: intern.department_name,
-    days_present: dailyCounts[intern.id] || 0,
-    total_hours: Number(intern.rendered_hours || 0),
-    required_hours: Number(intern.required_hours || 0),
-    rendered_hours: Number(intern.rendered_hours || 0),
-  }));
+      return {
+        id: intern.id,
+        full_name: intern.full_name,
+        school: intern.school,
+        department_name: intern.department_name,
+        days_present: daysPresent,
+        total_hours: Number(monthlyTotalHours.toFixed(2)),
+        required_hours: Number(intern.required_hours || 0),
+        rendered_hours: Number(cumulativeApprovedHours.toFixed(2)),
+      };
+    })
+  );
+
+  return reportData;
 }
 
 export async function getDtrRecords(userId, { month, year, limit = 31 } = {}) {
@@ -486,10 +486,10 @@ export async function getDtrRecords(userId, { month, year, limit = 31 } = {}) {
     return acc;
   }, {});
 
-  return Object.entries(grouped).map(([date, entries]) => {
+  function computeStandardDtrRecord(date, entries) {
     // Sort scans chronologically; take at most 4 slots
-    entries.sort((a, b) => new Date(a.scan_time) - new Date(b.scan_time));
-    const [s1, s2, s3, s4] = entries;
+    const sorted = [...entries].sort((a, b) => new Date(a.scan_time) - new Date(b.scan_time));
+    const [s1, s2, s3, s4] = sorted;
 
     // Positional slot assignment: AM-in, AM-out, PM-in, PM-out
     const amInRaw  = s1?.scan_type === 'time_in'  ? new Date(s1.scan_time) : null;
@@ -498,49 +498,38 @@ export async function getDtrRecords(userId, { month, year, limit = 31 } = {}) {
     const pmOutRaw = s4?.scan_type === 'time_out' ? new Date(s4.scan_time) : null;
 
     // ── Time-floor rules (Manila clock) ─────────────────────────────────────
-    // AM Time In: any scan strictly before 08:00 MNL → register as 08:00 MNL
     let effectiveAmIn = null;
     if (amInRaw) {
       const m = toMNLDate(amInRaw);
       effectiveAmIn = m.getUTCHours() < 8
-        ? new Date(`${date}T08:00:00+08:00`)   // UTC = date T00:00:00Z
+        ? new Date(`${date}T08:00:00+08:00`)
         : amInRaw;
     }
 
-    // PM Time In: scan at or before 13:00 MNL → register as 13:00 MNL (no grace)
     let effectivePmIn = null;
     if (pmInRaw) {
       const m = toMNLDate(pmInRaw);
       const h = m.getUTCHours(), min = m.getUTCMinutes();
       effectivePmIn = (h < 13 || (h === 13 && min === 0))
-        ? new Date(`${date}T13:00:00+08:00`)   // UTC = date T05:00:00Z
+        ? new Date(`${date}T13:00:00+08:00`)
         : pmInRaw;
     }
 
-    // PM Time Out: honored as-is (overtime counted)
     const effectivePmOut = pmOutRaw;
-
-    // ── Total hours calculation ──────────────────────────────────────────────
-    // Manila noon anchor for AM session end
-    const noon = new Date(`${date}T12:00:00+08:00`); // UTC = date T04:00:00Z
+    const noon = new Date(`${date}T12:00:00+08:00`);
 
     let totalHours = 0;
-
     if (effectiveAmIn && effectivePmIn && effectivePmOut) {
-      // Full day: AM session (effectiveAmIn → noon) + PM session (effectivePmIn → effectivePmOut)
       const amSession = Math.max(0, (noon - effectiveAmIn) / 3600000);
       const pmSession = Math.max(0, (effectivePmOut - effectivePmIn) / 3600000);
       totalHours = amSession + pmSession;
     } else if (effectiveAmIn && amOutRaw) {
-      // AM only (scan 1 + 2 present, no PM)
       const amEnd = amOutRaw < noon ? amOutRaw : noon;
       totalHours = Math.max(0, (amEnd - effectiveAmIn) / 3600000);
     } else if (effectivePmIn && effectivePmOut) {
-      // PM only (rare edge case)
       totalHours = Math.max(0, (effectivePmOut - effectivePmIn) / 3600000);
     }
 
-    // ── Statuses ─────────────────────────────────────────────────────────────
     const amStatus      = s1?.approval_status || 'pending';
     const pmStatus      = s4?.approval_status || s3?.approval_status || 'pending';
     const allStatuses   = entries.map(e => e.approval_status).filter(Boolean);
@@ -550,21 +539,104 @@ export async function getDtrRecords(userId, { month, year, limit = 31 } = {}) {
 
     return {
       date,
-      // Display times in Manila (HH:MM) — caps already applied
       am_time_in:  mnlTimeStr(effectiveAmIn),
       am_time_out: mnlTimeStr(amOutRaw),
       pm_time_in:  mnlTimeStr(effectivePmIn),
       pm_time_out: mnlTimeStr(effectivePmOut),
-      // Per-slot statuses
       am_status:   amStatus,
       pm_status:   pmStatus,
-      // Overall for the day
       approval_status: overallStatus,
       total_hours: Number(totalHours.toFixed(2)),
-      // Backward-compat fields used by MyDTR summary stats
       time_in:  mnlTimeStr(effectiveAmIn),
       time_out: mnlTimeStr(effectivePmOut),
     };
+  }
+
+  return Object.entries(grouped).map(([date, entries]) => {
+    // Check if there is an override log for this day
+    const overrideLog = entries.find(l => l.remarks && l.remarks.startsWith('OVERRIDE:'));
+    if (overrideLog) {
+      const parts = overrideLog.remarks.split(':');
+      const overrideType = parts[1]; // 'SUSPENDED', 'EXCUSED', or 'HOURS'
+      
+      if (overrideType === 'SUSPENDED') {
+        const textRemarks = parts.slice(2).join(':');
+        return {
+          date,
+          am_time_in: null,
+          am_time_out: null,
+          pm_time_in: null,
+          pm_time_out: null,
+          am_status: 'approved',
+          pm_status: 'approved',
+          approval_status: 'approved',
+          total_hours: 0,
+          time_in: null,
+          time_out: null,
+          remarks: textRemarks || 'Suspension',
+          is_override: true,
+          override_type: 'suspended',
+          override_remarks: textRemarks
+        };
+      } else if (overrideType === 'EXCUSED') {
+        const textRemarks = parts.slice(2).join(':');
+        return {
+          date,
+          am_time_in: null,
+          am_time_out: null,
+          pm_time_in: null,
+          pm_time_out: null,
+          am_status: 'approved',
+          pm_status: 'approved',
+          approval_status: 'approved',
+          total_hours: 8.0, // Credited hours
+          time_in: null,
+          time_out: null,
+          remarks: textRemarks || 'Excused',
+          is_override: true,
+          override_type: 'excused',
+          override_remarks: textRemarks
+        };
+      } else if (overrideType === 'HOURS') {
+        const customHrs = Number(parts[2]) || 0;
+        const textRemarks = parts.slice(3).join(':');
+        // Filter out override log to compute scans normally
+        const normalScans = entries.filter(l => l.id !== overrideLog.id);
+        const standardRecord = computeStandardDtrRecord(date, normalScans);
+        return {
+          ...standardRecord,
+          total_hours: customHrs,
+          remarks: textRemarks || 'Hours Overridden',
+          is_override: true,
+          override_type: 'hours',
+          override_hours: customHrs,
+          override_remarks: textRemarks
+        };
+      } else if (overrideType === 'OTHERS') {
+        const customHrs = Number(parts[2]) || 0;
+        const textRemarks = parts.slice(3).join(':');
+        return {
+          date,
+          am_time_in: null,
+          am_time_out: null,
+          pm_time_in: null,
+          pm_time_out: null,
+          am_status: 'approved',
+          pm_status: 'approved',
+          approval_status: 'approved',
+          total_hours: customHrs,
+          time_in: null,
+          time_out: null,
+          remarks: textRemarks || 'Others',
+          is_override: true,
+          override_type: 'others',
+          override_hours: customHrs,
+          override_remarks: textRemarks
+        };
+      }
+    }
+
+    return computeStandardDtrRecord(date, entries);
   }).sort((a, b) => b.date.localeCompare(a.date));
 }
 
@@ -614,7 +686,27 @@ export async function getEvaluations(userId, isAdmin) {
 
   const { data, error } = await query;
   if (error) throw error;
-  return data || [];
+
+  const evaluations = data || [];
+  const internIds = [...new Set(evaluations.map(e => e.intern_id).filter(Boolean))];
+  let accountsMap = {};
+  if (internIds.length > 0) {
+    const { data: accounts, error: accountsError } = await supabase
+      .from('accounts')
+      .select('id, full_name')
+      .in('id', internIds);
+    if (!accountsError && accounts) {
+      accountsMap = accounts.reduce((acc, accObj) => {
+        acc[accObj.id] = accObj;
+        return acc;
+      }, {});
+    }
+  }
+
+  return evaluations.map(e => ({
+    ...e,
+    full_name: accountsMap[e.intern_id]?.full_name || 'Unknown Intern'
+  }));
 }
 
 export async function createEvaluation(payload, evaluatorId, evaluatorName) {
@@ -848,4 +940,104 @@ export async function deleteCalendarEvent(id) {
 
   if (error) throw error;
   return { success: true };
+}
+
+export async function setDtrOverride(internId, { date, type, hours, remarks }) {
+  const scanTime = new Date(`${date}T00:00:00+08:00`).toISOString();
+  
+  // Date boundaries in UTC
+  const startUTC = new Date(new Date(`${date}T00:00:00+08:00`).getTime() - 1000).toISOString();
+  const endUTC = new Date(new Date(`${date}T23:59:59+08:00`).getTime() + 1000).toISOString();
+
+  const { data: existingLogs, error: fetchError } = await supabase
+    .from('attendance_logs')
+    .select('*')
+    .eq('intern_id', internId)
+    .gte('scan_time', startUTC)
+    .lte('scan_time', endUTC);
+
+  if (fetchError) throw fetchError;
+
+  const overrideLog = (existingLogs || []).find(l => l.remarks && l.remarks.startsWith('OVERRIDE:'));
+
+  if (type === 'none' || !type) {
+    if (overrideLog) {
+      const { error: deleteError } = await supabase
+        .from('attendance_logs')
+        .delete()
+        .eq('id', overrideLog.id);
+      if (deleteError) throw deleteError;
+    }
+    return { success: true, deleted: true };
+  }
+
+  let formattedRemarks = '';
+  if (type === 'suspended') {
+    formattedRemarks = `OVERRIDE:SUSPENDED:${remarks || ''}`;
+  } else if (type === 'excused') {
+    formattedRemarks = `OVERRIDE:EXCUSED:${remarks || ''}`;
+  } else if (type === 'hours') {
+    formattedRemarks = `OVERRIDE:HOURS:${Number(hours || 0).toFixed(2)}:${remarks || ''}`;
+  } else if (type === 'others') {
+    formattedRemarks = `OVERRIDE:OTHERS:${Number(hours || 0).toFixed(2)}:${remarks || ''}`;
+  }
+
+  if (overrideLog) {
+    const { data, error: updateError } = await supabase
+      .from('attendance_logs')
+      .update({
+        remarks: formattedRemarks,
+        scan_time: scanTime,
+        scan_type: 'time_in',
+        approval_status: 'approved'
+      })
+      .eq('id', overrideLog.id)
+      .select()
+      .single();
+
+    if (updateError) throw updateError;
+    return { success: true, data };
+  } else {
+    const { data: internAcc } = await supabase
+      .from('accounts')
+      .select('full_name')
+      .eq('id', internId)
+      .single();
+
+    const row = {
+      intern_id: internId,
+      intern_name: internAcc?.full_name || 'Intern',
+      scan_type: 'time_in',
+      scan_time: scanTime,
+      approval_status: 'approved',
+      remarks: formattedRemarks,
+      created_at: new Date().toISOString()
+    };
+
+    const { data, error: insertError } = await supabase
+      .from('attendance_logs')
+      .insert([row])
+      .select()
+      .single();
+
+    if (insertError) throw insertError;
+    return { success: true, data };
+  }
+}
+
+export async function setBulkDtrOverride({ date, type, hours, remarks }) {
+  const { data: interns, error: fetchError } = await supabase
+    .from('accounts')
+    .select('id')
+    .eq('role', 'intern')
+    .eq('status', 'active');
+
+  if (fetchError) throw fetchError;
+
+  if (interns && interns.length > 0) {
+    await Promise.all(
+      interns.map(i => setDtrOverride(i.id, { date, type, hours, remarks }))
+    );
+  }
+  return { success: true, count: interns?.length || 0 };
 }
