@@ -44,6 +44,10 @@ import {
   updateSupervisor,
   deleteSupervisor,
   resetSupervisorPassword,
+  getSchools,
+  createSchool,
+  updateSchool,
+  deleteSchool,
 } from './data.js';
 
 const app = express();
@@ -177,6 +181,42 @@ app.delete('/departments/:id', authMiddleware, adminMiddleware, async (req, res)
   }
 });
 
+app.get('/schools', authMiddleware, async (req, res) => {
+  try {
+    const schools = await getSchools();
+    return res.json({ schools });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/schools', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const school = await createSchool(req.body);
+    return res.json({ school });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/schools/:id', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const school = await updateSchool(Number(req.params.id), req.body);
+    return res.json({ school });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/schools/:id', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const result = await deleteSchool(Number(req.params.id));
+    return res.json(result);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
 app.get('/admin/reports/attendance', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const report = await getAttendanceReport({ month: Number(req.query.month), year: Number(req.query.year), department_id: req.query.department_id ? Number(req.query.department_id) : undefined });
@@ -192,7 +232,8 @@ app.get('/interns', authMiddleware, adminMiddleware, async (req, res) => {
       search: req.query.search,
       page: Number(req.query.page) || 1,
       limit: Number(req.query.limit) || 10,
-      department_id: req.query.department_id ? Number(req.query.department_id) : undefined
+      department_id: req.query.department_id ? Number(req.query.department_id) : undefined,
+      school_id: req.query.school_id ? Number(req.query.school_id) : undefined
     });
     return res.json(result);
   } catch (error) {

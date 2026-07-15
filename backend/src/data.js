@@ -76,11 +76,84 @@ export async function findDepartmentById(id) {
   return data;
 }
 
-export async function getInterns({ search, page = 1, limit = 10, department_id } = {}) {
+export async function getSchools() {
+  const { data: schools, error } = await supabase
+    .from('schools')
+    .select('*')
+    .order('name', { ascending: true });
+
+  if (error) throw error;
+  
+  const { data: interns, error: internsError } = await supabase
+    .from('accounts')
+    .select('school_id')
+    .eq('role', INTERN_ROLE);
+
+  if (internsError) throw internsError;
+
+  const counts = interns.reduce((acc, intern) => {
+    const id = intern.school_id || 0;
+    if (id) {
+      acc[id] = (acc[id] || 0) + 1;
+    }
+    return acc;
+  }, {});
+
+  return schools.map((school) => ({
+    ...school,
+    intern_count: counts[school.id] || 0,
+  }));
+}
+
+export async function createSchool(payload) {
+  const { data, error } = await supabase
+    .from('schools')
+    .insert([{ ...payload }])
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function updateSchool(id, payload) {
+  const { data, error } = await supabase
+    .from('schools')
+    .update({ ...payload })
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteSchool(id) {
+  const { error } = await supabase
+    .from('schools')
+    .delete()
+    .eq('id', id);
+
+  if (error) throw error;
+  return { success: true };
+}
+
+export async function findSchoolById(id) {
+  const { data, error } = await supabase
+    .from('schools')
+    .select('*')
+    .eq('id', id)
+    .single();
+
+  if (error && error.code !== 'PGRST116') throw error;
+  return data;
+}
+
+export async function getInterns({ search, page = 1, limit = 10, department_id, school_id } = {}) {
   let query = supabase
     .from('accounts')
     .select(
-      'id, username, full_name, email, role, school, course, department_id, department_name, status, start_date, end_date, required_hours, rendered_hours, student_id, year_level, phone, home_address, emergency_name, emergency_relation, emergency_phone',
+      'id, username, full_name, email, role, school, school_id, course, department_id, department_name, status, start_date, end_date, required_hours, rendered_hours, student_id, year_level, phone, home_address, emergency_name, emergency_relation, emergency_phone',
       { count: 'exact' }
     )
     .eq('role', INTERN_ROLE)
@@ -92,6 +165,10 @@ export async function getInterns({ search, page = 1, limit = 10, department_id }
 
   if (department_id) {
     query = query.eq('department_id', department_id);
+  }
+
+  if (school_id) {
+    query = query.eq('school_id', school_id);
   }
 
   const from = (page - 1) * limit;
@@ -123,17 +200,20 @@ function normalizeDepartmentName(departmentId, departmentName) {
 }
 
 export async function createIntern(payload) {
-  const { password, department_id, ...rest } = payload;
+  const { password, department_id, school_id, ...rest } = payload;
   if (!password) throw new Error('Password is required');
 
   const password_hash = await bcrypt.hash(password, 10);
   const department = department_id ? await findDepartmentById(Number(department_id)) : null;
   const departmentName = department?.name || rest.department_name || null;
 
+  const school = school_id ? await findSchoolById(Number(school_id)) : null;
+  const schoolName = school?.name || rest.school || null;
+
   const { data, error } = await supabase
     .from('accounts')
-    .insert([{ ...rest, password_hash, role: INTERN_ROLE, department_id, department_name: departmentName }])
-    .select('id, username, full_name, email, role, school, course, department_id, department_name, status, start_date, end_date, required_hours, rendered_hours, student_id, year_level, phone, home_address, emergency_name, emergency_relation, emergency_phone')
+    .insert([{ ...rest, password_hash, role: INTERN_ROLE, department_id, department_name: departmentName, school_id, school: schoolName }])
+    .select('id, username, full_name, email, role, school, school_id, course, department_id, department_name, status, start_date, end_date, required_hours, rendered_hours, student_id, year_level, phone, home_address, emergency_name, emergency_relation, emergency_phone')
     .single();
 
   if (error) throw error;
@@ -141,7 +221,7 @@ export async function createIntern(payload) {
 }
 
 export async function updateIntern(id, payload) {
-  const { password, department_id, ...rest } = payload;
+  const { password, department_id, school_id, ...rest } = payload;
   const updates = { ...rest };
 
   if (password) {
@@ -154,12 +234,18 @@ export async function updateIntern(id, payload) {
     updates.department_id = department_id;
   }
 
+  if (school_id) {
+    const school = await findSchoolById(school_id);
+    updates.school = school?.name || rest.school || null;
+    updates.school_id = school_id;
+  }
+
   const { data, error } = await supabase
     .from('accounts')
     .update(updates)
     .eq('id', id)
     .eq('role', INTERN_ROLE)
-    .select('id, username, full_name, email, role, school, course, department_id, department_name, status, start_date, end_date, required_hours, rendered_hours, student_id, year_level, phone, home_address, emergency_name, emergency_relation, emergency_phone')
+    .select('id, username, full_name, email, role, school, school_id, course, department_id, department_name, status, start_date, end_date, required_hours, rendered_hours, student_id, year_level, phone, home_address, emergency_name, emergency_relation, emergency_phone')
     .single();
 
   if (error) throw error;

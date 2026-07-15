@@ -6,11 +6,14 @@ import Modal from '../../components/common/Modal.jsx';
 import toast from 'react-hot-toast';
 
 const INIT_FORM = {
-  username: '', password: '', full_name: '', email: '', phone: '', // email was missing here in your file
-  school: '', course: '', year_level: '4th Year', department_id: '',
+  username: '', password: '', full_name: '', email: '', phone: '', 
+  school_id: '',
+  course: '', year_level: '4th Year', department_id: '',
   required_hours: 300, start_date: '', end_date: '', status: 'active',
   student_id: '', home_address: '', emergency_name: '', emergency_relation: '', emergency_phone: ''
 };
+
+const SENTINEL_NEW_SCHOOL = '__new__';
 
 const generateUsername = (fullName) => {
   const cleanName = (fullName || '').trim().toLowerCase();
@@ -38,11 +41,13 @@ export default function InternManagement() {
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [departments, setDepartments] = useState([]);
+  const [schools, setSchools] = useState([]);
   const [modal, setModal] = useState(null); // 'create' | 'edit' | 'delete' | 'reset' | 'view'
   const [selected, setSelected] = useState(null);
   const [form, setForm] = useState(INIT_FORM);
   const [saving, setSaving] = useState(false);
   const [resetPwd, setResetPwd] = useState('');
+  const [newSchoolName, setNewSchoolName] = useState('');
 
   const fetchInterns = useCallback(async () => {
     setLoading(true);
@@ -58,11 +63,14 @@ export default function InternManagement() {
     api.get('/departments')
       .then(r => setDepartments(r.data.departments))
       .catch(() => toast.error('Could not load department list.'));
+    api.get('/schools')
+      .then(r => setSchools(r.data.schools))
+      .catch(() => toast.error('Could not load school list.'));
   }, []);
 
   useEffect(() => { fetchInterns(); }, [fetchInterns]);
 
-  const openCreate = () => { setForm(INIT_FORM); setModal('create'); };
+  const openCreate = () => { setForm(INIT_FORM); setNewSchoolName(''); setModal('create'); };
   const openEdit = (i) => {
     setSelected(i);
     setForm({
@@ -75,6 +83,7 @@ export default function InternManagement() {
       emergency_phone: i.emergency_phone || ''
     });
     setModal('edit');
+    setNewSchoolName('');
   };
   const openDelete = (i) => { setSelected(i); setModal('delete'); };
   const openReset = (i) => { setSelected(i); setResetPwd(''); setModal('reset'); };
@@ -101,17 +110,45 @@ export default function InternManagement() {
 
     setSaving(true);
     try {
+      let school_id = form.school_id;
+
+      // Auto-register a new school if the user typed one in
+      if (form.school_id === SENTINEL_NEW_SCHOOL) {
+        const trimmed = newSchoolName.trim();
+        if (!trimmed) {
+          toast.error('Please enter a name for the new school');
+          setSaving(false);
+          return;
+        }
+        try {
+          const schoolRes = await api.post('/schools', { name: trimmed });
+          school_id = schoolRes.data.school.id;
+          // Refresh the schools list so the new one shows next time
+          setSchools(prev => [...prev, schoolRes.data.school].sort((a, b) => a.name.localeCompare(b.name)));
+          toast.success(`School "${trimmed}" registered automatically`);
+        } catch (schoolErr) {
+          const msg = schoolErr?.response?.data?.error || 'Failed to register new school';
+          toast.error(msg);
+          setSaving(false);
+          return;
+        }
+      }
+
+      const payload = { ...form, school_id: school_id || '' };
+
       if (modal === 'create') {
-        await api.post('/interns', form);
+        await api.post('/interns', payload);
         toast.success('Intern created successfully');
       } else {
-        await api.put(`/interns/${selected.id}`, form);
+        await api.put(`/interns/${selected.id}`, payload);
         toast.success('Intern updated successfully');
       }
       setModal(null);
+      setNewSchoolName('');
       fetchInterns();
     } catch (err) {
-      toast.error(err?.response?.data?.error || 'Save failed');
+      const msg = err?.response?.data?.error || 'Save failed. Please check the form and try again.';
+      toast.error(msg);
     } finally {
       setSaving(false);
     }
@@ -281,14 +318,31 @@ export default function InternManagement() {
               onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
             />
           </div>
-          <div className="form-group">
+          <div className="form-group col-span-2">
             <label className="form-label text-[11px] text-gray-500 uppercase font-bold tracking-wider">School / University</label>
-            <input
-              className="form-input bg-gray-50/50"
-              placeholder="e.g. PUP Manila"
-              value={form.school || ''}
-              onChange={e => setForm(f => ({ ...f, school: e.target.value }))}
-            />
+            <select
+              className="form-input form-select bg-gray-50/50"
+              value={form.school_id || ''}
+              onChange={e => setForm(f => ({ ...f, school_id: e.target.value }))}
+            >
+              <option value="">Select school</option>
+              {schools.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              <option value={SENTINEL_NEW_SCHOOL}>➕ Add new school not in list...</option>
+            </select>
+            {form.school_id === SENTINEL_NEW_SCHOOL && (
+              <div className="mt-2">
+                <input
+                  className="form-input bg-yellow-50/60 border-yellow-300 focus:ring-yellow-400"
+                  placeholder="Enter full school / university name"
+                  value={newSchoolName}
+                  autoFocus
+                  onChange={e => setNewSchoolName(e.target.value)}
+                />
+                <p className="text-[10px] text-yellow-600 mt-1 flex items-center gap-1">
+                  <span>⚠</span> This school will be automatically registered when the intern is saved.
+                </p>
+              </div>
+            )}
           </div>
           <div className="form-group">
             <label className="form-label text-[11px] text-gray-500 uppercase font-bold tracking-wider">Year Level</label>

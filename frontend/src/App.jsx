@@ -16,6 +16,7 @@ import AttendanceApproval from './pages/admin/AttendanceApproval.jsx';
 import DocumentReview from './pages/admin/DocumentReview.jsx';
 import PerformanceEval from './pages/admin/PerformanceEval.jsx';
 import Departments from './pages/admin/Departments.jsx';
+import Schools from './pages/admin/Schools.jsx';
 import Reports from './pages/admin/Reports.jsx';
 import AdminCalendar from './pages/admin/Calendar.jsx';
 
@@ -82,6 +83,7 @@ function AppRoutes() {
         <Route path="evaluations" element={<PerformanceEvalWrapper />} />
         <Route path="calendar" element={<AdminCalendar />} />
         <Route path="departments" element={<ProtectedRoute roles={['admin']}><Departments /></ProtectedRoute>} />
+        <Route path="schools" element={<ProtectedRoute roles={['admin']}><Schools /></ProtectedRoute>} />
         <Route path="reports" element={<Reports />} />
         <Route path="profile" element={<Profile role="admin" />} />
       </Route>
