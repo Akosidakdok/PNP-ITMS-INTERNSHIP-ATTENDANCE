@@ -385,6 +385,25 @@ export async function getAttendanceReport({ month, year, department_id } = {}) {
 }
 
 export async function getDtrRecords(userId, { month, year, limit = 31 } = {}) {
+  const MNL_OFFSET_MS = 8 * 60 * 60 * 1000; // UTC+8 in milliseconds
+
+  // Shift a UTC Date forward by 8 hours so UTC methods read Manila clock time
+  function toMNLDate(date) {
+    return new Date(date.getTime() + MNL_OFFSET_MS);
+  }
+
+  // Return HH:MM from a Date already shifted to Manila clock
+  function toHHMM(mnlDate) {
+    if (!mnlDate) return null;
+    return mnlDate.toISOString().slice(11, 16);
+  }
+
+  // Convert any raw UTC Date to a Manila HH:MM display string
+  function mnlTimeStr(rawUTC) {
+    if (!rawUTC) return null;
+    return toHHMM(toMNLDate(rawUTC));
+  }
+
   let query = supabase
     .from('attendance_logs')
     .select('scan_time, scan_type, approval_status, remarks')
@@ -392,9 +411,10 @@ export async function getDtrRecords(userId, { month, year, limit = 31 } = {}) {
     .order('scan_time', { ascending: true });
 
   if (month && year) {
-    const start = new Date(year, month - 1, 1);
-    const end = new Date(year, month, 0, 23, 59, 59, 999);
-    query = query.gte('scan_time', start.toISOString()).lte('scan_time', end.toISOString());
+    // Boundaries in Manila time (Manila midnight = UTC - 8 h)
+    const startUTC = new Date(Date.UTC(year, month - 1, 1,  0,  0,  0,   0) - MNL_OFFSET_MS);
+    const endUTC   = new Date(Date.UTC(year, month,     0, 23, 59, 59, 999) - MNL_OFFSET_MS);
+    query = query.gte('scan_time', startUTC.toISOString()).lte('scan_time', endUTC.toISOString());
   } else {
     const since = new Date(Date.now() - limit * 24 * 60 * 60 * 1000);
     query = query.gte('scan_time', since.toISOString());
@@ -403,33 +423,97 @@ export async function getDtrRecords(userId, { month, year, limit = 31 } = {}) {
   const { data: logs, error } = await query;
   if (error) throw error;
 
+  // Group by Manila calendar date (YYYY-MM-DD)
   const grouped = logs.reduce((acc, log) => {
-    const dateKey = log.scan_time.slice(0, 10);
-    acc[dateKey] = acc[dateKey] || [];
+    const mnlDate = toMNLDate(new Date(log.scan_time));
+    const dateKey = mnlDate.toISOString().slice(0, 10);
+    if (!acc[dateKey]) acc[dateKey] = [];
     acc[dateKey].push(log);
     return acc;
   }, {});
 
-  return Object.entries(grouped).map(([date, entries], index) => {
-    const timeIn = entries.find((entry) => entry.scan_type === 'time_in');
-    const timeOut = [...entries].reverse().find((entry) => entry.scan_type === 'time_out');
-    const inTime = timeIn?.scan_time ? new Date(timeIn.scan_time) : null;
-    const outTime = timeOut?.scan_time ? new Date(timeOut.scan_time) : null;
-    const totalHours = inTime && outTime ? Math.max(0, (outTime - inTime) / 3600000) : 0;
-    let approvalStatus = 'pending';
-    if (entries.every((entry) => entry.approval_status === 'approved')) approvalStatus = 'approved';
-    if (entries.some((entry) => entry.approval_status === 'rejected')) approvalStatus = 'rejected';
+  return Object.entries(grouped).map(([date, entries]) => {
+    // Sort scans chronologically; take at most 4 slots
+    entries.sort((a, b) => new Date(a.scan_time) - new Date(b.scan_time));
+    const [s1, s2, s3, s4] = entries;
+
+    // Positional slot assignment: AM-in, AM-out, PM-in, PM-out
+    const amInRaw  = s1?.scan_type === 'time_in'  ? new Date(s1.scan_time) : null;
+    const amOutRaw = s2?.scan_type === 'time_out' ? new Date(s2.scan_time) : null;
+    const pmInRaw  = s3?.scan_type === 'time_in'  ? new Date(s3.scan_time) : null;
+    const pmOutRaw = s4?.scan_type === 'time_out' ? new Date(s4.scan_time) : null;
+
+    // ── Time-floor rules (Manila clock) ─────────────────────────────────────
+    // AM Time In: any scan strictly before 08:00 MNL → register as 08:00 MNL
+    let effectiveAmIn = null;
+    if (amInRaw) {
+      const m = toMNLDate(amInRaw);
+      effectiveAmIn = m.getUTCHours() < 8
+        ? new Date(`${date}T08:00:00+08:00`)   // UTC = date T00:00:00Z
+        : amInRaw;
+    }
+
+    // PM Time In: scan at or before 13:00 MNL → register as 13:00 MNL (no grace)
+    let effectivePmIn = null;
+    if (pmInRaw) {
+      const m = toMNLDate(pmInRaw);
+      const h = m.getUTCHours(), min = m.getUTCMinutes();
+      effectivePmIn = (h < 13 || (h === 13 && min === 0))
+        ? new Date(`${date}T13:00:00+08:00`)   // UTC = date T05:00:00Z
+        : pmInRaw;
+    }
+
+    // PM Time Out: honored as-is (overtime counted)
+    const effectivePmOut = pmOutRaw;
+
+    // ── Total hours calculation ──────────────────────────────────────────────
+    // Manila noon anchor for AM session end
+    const noon = new Date(`${date}T12:00:00+08:00`); // UTC = date T04:00:00Z
+
+    let totalHours = 0;
+
+    if (effectiveAmIn && effectivePmIn && effectivePmOut) {
+      // Full day: AM session (effectiveAmIn → noon) + PM session (effectivePmIn → effectivePmOut)
+      const amSession = Math.max(0, (noon - effectiveAmIn) / 3600000);
+      const pmSession = Math.max(0, (effectivePmOut - effectivePmIn) / 3600000);
+      totalHours = amSession + pmSession;
+    } else if (effectiveAmIn && amOutRaw) {
+      // AM only (scan 1 + 2 present, no PM)
+      const amEnd = amOutRaw < noon ? amOutRaw : noon;
+      totalHours = Math.max(0, (amEnd - effectiveAmIn) / 3600000);
+    } else if (effectivePmIn && effectivePmOut) {
+      // PM only (rare edge case)
+      totalHours = Math.max(0, (effectivePmOut - effectivePmIn) / 3600000);
+    }
+
+    // ── Statuses ─────────────────────────────────────────────────────────────
+    const amStatus      = s1?.approval_status || 'pending';
+    const pmStatus      = s4?.approval_status || s3?.approval_status || 'pending';
+    const allStatuses   = entries.map(e => e.approval_status).filter(Boolean);
+    let overallStatus   = 'pending';
+    if (allStatuses.length && allStatuses.every(s => s === 'approved')) overallStatus = 'approved';
+    if (allStatuses.some(s => s === 'rejected')) overallStatus = 'rejected';
 
     return {
-      id: `${date}-${index}`,
       date,
-      time_in: inTime ? inTime.toISOString().slice(11, 16) : null,
-      time_out: outTime ? outTime.toISOString().slice(11, 16) : null,
-      total_hours: Number(totalHours.toFixed(1)),
-      approval_status: approvalStatus,
+      // Display times in Manila (HH:MM) — caps already applied
+      am_time_in:  mnlTimeStr(effectiveAmIn),
+      am_time_out: mnlTimeStr(amOutRaw),
+      pm_time_in:  mnlTimeStr(effectivePmIn),
+      pm_time_out: mnlTimeStr(effectivePmOut),
+      // Per-slot statuses
+      am_status:   amStatus,
+      pm_status:   pmStatus,
+      // Overall for the day
+      approval_status: overallStatus,
+      total_hours: Number(totalHours.toFixed(2)),
+      // Backward-compat fields used by MyDTR summary stats
+      time_in:  mnlTimeStr(effectiveAmIn),
+      time_out: mnlTimeStr(effectivePmOut),
     };
   }).sort((a, b) => b.date.localeCompare(a.date));
 }
+
 
 export async function getNotifications(userId, isAdmin) {
   let query = supabase

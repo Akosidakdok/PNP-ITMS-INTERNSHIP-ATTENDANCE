@@ -7,24 +7,50 @@ const MONTH_NAMES = [
 
 /**
  * Split a full name into { lastName, firstName, middleName }
- * Assumes format: "First [Middle] Last" or "Last, First Middle"
  * Best-effort: treats last word as last name, second-to-last as middle (if 3+ words)
  */
 function splitName(fullName = '') {
   const parts = fullName.trim().split(/\s+/);
   if (parts.length === 1) return { lastName: parts[0], firstName: '', middleName: '' };
   if (parts.length === 2) return { lastName: parts[1], firstName: parts[0], middleName: '' };
-  // 3+ words: first = parts[0], middle = parts[1..n-1] joined, last = parts[n-1]
-  const lastName = parts[parts.length - 1];
+  const lastName  = parts[parts.length - 1];
   const firstName = parts[0];
   const middleName = parts.slice(1, parts.length - 1).join(' ');
   return { lastName, firstName, middleName };
 }
 
-export default function DTRTable({ records, intern, month, year }) {
-  const daysInMonth = month && year ? getDaysInMonth(new Date(year, month - 1)) : 31;
+/** Color-coded approval status badge */
+function StatusBadge({ status, large = false }) {
+  if (!status) return <>&nbsp;</>;
 
-  // Build a lookup: day number → record
+  const map = {
+    approved: { bg: '#dcfce7', color: '#15803d', border: '1px solid #86efac', label: 'Approved' },
+    rejected: { bg: '#fee2e2', color: '#b91c1c', border: '1px solid #fca5a5', label: 'Rejected' },
+    pending:  { bg: '#fef9c3', color: '#854d0e', border: '1px solid #fde047', label: 'Pending'  },
+  };
+  const cfg = map[status] || map.pending;
+
+  return (
+    <span style={{
+      background: cfg.bg,
+      color: cfg.color,
+      border: cfg.border,
+      fontSize: large ? '10px' : '8px',
+      padding: large ? '2px 6px' : '1px 4px',
+      borderRadius: '4px',
+      display: 'inline-block',
+      whiteSpace: 'nowrap',
+      fontWeight: 'bold',
+    }}>
+      {cfg.label}
+    </span>
+  );
+}
+
+export default function DTRTable({ records, intern, month, year }) {
+  const daysInMonth = month && year ? getDaysInMonth(new Date(year, month - 1, 1)) : 31;
+
+  // Build lookup: Manila calendar day → record
   const recordsByDay = {};
   records.forEach(r => {
     try {
@@ -35,13 +61,20 @@ export default function DTRTable({ records, intern, month, year }) {
     } catch { /* skip malformed dates */ }
   });
 
-  // Compute totals from all records (not just approved) for display
+  // Totals from all records in month
   const totalMinutes = records.reduce((sum, r) => sum + Math.round((r.total_hours || 0) * 60), 0);
   const totalHrs = Math.floor(totalMinutes / 60);
   const totalMin = totalMinutes % 60;
 
+  // Overall status across all records
+  const allStatuses = records.map(r => r.approval_status).filter(Boolean);
+  let overallStatus = 'pending';
+  if (allStatuses.length && allStatuses.every(s => s === 'approved')) overallStatus = 'approved';
+  if (allStatuses.some(s => s === 'rejected')) overallStatus = 'rejected';
+
   const { lastName, firstName, middleName } = intern ? splitName(intern.full_name) : {};
 
+  // Times come from backend already in Manila HH:MM — just pretty-print them
   const formatTime = (timeStr) => {
     if (!timeStr) return '';
     try {
@@ -65,10 +98,10 @@ export default function DTRTable({ records, intern, month, year }) {
     >
       {/* ── HEADER ── */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
-        {/* Left logo placeholder */}
+        {/* PNP Logo — left */}
         <img
-          src="/pnp-seal.png"
-          alt="PNP Seal"
+          src="/PNP_LOGO.png"
+          alt="PNP Logo"
           style={{ width: '64px', height: '64px', objectFit: 'contain' }}
           onError={e => { e.target.style.display = 'none'; }}
         />
@@ -84,16 +117,16 @@ export default function DTRTable({ records, intern, month, year }) {
           <div style={{ fontSize: '10px' }}>Camp BGen Rafael T Crame, Quezon City</div>
         </div>
 
-        {/* Right logo placeholder */}
+        {/* ITMS Logo — right */}
         <img
-          src="/npc-seal.png"
-          alt="NPC Seal"
+          src="/ITMS_LOGO.png"
+          alt="ITMS Logo"
           style={{ width: '64px', height: '64px', objectFit: 'contain' }}
           onError={e => { e.target.style.display = 'none'; }}
         />
       </div>
 
-      <hr style={{ border: 'none', borderTop: '1.5px solid #000', margin: '4px 0' }} />
+      
 
       {/* ── TITLE ── */}
       <div style={{ textAlign: 'center', margin: '6px 0 4px' }}>
@@ -168,94 +201,96 @@ export default function DTRTable({ records, intern, month, year }) {
           </span>
         </div>
 
-        {/* Office — left blank for manual writing */}
+        {/* Office */}
         <div style={{ marginBottom: '6px' }}>
           <span style={{ fontWeight: 'bold' }}>Office: </span>
           <span style={{ borderBottom: '1px solid #000', minWidth: '340px', display: 'inline-block', paddingBottom: '1px' }}>
-            &nbsp;
+            {intern?.department_name || ''}
           </span>
         </div>
       </div>
 
       {/* ── ATTENDANCE TABLE ── */}
+      {/*
+        Columns: Date | AM Time In | AM Status | PM Time Out | PM Status | Total Hrs | Overall Status
+        Removed: AM Time Out, AM Sig(2), PM Time In, PM Sig(1)
+      */}
       <table style={{
         width: '100%',
         borderCollapse: 'collapse',
         fontSize: '10px',
         tableLayout: 'fixed',
       }}>
-        <colgroup
-          ><col style={{ width: '6%' }} />  {/* Date */}
-          {/* AM */
-          }<col style={{ width: '10%' }} /> {/* AM Time In */
-          }<col style={{ width: '7%' }} />  {/* AM Sig */
-          }<col style={{ width: '10%' }} /> {/* AM Time Out */
-          }<col style={{ width: '7%' }} />  {/* AM Sig */}
-          {/* PM */
-          }<col style={{ width: '10%' }} /> {/* PM Time In */
-          }<col style={{ width: '7%' }} />  {/* PM Sig */
-          }<col style={{ width: '10%' }} /> {/* PM Time Out */
-          }<col style={{ width: '7%' }} />  {/* PM Sig */
-          }<col style={{ width: '12%' }} /> {/* Total Hrs */
-          }<col style={{ width: '14%' }} /> {/* Sig of Supervisor */}
+        <colgroup>
+          <col style={{ width: '12%' }} /> {/* Date */}
+          <col style={{ width: '12%' }} /> {/* AM Time In */}
+          <col style={{ width: '13%' }} /> {/* AM Status */}
+          <col style={{ width: '12%' }} /> {/* PM Time Out */}
+          <col style={{ width: '13%' }} /> {/* PM Status */}
+          <col style={{ width: '11%' }} /> {/* Total Hrs */}
+          <col style={{ width: '27%' }} /> {/* Overall Status */}
         </colgroup>
         <thead>
-          {/* Group headers: AM and PM */}
+          {/* Group headers */}
           <tr>
             <th rowSpan={2} style={thStyle({ borderRight: '1px solid #000' })}>Date</th>
-            <th colSpan={4} style={thStyle({ backgroundColor: '#cce5ff', borderRight: '1px solid #000' })}>AM</th>
-            <th colSpan={4} style={thStyle({ backgroundColor: '#ffdde1', borderRight: '1px solid #000' })}>PM</th>
-            <th rowSpan={2} style={thStyle({ borderRight: '1px solid #000' })}>Total{'\n'}Hrs.</th>
-            <th rowSpan={2} style={thStyle({})}>Sig. of{'\n'}Supervisor</th>
+            <th colSpan={2} style={thStyle({ backgroundColor: '#cce5ff', borderRight: '1px solid #000' })}>AM</th>
+            <th colSpan={2} style={thStyle({ backgroundColor: '#ffdde1', borderRight: '1px solid #000' })}>PM</th>
+            <th rowSpan={2} style={thStyle({ borderRight: '1px solid #000' })}>{'Total\nHrs.'}</th>
+            <th rowSpan={2} style={thStyle({})}>Overall{'\n'}Status</th>
           </tr>
           <tr>
             {/* AM sub-headers */}
             <th style={thStyle({ backgroundColor: '#cce5ff' })}>Time In</th>
-            <th style={thStyle({ backgroundColor: '#cce5ff' })}>Sig.</th>
-            <th style={thStyle({ backgroundColor: '#cce5ff' })}>Time Out</th>
-            <th style={thStyle({ backgroundColor: '#cce5ff', borderRight: '1px solid #000' })}>Sig.</th>
+            <th style={thStyle({ backgroundColor: '#cce5ff', borderRight: '1px solid #000' })}>Status</th>
             {/* PM sub-headers */}
-            <th style={thStyle({ backgroundColor: '#ffdde1' })}>Time In</th>
-            <th style={thStyle({ backgroundColor: '#ffdde1' })}>Sig.</th>
             <th style={thStyle({ backgroundColor: '#ffdde1' })}>Time Out</th>
-            <th style={thStyle({ backgroundColor: '#ffdde1', borderRight: '1px solid #000' })}>Sig.</th>
+            <th style={thStyle({ backgroundColor: '#ffdde1', borderRight: '1px solid #000' })}>Status</th>
           </tr>
         </thead>
         <tbody>
           {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(day => {
             const rec = recordsByDay[day];
-            const rowHeight = '18px';
             return (
               <tr key={day}>
-                <td style={tdStyle({ textAlign: 'center', fontWeight: '600', borderRight: '1px solid #000', height: rowHeight })}>
-                  {day}
+                {/* Date formatted as MM/DD/YYYY */}
+                <td style={tdStyle({ textAlign: 'center', fontWeight: '600', borderRight: '1px solid #000', height: '18px', fontSize: '9px' })}>
+                  {`${String(month).padStart(2, '0')}/${String(day).padStart(2, '0')}/${year}`}
                 </td>
-                {/* AM Time In */}
+
+                {/* AM Time In (capped: early scans show as 8:00 AM) */}
                 <td style={tdStyle({ backgroundColor: '#e8f4ff', textAlign: 'center', fontSize: '9px' })}>
-                  {rec ? formatTime(rec.time_in) : ''}
+                  {rec ? formatTime(rec.am_time_in) : ''}
                 </td>
-                {/* AM Sig */}
-                <td style={tdStyle({ backgroundColor: '#e8f4ff' })}>&nbsp;</td>
-                {/* AM Time Out — blank (time_out shown in PM) */}
-                <td style={tdStyle({ backgroundColor: '#e8f4ff', textAlign: 'center', fontSize: '9px' })}>&nbsp;</td>
-                {/* AM Sig */}
-                <td style={tdStyle({ backgroundColor: '#e8f4ff', borderRight: '1px solid #000' })}>&nbsp;</td>
-                {/* PM Time In — blank */}
-                <td style={tdStyle({ backgroundColor: '#ffe8eb', textAlign: 'center', fontSize: '9px' })}>&nbsp;</td>
-                {/* PM Sig */}
-                <td style={tdStyle({ backgroundColor: '#ffe8eb' })}>&nbsp;</td>
-                {/* PM Time Out */}
+
+                {/* AM Status */}
+                <td style={tdStyle({ backgroundColor: '#e8f4ff', textAlign: 'center', borderRight: '1px solid #000' })}>
+                  {rec?.am_time_in ? <StatusBadge status={rec.am_status} /> : <>&nbsp;</>}
+                </td>
+
+                {/* Time Out — shows PM Time Out; falls back to AM Time Out if intern left during AM */}
                 <td style={tdStyle({ backgroundColor: '#ffe8eb', textAlign: 'center', fontSize: '9px' })}>
-                  {rec ? formatTime(rec.time_out) : ''}
+                  {rec ? formatTime(rec.pm_time_out || rec.am_time_out) : ''}
                 </td>
-                {/* PM Sig */}
-                <td style={tdStyle({ backgroundColor: '#ffe8eb', borderRight: '1px solid #000' })}>&nbsp;</td>
+
+                {/* Time Out Status — uses PM status when PM exists, AM status otherwise */}
+                <td style={tdStyle({ backgroundColor: '#ffe8eb', textAlign: 'center', borderRight: '1px solid #000' })}>
+                  {rec?.pm_time_out
+                    ? <StatusBadge status={rec.pm_status} />
+                    : rec?.am_time_out
+                      ? <StatusBadge status={rec.am_status} />
+                      : <>&nbsp;</>}
+                </td>
+
                 {/* Total Hrs */}
                 <td style={tdStyle({ textAlign: 'center', borderRight: '1px solid #000', fontSize: '9px' })}>
                   {rec && rec.total_hours ? rec.total_hours.toFixed(2) : ''}
                 </td>
-                {/* Sig of Supervisor */}
-                <td style={tdStyle({})}>&nbsp;</td>
+
+                {/* Overall Status for the day */}
+                <td style={tdStyle({ textAlign: 'center' })}>
+                  {rec ? <StatusBadge status={rec.approval_status} /> : <>&nbsp;</>}
+                </td>
               </tr>
             );
           })}
@@ -275,7 +310,7 @@ export default function DTRTable({ records, intern, month, year }) {
         &nbsp;min.
       </div>
 
-      {/* ── SIGNATURE BLOCK ── */}
+      {/* ── SIGNATURE + OVERALL STATUS BLOCK ── */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '40px', marginTop: '32px', fontSize: '10px' }}>
         {/* Trainee */}
         <div style={{ textAlign: 'center' }}>
@@ -290,6 +325,7 @@ export default function DTRTable({ records, intern, month, year }) {
             </div>
           </div>
         </div>
+
         {/* Supervisor */}
         <div style={{ textAlign: 'center' }}>
           <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '12px' }}>

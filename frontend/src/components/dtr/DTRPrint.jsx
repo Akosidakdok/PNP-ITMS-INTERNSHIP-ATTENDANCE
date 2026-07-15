@@ -28,22 +28,29 @@ export default function DTRPrint({ records, intern, month, year }) {
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
 
-      // If content is taller than one A4 page, add additional pages
       const pageHeight = pdf.internal.pageSize.getHeight();
-      if (pdfHeight <= pageHeight) {
-        pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+      
+      const canvasRatio = canvas.width / canvas.height;
+      const pdfRatio = pdfWidth / pageHeight;
+
+      let finalWidth = pdfWidth;
+      let finalHeight = pageHeight;
+      let x = 0;
+      let y = 0;
+
+      if (canvasRatio > pdfRatio) {
+        // limited by width
+        finalWidth = pdfWidth;
+        finalHeight = pdfWidth / canvasRatio;
+        y = (pageHeight - finalHeight) / 2;
       } else {
-        let position = 0;
-        let remainingHeight = pdfHeight;
-        let firstPage = true;
-        while (remainingHeight > 0) {
-          if (!firstPage) pdf.addPage();
-          pdf.addImage(imgData, 'PNG', 0, -position, pdfWidth, pdfHeight);
-          position += pageHeight;
-          remainingHeight -= pageHeight;
-          firstPage = false;
-        }
+        // limited by height
+        finalHeight = pageHeight;
+        finalWidth = pageHeight * canvasRatio;
+        x = (pdfWidth - finalWidth) / 2;
       }
+
+      pdf.addImage(imgData, 'PNG', x, y, finalWidth, finalHeight);
 
       const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
       const fname = intern
