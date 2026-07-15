@@ -24,7 +24,21 @@ import MyDocuments from './pages/intern/MyDocuments.jsx';
 import MyEvaluation from './pages/intern/MyEvaluation.jsx';
 import Profile from './pages/Profile.jsx';
 
-function ProtectedRoute({ children, role }) {
+function isAdminLike(role) {
+  return role === 'admin' || role === 'supervisor';
+}
+
+function getHomePath(role) {
+  if (isAdminLike(role)) return '/admin';
+  return '/intern';
+}
+
+function PerformanceEvalWrapper() {
+  const { user } = useAuth();
+  return <PerformanceEval readOnly={user?.role === 'supervisor'} />;
+}
+
+function ProtectedRoute({ children, roles }) {
   const { user, loading } = useAuth();
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #001240 0%, #003087 100%)' }}>
@@ -35,7 +49,7 @@ function ProtectedRoute({ children, role }) {
     </div>
   );
   if (!user) return <Navigate to="/login" replace />;
-  if (role && user.role !== role) return <Navigate to={user.role === 'admin' ? '/admin' : '/intern'} replace />;
+  if (roles && !roles.includes(user.role)) return <Navigate to={getHomePath(user.role)} replace />;
   return children;
 }
 
@@ -43,22 +57,22 @@ function AppRoutes() {
   const { user } = useAuth();
   return (
     <Routes>
-      <Route path="/login" element={user ? <Navigate to={user.role === 'admin' ? '/admin' : '/intern'} replace /> : <Login />} />
+      <Route path="/login" element={user ? <Navigate to={getHomePath(user.role)} replace /> : <Login />} />
 
-      {/* Admin Routes */}
-      <Route path="/admin" element={<ProtectedRoute role="admin"><Layout /></ProtectedRoute>}>
+      {/* Admin & Supervisor Routes */}
+      <Route path="/admin" element={<ProtectedRoute roles={['admin', 'supervisor']}><Layout /></ProtectedRoute>}>
         <Route index element={<AdminDashboard />} />
         <Route path="interns" element={<InternManagement />} />
         <Route path="attendance" element={<AttendanceApproval />} />
         <Route path="documents" element={<DocumentReview />} />
-        <Route path="evaluations" element={<PerformanceEval />} />
+        <Route path="evaluations" element={<PerformanceEvalWrapper />} />
         <Route path="departments" element={<Departments />} />
         <Route path="reports" element={<Reports />} />
         <Route path="profile" element={<Profile role="admin" />} />
       </Route>
 
       {/* Intern Routes */}
-      <Route path="/intern" element={<ProtectedRoute role="intern"><Layout /></ProtectedRoute>}>
+      <Route path="/intern" element={<ProtectedRoute roles={['intern']}><Layout /></ProtectedRoute>}>
         <Route index element={<InternDashboard />} />
         <Route path="scan" element={<ScanAttendance />} />
         <Route path="dtr" element={<MyDTR />} />
@@ -67,7 +81,7 @@ function AppRoutes() {
         <Route path="profile" element={<Profile role="intern" />} />
       </Route>
 
-      <Route path="/" element={user ? <Navigate to={user.role === 'admin' ? '/admin' : '/intern'} replace /> : <Navigate to="/login" replace />} />
+      <Route path="/" element={user ? <Navigate to={getHomePath(user.role)} replace /> : <Navigate to="/login" replace />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

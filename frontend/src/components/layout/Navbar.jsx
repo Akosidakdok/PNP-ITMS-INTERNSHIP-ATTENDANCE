@@ -133,7 +133,7 @@ export default function Navbar({ onMenuClick }) {
         </div>
 
         {/* User avatar */}
-        <Link to={`/${user?.role}/profile`} className="flex items-center gap-2 ml-1 pl-3 border-l border-gray-200 hover:opacity-85 transition-opacity cursor-pointer no-underline text-inherit">
+        <Link to={`/${(user?.role === 'admin' || user?.role === 'supervisor') ? 'admin' : user?.role}/profile`} className="flex items-center gap-2 ml-1 pl-3 border-l border-gray-200 hover:opacity-85 transition-opacity cursor-pointer no-underline text-inherit">
           <div className="avatar-placeholder w-8 h-8 text-xs">{initials}</div>
           <div className="hidden md:block text-right">
             <p className="text-sm font-semibold text-gray-800 leading-tight">{user?.full_name || user?.username}</p>

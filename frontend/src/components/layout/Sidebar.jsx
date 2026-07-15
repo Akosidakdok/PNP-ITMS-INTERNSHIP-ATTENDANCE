@@ -26,10 +26,19 @@ const internNav = [
   { to: '/intern/profile', icon: User, label: 'My Profile' },
 ];
 
+const supervisorNav = [
+  { to: '/admin', icon: LayoutDashboard, label: 'Dashboard', end: true },
+  { to: '/admin/attendance', icon: CalendarCheck, label: 'Attendance' },
+  { to: '/admin/documents', icon: FileText, label: 'Documents' },
+  { to: '/admin/evaluations', icon: Star, label: 'Evaluations' },
+  { to: '/admin/reports', icon: BarChart3, label: 'Reports' },
+  { to: '/admin/profile', icon: User, label: 'My Profile' },
+];
+
 export default function Sidebar({ isOpen, onClose }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
-  const navItems = user?.role === 'admin' ? adminNav : internNav;
+  const navItems = user?.role === 'admin' ? adminNav : user?.role === 'supervisor' ? supervisorNav : internNav;
 
   const handleLogout = async () => {
     await logout();
@@ -81,7 +90,7 @@ export default function Sidebar({ isOpen, onClose }) {
         {/* Navigation */}
         <nav className="flex-1 py-2 overflow-y-auto">
           <p className="text-blue-400 text-xs font-bold uppercase tracking-widest px-4 mb-2">
-            {user?.role === 'admin' ? 'Administration' : 'My Internship'}
+            {user?.role === 'admin' ? 'Administration' : user?.role === 'supervisor' ? 'Supervision' : 'My Internship'}
           </p>
           {navItems.map(({ to, icon: Icon, label, end }) => (
             <NavLink

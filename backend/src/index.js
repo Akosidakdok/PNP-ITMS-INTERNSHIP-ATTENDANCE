@@ -3,7 +3,7 @@ import cors from 'cors';
 import multer from 'multer';
 import { loginUser } from './auth.js';
 import { getActiveQrCode, regenerateQrCode, scanAttendance, getTodayScanStatus } from './attendance.js';
-import { authMiddleware, adminMiddleware } from './middleware.js';
+import { authMiddleware, adminMiddleware, adminOnlyMiddleware } from './middleware.js';
 import {
   getAdminDashboardStats,
   getDepartments,
@@ -251,7 +251,7 @@ app.get('/dtr', authMiddleware, async (req, res) => {
 
 app.get('/notifications', authMiddleware, async (req, res) => {
   try {
-    const notifications = await getNotifications(req.user.id, req.user.role === 'admin');
+    const notifications = await getNotifications(req.user.id, req.user.role === 'admin' || req.user.role === 'supervisor');
     return res.json(notifications);
   } catch (error) {
     return res.status(500).json({ error: error.message });
@@ -260,7 +260,7 @@ app.get('/notifications', authMiddleware, async (req, res) => {
 
 app.patch('/notifications/:id/read', authMiddleware, async (req, res) => {
   try {
-    const result = await markNotificationRead(Number(req.params.id), req.user.id, req.user.role === 'admin');
+    const result = await markNotificationRead(Number(req.params.id), req.user.id, req.user.role === 'admin' || req.user.role === 'supervisor');
     return res.json(result);
   } catch (error) {
     return res.status(500).json({ error: error.message });
@@ -269,7 +269,7 @@ app.patch('/notifications/:id/read', authMiddleware, async (req, res) => {
 
 app.patch('/notifications/read-all', authMiddleware, async (req, res) => {
   try {
-    const result = await markAllNotificationsRead(req.user.id, req.user.role === 'admin');
+    const result = await markAllNotificationsRead(req.user.id, req.user.role === 'admin' || req.user.role === 'supervisor');
     return res.json(result);
   } catch (error) {
     return res.status(500).json({ error: error.message });
@@ -278,14 +278,14 @@ app.patch('/notifications/read-all', authMiddleware, async (req, res) => {
 
 app.get('/evaluations', authMiddleware, async (req, res) => {
   try {
-    const evaluations = await getEvaluations(req.user.id, req.user.role === 'admin');
+    const evaluations = await getEvaluations(req.user.id, req.user.role === 'admin' || req.user.role === 'supervisor');
     return res.json({ evaluations });
   } catch (error) {
     return res.status(500).json({ error: error.message });
   }
 });
 
-app.post('/evaluations', authMiddleware, adminMiddleware, async (req, res) => {
+app.post('/evaluations', authMiddleware, adminOnlyMiddleware, async (req, res) => {
   try {
     const evaluation = await createEvaluation(req.body, req.user.id, req.user.full_name || req.user.username);
     return res.json({ evaluation });
@@ -294,7 +294,7 @@ app.post('/evaluations', authMiddleware, adminMiddleware, async (req, res) => {
   }
 });
 
-app.put('/evaluations/:id', authMiddleware, adminMiddleware, async (req, res) => {
+app.put('/evaluations/:id', authMiddleware, adminOnlyMiddleware, async (req, res) => {
   try {
     const evaluation = await updateEvaluation(Number(req.params.id), req.body);
     return res.json({ evaluation });
@@ -305,7 +305,7 @@ app.put('/evaluations/:id', authMiddleware, adminMiddleware, async (req, res) =>
 
 app.get('/documents', authMiddleware, async (req, res) => {
   try {
-    const documents = await getDocuments(req.user.id, req.user.role === 'admin', req.query.status);
+    const documents = await getDocuments(req.user.id, req.user.role === 'admin' || req.user.role === 'supervisor', req.query.status);
     return res.json({ documents });
   } catch (error) {
     return res.status(500).json({ error: error.message });
@@ -337,7 +337,7 @@ app.patch('/documents/:id/status', authMiddleware, adminMiddleware, async (req, 
 
 app.delete('/documents/:id', authMiddleware, async (req, res) => {
   try {
-    const result = await deleteDocument(Number(req.params.id), req.user.id, req.user.role === 'admin');
+    const result = await deleteDocument(Number(req.params.id), req.user.id, req.user.role === 'admin' || req.user.role === 'supervisor');
     return res.json(result);
   } catch (error) {
     return res.status(500).json({ error: error.message });

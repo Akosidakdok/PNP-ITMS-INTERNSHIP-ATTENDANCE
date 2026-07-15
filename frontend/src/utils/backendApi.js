@@ -1,9 +1,7 @@
 import axios from 'axios';
 
-// Determine the base URL for the API.
-// During development, it will use the VITE_BACKEND_URL from your .env file.
-// In a production build, it defaults to the same origin, which is common for deployments.
-const API_BASE_URL = import.meta.env.VITE_BACKEND_URL || window.location.origin;
+const rawBaseUrl = import.meta.env.VITE_BACKEND_URL || window.location.origin;
+const API_BASE_URL = rawBaseUrl.endsWith('/') ? rawBaseUrl.slice(0, -1) : rawBaseUrl;
 
 const backendApi = axios.create({
   baseURL: API_BASE_URL,

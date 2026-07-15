@@ -26,6 +26,11 @@ export function AuthProvider({ children }) {
     const uname = String(username || '').trim().toLowerCase();
     const pwd = String(password || '').trim();
     const { data } = await backendApi.post('/auth/login', { username: uname, password: pwd });
+
+    if (!data?.token) {
+      throw new Error(data?.error || 'Login response was missing a token');
+    }
+
     localStorage.setItem('pnp_token', data.token);
     setUser(data.user);
     return data.user;

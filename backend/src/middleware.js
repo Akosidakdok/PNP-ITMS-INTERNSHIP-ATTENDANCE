@@ -22,8 +22,15 @@ export function authMiddleware(req, res, next) {
 }
 
 export function adminMiddleware(req, res, next) {
+  if (!req.user || (req.user.role !== 'admin' && req.user.role !== 'supervisor')) {
+    return res.status(403).json({ error: 'Admin or Supervisor access required' });
+  }
+  return next();
+}
+
+export function adminOnlyMiddleware(req, res, next) {
   if (!req.user || req.user.role !== 'admin') {
-    return res.status(403).json({ error: 'Admin access required' });
+    return res.status(403).json({ error: 'Admin-only access required' });
   }
   return next();
 }
