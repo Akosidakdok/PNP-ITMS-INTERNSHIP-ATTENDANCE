@@ -15,6 +15,7 @@ import DocumentReview from './pages/admin/DocumentReview.jsx';
 import PerformanceEval from './pages/admin/PerformanceEval.jsx';
 import Departments from './pages/admin/Departments.jsx';
 import Reports from './pages/admin/Reports.jsx';
+import AdminCalendar from './pages/admin/Calendar.jsx';
 
 // Intern pages
 import InternDashboard from './pages/intern/InternDashboard.jsx';
@@ -23,6 +24,7 @@ import MyDTR from './pages/intern/MyDTR.jsx';
 import MyDocuments from './pages/intern/MyDocuments.jsx';
 import MyEvaluation from './pages/intern/MyEvaluation.jsx';
 import Profile from './pages/Profile.jsx';
+import InternCalendar from './pages/intern/Calendar.jsx';
 
 function isAdminLike(role) {
   return role === 'admin' || role === 'supervisor';
@@ -67,6 +69,7 @@ function AppRoutes() {
         <Route path="documents" element={<DocumentReview />} />
         <Route path="evaluations" element={<PerformanceEvalWrapper />} />
         <Route path="departments" element={<Departments />} />
+        <Route path="calendar" element={<AdminCalendar />} />
         <Route path="reports" element={<Reports />} />
         <Route path="profile" element={<Profile role="admin" />} />
       </Route>
@@ -78,6 +81,7 @@ function AppRoutes() {
         <Route path="dtr" element={<MyDTR />} />
         <Route path="documents" element={<MyDocuments />} />
         <Route path="evaluation" element={<MyEvaluation />} />
+        <Route path="calendar" element={<InternCalendar />} />
         <Route path="profile" element={<Profile role="intern" />} />
       </Route>
 

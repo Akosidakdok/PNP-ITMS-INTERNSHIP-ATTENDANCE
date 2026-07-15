@@ -33,6 +33,10 @@ import {
   createDocument,
   updateDocumentStatus,
   deleteDocument,
+  getCalendarEvents,
+  createCalendarEvent,
+  updateCalendarEvent,
+  deleteCalendarEvent,
 } from './data.js';
 
 const app = express();
@@ -45,6 +49,13 @@ const upload = multer({ storage: storage });
 
 app.use(cors());
 app.use(express.json());
+
+app.use((req, res, next) => {
+  if (req.url.startsWith('/api')) {
+    req.url = req.url.replace(/^\/api/, '');
+  }
+  next();
+});
 
 app.post('/auth/login', async (req, res) => {
   const { username, password } = req.body;
@@ -343,6 +354,46 @@ app.patch('/documents/:id/status', authMiddleware, adminMiddleware, async (req, 
 app.delete('/documents/:id', authMiddleware, async (req, res) => {
   try {
     const result = await deleteDocument(Number(req.params.id), req.user.id, req.user.role === 'admin' || req.user.role === 'supervisor');
+    return res.json(result);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/calendar-events', authMiddleware, async (req, res) => {
+  const { year, month } = req.query;
+  if (!year || !month) {
+    return res.status(400).json({ error: 'Year and month query parameters are required' });
+  }
+  try {
+    const events = await getCalendarEvents({ year: Number(year), month: Number(month) });
+    return res.json({ events });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/calendar-events', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const event = await createCalendarEvent(req.body, req.user.id);
+    return res.status(201).json({ event });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/calendar-events/:id', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const event = await updateCalendarEvent(Number(req.params.id), req.body);
+    return res.json({ event });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/calendar-events/:id', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const result = await deleteCalendarEvent(Number(req.params.id));
     return res.json(result);
   } catch (error) {
     return res.status(500).json({ error: error.message });
