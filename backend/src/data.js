@@ -149,18 +149,17 @@ export async function findSchoolById(id) {
   return data;
 }
 
-export async function getInterns({ search, page = 1, limit = 10, department_id, school_id } = {}) {
+export async function getInterns({ search, page = 1, limit = 10, department_id, school_id, status, sortBy = 'full_name', sortOrder = 'asc' } = {}) {
   let query = supabase
     .from('accounts')
     .select(
       'id, username, full_name, email, role, school, school_id, course, department_id, department_name, status, start_date, end_date, required_hours, rendered_hours, student_id, year_level, phone, home_address, emergency_name, emergency_relation, emergency_phone',
       { count: 'exact' }
     )
-    .eq('role', INTERN_ROLE)
-    .order('full_name', { ascending: true });
+    .eq('role', INTERN_ROLE);
 
   if (search) {
-    query = query.or(`full_name.ilike.%${search}%,username.ilike.%${search}%,email.ilike.%${search}%`);
+    query = query.or(`full_name.ilike.%${search}%,username.ilike.%${search}%,email.ilike.%${search}%,school.ilike.%${search}%,department_name.ilike.%${search}%`);
   }
 
   if (department_id) {
@@ -169,6 +168,25 @@ export async function getInterns({ search, page = 1, limit = 10, department_id, 
 
   if (school_id) {
     query = query.eq('school_id', school_id);
+  }
+
+  if (status) {
+    if (status === 'active') {
+      query = query.neq('status', 'archived');
+    } else {
+      query = query.eq('status', status);
+    }
+  } else {
+    query = query.neq('status', 'archived');
+  }
+
+  const isAscending = sortOrder === 'asc';
+  if (sortBy === 'department') {
+    query = query.order('department_name', { ascending: isAscending });
+  } else if (sortBy === 'school') {
+    query = query.order('school', { ascending: isAscending });
+  } else {
+    query = query.order(sortBy || 'full_name', { ascending: isAscending });
   }
 
   const from = (page - 1) * limit;
@@ -330,10 +348,10 @@ export async function changePassword(userId, currentPassword, newPassword) {
   return { success: true };
 }
 
-export async function getAttendanceLogs({ status, date, page = 1, limit = 15 } = {}) {
+export async function getAttendanceLogs({ status, date, page = 1, limit = 15, department_id } = {}) {
   let query = supabase
     .from('attendance_logs')
-    .select('*', { count: 'exact' })
+    .select('*, attendance_photos(photo)', { count: 'exact' })
     .order('scan_time', { ascending: false });
 
   if (status) {
@@ -346,6 +364,16 @@ export async function getAttendanceLogs({ status, date, page = 1, limit = 15 } =
     const end = new Date(date);
     end.setHours(23, 59, 59, 999);
     query = query.gte('scan_time', start.toISOString()).lte('scan_time', end.toISOString());
+  }
+
+  if (department_id) {
+    // Get intern IDs for this department
+    const { data: accounts } = await supabase.from('accounts').select('id').eq('department_id', department_id).eq('role', 'intern');
+    const internIds = accounts ? accounts.map(a => a.id) : [];
+    if (internIds.length === 0) {
+      return { logs: [], total: 0 };
+    }
+    query = query.in('intern_id', internIds);
   }
 
   const from = (page - 1) * limit;
@@ -371,8 +399,10 @@ export async function getAttendanceLogs({ status, date, page = 1, limit = 15 } =
 
   const mappedData = (data || []).map(log => {
     const accObj = accountsMap[log.intern_id];
+    const photo = log.attendance_photos?.[0]?.photo || null;
     return {
       ...log,
+      photo,
       full_name: accObj?.full_name || log.intern_name,
       department_name: accObj?.department_name
     };
@@ -496,8 +526,34 @@ export async function getSupervisorDashboardStats(user) {
   let pendingAttendanceCount = 0;
   let pendingDocumentsCount = 0;
   let recentAttendance = [];
+  let presentToday = 0;
+  let approvedToday = 0;
 
   if (departmentInternIds.length > 0) {
+    const today = new Date();
+    const start = new Date(today);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(today);
+    end.setHours(23, 59, 59, 999);
+
+    // Get today's attendance logs for the department's interns
+    const { data: todayLogsData, error: todayLogsError } = await supabase
+      .from('attendance_logs')
+      .select('id, intern_id, scan_time, approval_status')
+      .in('intern_id', departmentInternIds)
+      .gte('scan_time', start.toISOString())
+      .lte('scan_time', end.toISOString());
+    
+    if (todayLogsError) throw todayLogsError;
+    const todayLogs = todayLogsData || [];
+    
+    const presentSet = new Set(todayLogs
+      .filter((log) => log.approval_status !== 'rejected')
+      .map((log) => log.intern_id));
+      
+    presentToday = presentSet.size;
+    approvedToday = todayLogs.filter((log) => log.approval_status === 'approved').length;
+
     // Get pending attendance logs for the department's interns
     const { count: pendingLogsCount, error: pendingLogsError } = await supabase
       .from('attendance_logs')
@@ -530,14 +586,39 @@ export async function getSupervisorDashboardStats(user) {
     recentAttendance = recentLogs || [];
   }
 
+  let accountsMap = {};
+  if (departmentInternIds.length > 0) {
+    const { data: accounts, error: accountsError } = await supabase
+      .from('accounts')
+      .select('id, full_name, department_name')
+      .in('id', departmentInternIds);
+    if (!accountsError && accounts) {
+      accountsMap = accounts.reduce((acc, accObj) => {
+        acc[accObj.id] = accObj;
+        return acc;
+      }, {});
+    }
+  }
+
+  const mappedRecent = (recentAttendance || []).map(log => {
+    const accObj = accountsMap[log.intern_id];
+    return {
+      ...log,
+      full_name: accObj?.full_name || log.intern_name,
+      department_name: accObj?.department_name
+    };
+  });
+
   return {
     stats: {
       total_interns: departmentInternIds.length,
+      present_today: presentToday,
       pending_attendance: pendingAttendanceCount,
+      approved_today: approvedToday,
       pending_documents: pendingDocumentsCount,
       department_name: user.department_name || 'Your Department',
     },
-    recentAttendance,
+    recentAttendance: mappedRecent,
     departmentInterns: departmentInterns || [],
   };
 }
@@ -831,7 +912,7 @@ export async function markAllNotificationsRead(userId, isAdmin) {
   return { success: true };
 }
 
-export async function getEvaluations(userId, isAdmin) {
+export async function getEvaluations(userId, isAdmin, department_id = null) {
   let query = supabase
     .from('evaluations')
     .select('*')
@@ -839,6 +920,15 @@ export async function getEvaluations(userId, isAdmin) {
 
   if (!isAdmin) {
     query = query.eq('intern_id', userId);
+  }
+
+  if (department_id) {
+    const { data: accounts } = await supabase.from('accounts').select('id').eq('department_id', department_id).eq('role', 'intern');
+    const internIds = accounts ? accounts.map(a => a.id) : [];
+    if (internIds.length === 0) {
+      return [];
+    }
+    query = query.in('intern_id', internIds);
   }
 
   const { data, error } = await query;
@@ -897,13 +987,13 @@ export async function updateEvaluation(id, payload) {
   return data;
 }
 
-export async function getDocuments(userId, isAdmin, { status, search } = {}) {
+export async function getDocuments(userId, isAdmin, { status, search, department_id } = {}) {
   let query = supabase
     .from('documents')
     // Select all columns from documents, and the full_name from the joined accounts table
     .select(`
       *,
-      account:accounts(full_name)
+      account:accounts!inner(full_name, department_id)
     `)
     .order('upload_date', { ascending: false });
 
@@ -911,8 +1001,26 @@ export async function getDocuments(userId, isAdmin, { status, search } = {}) {
     query = query.eq('intern_id', userId);
   }
 
+  if (department_id) {
+    query = query.eq('account.department_id', department_id);
+  }
+
   if (status) {
     query = query.eq('status', status);
+  }
+
+  if (department_id) {
+    const { data: interns } = await supabase
+      .from('accounts')
+      .select('id')
+      .eq('role', 'intern')
+      .eq('department_id', department_id);
+    const internIds = (interns || []).map(i => i.id);
+    if (internIds.length > 0) {
+      query = query.in('intern_id', internIds);
+    } else {
+      query = query.in('intern_id', [-1]);
+    }
   }
 
   // Add search capability for document name and type.
