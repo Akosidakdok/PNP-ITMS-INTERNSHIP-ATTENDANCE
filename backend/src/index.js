@@ -292,11 +292,12 @@ app.get('/interns', authMiddleware, adminMiddleware, async (req, res) => {
       search: req.query.search,
       page: Number(req.query.page) || 1,
       limit: Number(req.query.limit) || 10,
-      department_id: departmentId,
+      department_id: deptId,
       school_id: req.query.school_id ? Number(req.query.school_id) : undefined
     });
     return res.json(result);
   } catch (error) {
+    console.error('Error in GET /interns:', error);
     return res.status(500).json({ error: error.message });
   }
 });
@@ -563,6 +564,7 @@ app.get('/evaluations', authMiddleware, async (req, res) => {
     const evaluations = await getEvaluations(req.user.id, req.user.role === 'admin' || req.user.role === 'supervisor', deptId);
     return res.json({ evaluations });
   } catch (error) {
+    console.error('Error in GET /evaluations:', error);
     return res.status(500).json({ error: error.message });
   }
 });
