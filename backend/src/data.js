@@ -367,17 +367,13 @@ export async function getAttendanceLogs({ status, date, page = 1, limit = 15, de
   }
 
   if (department_id) {
-    const { data: interns } = await supabase
-      .from('accounts')
-      .select('id')
-      .eq('role', 'intern')
-      .eq('department_id', department_id);
-    const internIds = (interns || []).map(i => i.id);
-    if (internIds.length > 0) {
-      query = query.in('intern_id', internIds);
-    } else {
-      query = query.in('intern_id', [-1]);
+    // Get intern IDs for this department
+    const { data: accounts } = await supabase.from('accounts').select('id').eq('department_id', department_id).eq('role', 'intern');
+    const internIds = accounts ? accounts.map(a => a.id) : [];
+    if (internIds.length === 0) {
+      return { logs: [], total: 0 };
     }
+    query = query.in('intern_id', internIds);
   }
 
   const from = (page - 1) * limit;
@@ -530,8 +526,34 @@ export async function getSupervisorDashboardStats(user) {
   let pendingAttendanceCount = 0;
   let pendingDocumentsCount = 0;
   let recentAttendance = [];
+  let presentToday = 0;
+  let approvedToday = 0;
 
   if (departmentInternIds.length > 0) {
+    const today = new Date();
+    const start = new Date(today);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(today);
+    end.setHours(23, 59, 59, 999);
+
+    // Get today's attendance logs for the department's interns
+    const { data: todayLogsData, error: todayLogsError } = await supabase
+      .from('attendance_logs')
+      .select('id, intern_id, scan_time, approval_status')
+      .in('intern_id', departmentInternIds)
+      .gte('scan_time', start.toISOString())
+      .lte('scan_time', end.toISOString());
+    
+    if (todayLogsError) throw todayLogsError;
+    const todayLogs = todayLogsData || [];
+    
+    const presentSet = new Set(todayLogs
+      .filter((log) => log.approval_status !== 'rejected')
+      .map((log) => log.intern_id));
+      
+    presentToday = presentSet.size;
+    approvedToday = todayLogs.filter((log) => log.approval_status === 'approved').length;
+
     // Get pending attendance logs for the department's interns
     const { count: pendingLogsCount, error: pendingLogsError } = await supabase
       .from('attendance_logs')
@@ -564,14 +586,39 @@ export async function getSupervisorDashboardStats(user) {
     recentAttendance = recentLogs || [];
   }
 
+  let accountsMap = {};
+  if (departmentInternIds.length > 0) {
+    const { data: accounts, error: accountsError } = await supabase
+      .from('accounts')
+      .select('id, full_name, department_name')
+      .in('id', departmentInternIds);
+    if (!accountsError && accounts) {
+      accountsMap = accounts.reduce((acc, accObj) => {
+        acc[accObj.id] = accObj;
+        return acc;
+      }, {});
+    }
+  }
+
+  const mappedRecent = (recentAttendance || []).map(log => {
+    const accObj = accountsMap[log.intern_id];
+    return {
+      ...log,
+      full_name: accObj?.full_name || log.intern_name,
+      department_name: accObj?.department_name
+    };
+  });
+
   return {
     stats: {
       total_interns: departmentInternIds.length,
+      present_today: presentToday,
       pending_attendance: pendingAttendanceCount,
+      approved_today: approvedToday,
       pending_documents: pendingDocumentsCount,
       department_name: user.department_name || 'Your Department',
     },
-    recentAttendance,
+    recentAttendance: mappedRecent,
     departmentInterns: departmentInterns || [],
   };
 }
@@ -865,7 +912,7 @@ export async function markAllNotificationsRead(userId, isAdmin) {
   return { success: true };
 }
 
-export async function getEvaluations(userId, isAdmin, department_id) {
+export async function getEvaluations(userId, isAdmin, department_id = null) {
   let query = supabase
     .from('evaluations')
     .select('*')
@@ -873,18 +920,15 @@ export async function getEvaluations(userId, isAdmin, department_id) {
 
   if (!isAdmin) {
     query = query.eq('intern_id', userId);
-  } else if (department_id) {
-    const { data: interns } = await supabase
-      .from('accounts')
-      .select('id')
-      .eq('role', 'intern')
-      .eq('department_id', department_id);
-    const internIds = (interns || []).map(i => i.id);
-    if (internIds.length > 0) {
-      query = query.in('intern_id', internIds);
-    } else {
-      query = query.in('intern_id', [-1]);
+  }
+
+  if (department_id) {
+    const { data: accounts } = await supabase.from('accounts').select('id').eq('department_id', department_id).eq('role', 'intern');
+    const internIds = accounts ? accounts.map(a => a.id) : [];
+    if (internIds.length === 0) {
+      return [];
     }
+    query = query.in('intern_id', internIds);
   }
 
   const { data, error } = await query;
@@ -949,12 +993,16 @@ export async function getDocuments(userId, isAdmin, { status, search, department
     // Select all columns from documents, and the full_name from the joined accounts table
     .select(`
       *,
-      account:accounts(full_name)
+      account:accounts!inner(full_name, department_id)
     `)
     .order('upload_date', { ascending: false });
 
   if (!isAdmin) {
     query = query.eq('intern_id', userId);
+  }
+
+  if (department_id) {
+    query = query.eq('account.department_id', department_id);
   }
 
   if (status) {

@@ -4,6 +4,7 @@ import api from '../../utils/api.js';
 import DataTable from '../../components/common/DataTable.jsx';
 import Modal from '../../components/common/Modal.jsx';
 import toast from 'react-hot-toast';
+import { useAuth } from '../../context/AuthContext.jsx';
 
 const INIT_FORM = {
   username: '', password: '', full_name: '', email: '', phone: '', 
@@ -496,14 +497,24 @@ export default function InternManagement() {
         <div className="grid grid-cols-2 gap-4">
           <div className="form-group">
             <label className="form-label text-[11px] text-gray-500 uppercase font-bold tracking-wider">Department Assignment</label>
-            <select
-              className="form-input form-select bg-gray-50/50"
-              value={form.department_id || ''}
-              onChange={e => setForm(f => ({ ...f, department_id: e.target.value }))}
-            >
-              <option value="">Select department</option>
-              {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-            </select>
+            {useAuth().user?.role === 'supervisor' ? (
+              <select
+                className="form-input form-select bg-gray-100 text-gray-500 cursor-not-allowed"
+                value={useAuth().user?.department_id || ''}
+                disabled
+              >
+                <option value={useAuth().user?.department_id}>{useAuth().user?.department_name || 'Your Department'}</option>
+              </select>
+            ) : (
+              <select
+                className="form-input form-select bg-gray-50/50"
+                value={form.department_id || ''}
+                onChange={e => setForm(f => ({ ...f, department_id: e.target.value }))}
+              >
+                <option value="">Select department</option>
+                {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+              </select>
+            )}
           </div>
           <div className="form-group">
             <label className="form-label text-[11px] text-gray-500 uppercase font-bold tracking-wider">Required Internship Hours</label>
