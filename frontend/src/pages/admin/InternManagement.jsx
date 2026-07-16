@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { UserPlus, Edit2, Trash2, Key, Eye } from 'lucide-react';
+import { UserPlus, Edit2, Trash2, Key } from 'lucide-react';
 import api from '../../utils/api.js';
 import DataTable from '../../components/common/DataTable.jsx';
 import Modal from '../../components/common/Modal.jsx';
@@ -42,7 +42,7 @@ export default function InternManagement() {
   const [loading, setLoading] = useState(true);
   const [departments, setDepartments] = useState([]);
   const [schools, setSchools] = useState([]);
-  const [modal, setModal] = useState(null); // 'create' | 'edit' | 'delete' | 'reset' | 'view'
+  const [modal, setModal] = useState(null); // 'create' | 'edit' | 'delete' | 'reset'
   const [selected, setSelected] = useState(null);
   const [form, setForm] = useState(INIT_FORM);
   const [saving, setSaving] = useState(false);
