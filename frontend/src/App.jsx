@@ -6,6 +6,7 @@ import Layout from './components/layout/Layout.jsx';
 
 // Auth pages
 import Login from './pages/auth/Login.jsx';
+import SetPassword from './pages/auth/SetPassword.jsx';
 
 // Admin pages
 import AdminDashboard from './pages/admin/AdminDashboard.jsx';
@@ -64,7 +65,8 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={user ? <Navigate to={getHomePath(user.role)} replace /> : <Login />} />
-      
+      <Route path="/set-password" element={<SetPassword />} />
+
       {/* Admin & Supervisor Routes */}
       <Route path="/admin" element={<ProtectedRoute roles={['admin', 'supervisor']}><Layout /></ProtectedRoute>}>
         <Route 

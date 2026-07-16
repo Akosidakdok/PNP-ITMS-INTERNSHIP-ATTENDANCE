@@ -4,6 +4,7 @@ import multer from 'multer';
 import { loginUser } from './auth.js';
 import { getActiveQrCode, regenerateQrCode, scanAttendance, getTodayScanStatus } from './attendance.js';
 import { authMiddleware, adminMiddleware, adminOnlyMiddleware } from './middleware.js';
+import { sendWelcomeEmail } from './email.js';
 import {
   getAdminDashboardStats,
   getDepartments,
@@ -18,6 +19,8 @@ import {
   updateIntern,
   deleteIntern,
   resetInternPassword,
+  generateResetToken,
+  setPasswordFromToken,
   changePassword,
   getAttendanceLogs,
   setAttendanceApproval,
@@ -109,6 +112,20 @@ app.get('/auth/me', authMiddleware, async (req, res) => {
     return res.json({ user: profile });
   } catch (error) {
     return res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/auth/set-password', async (req, res) => {
+  const { token, password } = req.body;
+  if (!token || !password) {
+    return res.status(400).json({ error: 'Token and password are required' });
+  }
+
+  try {
+    const result = await setPasswordFromToken(token, password);
+    return res.json(result);
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
   }
 });
 
@@ -317,7 +334,26 @@ app.post('/interns', authMiddleware, adminMiddleware, async (req, res) => {
       req.body.department_id = req.user.department_id;
     }
     const intern = await createIntern(req.body);
-    return res.json({ intern });
+
+    // Send welcome email with credentials + password change link
+    let emailSent = false;
+    if (intern.email) {
+      try {
+        const resetToken = await generateResetToken(intern.id);
+        const emailResult = await sendWelcomeEmail({
+          email: intern.email,
+          fullName: intern.full_name,
+          username: intern.username,
+          password: req.body.password,
+          resetToken,
+        });
+        emailSent = emailResult.sent;
+      } catch (emailErr) {
+        console.error('Failed to send welcome email:', emailErr.message);
+      }
+    }
+
+    return res.json({ intern, emailSent });
   } catch (error) {
     console.error('Error creating intern:', error);
     return res.status(500).json({ error: error.message });

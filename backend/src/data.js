@@ -1,4 +1,5 @@
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { supabase } from './supabaseClient.js';
 
@@ -295,6 +296,55 @@ export async function resetInternPassword(id, newPassword) {
     .eq('role', INTERN_ROLE);
 
   if (error) throw error;
+  return { success: true };
+}
+
+/**
+ * Generate a secure reset token for an account and store its hash + expiry.
+ * Returns the raw token (to be included in the email link).
+ */
+export async function generateResetToken(accountId) {
+  const rawToken = crypto.randomBytes(32).toString('hex');
+  const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+  const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(); // 48 hours
+
+  const { error } = await supabase
+    .from('accounts')
+    .update({ reset_token_hash: tokenHash, reset_token_expires_at: expiresAt })
+    .eq('id', accountId);
+
+  if (error) throw error;
+  return rawToken;
+}
+
+/**
+ * Verify a reset token and set a new password for the account.
+ */
+export async function setPasswordFromToken(token, newPassword) {
+  if (!token || !newPassword) throw new Error('Token and password are required');
+  if (newPassword.length < 8) throw new Error('Password must be at least 8 characters');
+
+  const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+
+  const { data: account, error: lookupError } = await supabase
+    .from('accounts')
+    .select('id, reset_token_hash, reset_token_expires_at')
+    .eq('reset_token_hash', tokenHash)
+    .single();
+
+  if (lookupError || !account) throw new Error('Invalid or expired link');
+
+  if (new Date(account.reset_token_expires_at) < new Date()) {
+    throw new Error('This link has expired. Please contact your administrator.');
+  }
+
+  const password_hash = await bcrypt.hash(newPassword, 10);
+  const { error: updateError } = await supabase
+    .from('accounts')
+    .update({ password_hash, reset_token_hash: null, reset_token_expires_at: null })
+    .eq('id', account.id);
+
+  if (updateError) throw updateError;
   return { success: true };
 }
 
