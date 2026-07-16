@@ -5,6 +5,7 @@ import DataTable from '../../components/common/DataTable.jsx';
 import Modal from '../../components/common/Modal.jsx';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../context/AuthContext.jsx';
+import { AVAILABLE_COURSES } from '../../utils/constants.js';
 
 const INIT_FORM = {
   username: '', password: '', full_name: '', email: '', phone: '', 
@@ -434,12 +435,16 @@ export default function InternManagement() {
           </div>
           <div className="form-group col-span-2">
             <label className="form-label text-[11px] text-gray-500 uppercase font-bold tracking-wider">Course / Degree Program</label>
-            <input
-              className="form-input bg-gray-50/50"
-              placeholder="e.g. BS Information Technology"
+            <select
+              className="form-input form-select bg-gray-50/50"
               value={form.course || ''}
               onChange={e => setForm(f => ({ ...f, course: e.target.value }))}
-            />
+            >
+              <option value="">Select course</option>
+              {AVAILABLE_COURSES.map(c => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
           </div>
           <div className="form-group col-span-2">
             <label className="form-label text-[11px] text-gray-500 uppercase font-bold tracking-wider">Home Address</label>
