@@ -97,7 +97,12 @@ app.post('/auth/change-password', authMiddleware, async (req, res) => {
 });
 
 app.get('/auth/me', authMiddleware, async (req, res) => {
-  return res.json({ user: req.user });
+  try {
+    const profile = await getCurrentUserProfile(req.user.id);
+    return res.json({ user: profile });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
 });
 
 app.get('/admin/dashboard-stats', authMiddleware, adminMiddleware, async (req, res) => {
@@ -112,7 +117,8 @@ app.get('/admin/dashboard-stats', authMiddleware, adminMiddleware, async (req, r
 app.get('/supervisor/dashboard-stats', authMiddleware, async (req, res) => {
   if (req.user.role !== 'supervisor') return res.status(403).json({ error: 'Permission denied' });
   try {
-    const stats = await getSupervisorDashboardStats(req.user);
+    const userProfile = await getCurrentUserProfile(req.user.id);
+    const stats = await getSupervisorDashboardStats(userProfile);
     return res.json(stats);
   } catch (error) {
     return res.status(500).json({ error: error.message });
@@ -121,7 +127,18 @@ app.get('/supervisor/dashboard-stats', authMiddleware, async (req, res) => {
 
 app.get('/attendance/logs', authMiddleware, adminMiddleware, async (req, res) => {
   try {
-    const logs = await getAttendanceLogs({ status: req.query.status, date: req.query.date, page: Number(req.query.page) || 1, limit: Number(req.query.limit) || 15 });
+    let departmentId = undefined;
+    if (req.user.role === 'supervisor') {
+      const profile = await getCurrentUserProfile(req.user.id);
+      departmentId = profile.department_id || -1;
+    }
+    const logs = await getAttendanceLogs({
+      status: req.query.status,
+      date: req.query.date,
+      page: Number(req.query.page) || 1,
+      limit: Number(req.query.limit) || 15,
+      department_id: departmentId
+    });
     return res.json(logs);
   } catch (error) {
     return res.status(500).json({ error: error.message });
@@ -219,7 +236,16 @@ app.delete('/schools/:id', authMiddleware, adminMiddleware, async (req, res) => 
 
 app.get('/admin/reports/attendance', authMiddleware, adminMiddleware, async (req, res) => {
   try {
-    const report = await getAttendanceReport({ month: Number(req.query.month), year: Number(req.query.year), department_id: req.query.department_id ? Number(req.query.department_id) : undefined });
+    let departmentId = req.query.department_id ? Number(req.query.department_id) : undefined;
+    if (req.user.role === 'supervisor') {
+      const profile = await getCurrentUserProfile(req.user.id);
+      departmentId = profile.department_id || -1;
+    }
+    const report = await getAttendanceReport({
+      month: Number(req.query.month),
+      year: Number(req.query.year),
+      department_id: departmentId
+    });
     return res.json({ report });
   } catch (error) {
     return res.status(500).json({ error: error.message });
@@ -228,11 +254,16 @@ app.get('/admin/reports/attendance', authMiddleware, adminMiddleware, async (req
 
 app.get('/interns', authMiddleware, adminMiddleware, async (req, res) => {
   try {
+    let departmentId = req.query.department_id ? Number(req.query.department_id) : undefined;
+    if (req.user.role === 'supervisor') {
+      const profile = await getCurrentUserProfile(req.user.id);
+      departmentId = profile.department_id || -1;
+    }
     const result = await getInterns({
       search: req.query.search,
       page: Number(req.query.page) || 1,
       limit: Number(req.query.limit) || 10,
-      department_id: req.query.department_id ? Number(req.query.department_id) : undefined,
+      department_id: departmentId,
       school_id: req.query.school_id ? Number(req.query.school_id) : undefined
     });
     return res.json(result);
@@ -448,7 +479,12 @@ app.patch('/notifications/read-all', authMiddleware, async (req, res) => {
 
 app.get('/evaluations', authMiddleware, async (req, res) => {
   try {
-    const evaluations = await getEvaluations(req.user.id, req.user.role === 'admin' || req.user.role === 'supervisor');
+    let departmentId = undefined;
+    if (req.user.role === 'supervisor') {
+      const profile = await getCurrentUserProfile(req.user.id);
+      departmentId = profile.department_id || -1;
+    }
+    const evaluations = await getEvaluations(req.user.id, req.user.role === 'admin' || req.user.role === 'supervisor', departmentId);
     return res.json({ evaluations });
   } catch (error) {
     return res.status(500).json({ error: error.message });
@@ -476,9 +512,15 @@ app.put('/evaluations/:id', authMiddleware, adminMiddleware, async (req, res) =>
 app.get('/documents', authMiddleware, async (req, res) => {
   try {
     const isAdmin = req.user.role === 'admin' || req.user.role === 'supervisor';
+    let departmentId = undefined;
+    if (req.user.role === 'supervisor') {
+      const profile = await getCurrentUserProfile(req.user.id);
+      departmentId = profile.department_id || -1;
+    }
     const options = {
       status: req.query.status,
       search: req.query.search,
+      department_id: departmentId,
     };
     const documents = await getDocuments(req.user.id, isAdmin, options);
     return res.json({ documents });

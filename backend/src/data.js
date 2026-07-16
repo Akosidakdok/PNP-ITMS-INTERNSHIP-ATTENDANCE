@@ -204,15 +204,18 @@ export async function createIntern(payload) {
   if (!password) throw new Error('Password is required');
 
   const password_hash = await bcrypt.hash(password, 10);
-  const department = department_id ? await findDepartmentById(Number(department_id)) : null;
+  
+  const deptId = department_id && department_id !== '' ? Number(department_id) : null;
+  const department = deptId ? await findDepartmentById(deptId) : null;
   const departmentName = department?.name || rest.department_name || null;
 
-  const school = school_id ? await findSchoolById(Number(school_id)) : null;
+  const schId = school_id && school_id !== '' ? Number(school_id) : null;
+  const school = schId ? await findSchoolById(schId) : null;
   const schoolName = school?.name || rest.school || null;
 
   const { data, error } = await supabase
     .from('accounts')
-    .insert([{ ...rest, password_hash, role: INTERN_ROLE, department_id, department_name: departmentName, school_id, school: schoolName }])
+    .insert([{ ...rest, password_hash, role: INTERN_ROLE, department_id: deptId, department_name: departmentName, school_id: schId, school: schoolName }])
     .select('id, username, full_name, email, role, school, school_id, course, department_id, department_name, status, start_date, end_date, required_hours, rendered_hours, student_id, year_level, phone, home_address, emergency_name, emergency_relation, emergency_phone')
     .single();
 
@@ -228,16 +231,18 @@ export async function updateIntern(id, payload) {
     updates.password_hash = await bcrypt.hash(password, 10);
   }
 
-  if (department_id) {
-    const department = await findDepartmentById(department_id);
-    updates.department_name = department?.name || rest.department_name || null;
-    updates.department_id = department_id;
+  if (department_id !== undefined) {
+    const deptId = department_id && department_id !== '' ? Number(department_id) : null;
+    const department = deptId ? await findDepartmentById(deptId) : null;
+    updates.department_name = department?.name || null;
+    updates.department_id = deptId;
   }
 
-  if (school_id) {
-    const school = await findSchoolById(school_id);
-    updates.school = school?.name || rest.school || null;
-    updates.school_id = school_id;
+  if (school_id !== undefined) {
+    const schId = school_id && school_id !== '' ? Number(school_id) : null;
+    const school = schId ? await findSchoolById(schId) : null;
+    updates.school = school?.name || null;
+    updates.school_id = schId;
   }
 
   const { data, error } = await supabase
@@ -325,7 +330,7 @@ export async function changePassword(userId, currentPassword, newPassword) {
   return { success: true };
 }
 
-export async function getAttendanceLogs({ status, date, page = 1, limit = 15 } = {}) {
+export async function getAttendanceLogs({ status, date, page = 1, limit = 15, department_id } = {}) {
   let query = supabase
     .from('attendance_logs')
     .select('*', { count: 'exact' })
@@ -341,6 +346,20 @@ export async function getAttendanceLogs({ status, date, page = 1, limit = 15 } =
     const end = new Date(date);
     end.setHours(23, 59, 59, 999);
     query = query.gte('scan_time', start.toISOString()).lte('scan_time', end.toISOString());
+  }
+
+  if (department_id) {
+    const { data: interns } = await supabase
+      .from('accounts')
+      .select('id')
+      .eq('role', 'intern')
+      .eq('department_id', department_id);
+    const internIds = (interns || []).map(i => i.id);
+    if (internIds.length > 0) {
+      query = query.in('intern_id', internIds);
+    } else {
+      query = query.in('intern_id', [-1]);
+    }
   }
 
   const from = (page - 1) * limit;
@@ -826,7 +845,7 @@ export async function markAllNotificationsRead(userId, isAdmin) {
   return { success: true };
 }
 
-export async function getEvaluations(userId, isAdmin) {
+export async function getEvaluations(userId, isAdmin, department_id) {
   let query = supabase
     .from('evaluations')
     .select('*')
@@ -834,6 +853,18 @@ export async function getEvaluations(userId, isAdmin) {
 
   if (!isAdmin) {
     query = query.eq('intern_id', userId);
+  } else if (department_id) {
+    const { data: interns } = await supabase
+      .from('accounts')
+      .select('id')
+      .eq('role', 'intern')
+      .eq('department_id', department_id);
+    const internIds = (interns || []).map(i => i.id);
+    if (internIds.length > 0) {
+      query = query.in('intern_id', internIds);
+    } else {
+      query = query.in('intern_id', [-1]);
+    }
   }
 
   const { data, error } = await query;
@@ -892,7 +923,7 @@ export async function updateEvaluation(id, payload) {
   return data;
 }
 
-export async function getDocuments(userId, isAdmin, { status, search } = {}) {
+export async function getDocuments(userId, isAdmin, { status, search, department_id } = {}) {
   let query = supabase
     .from('documents')
     // Select all columns from documents, and the full_name from the joined accounts table
@@ -908,6 +939,20 @@ export async function getDocuments(userId, isAdmin, { status, search } = {}) {
 
   if (status) {
     query = query.eq('status', status);
+  }
+
+  if (department_id) {
+    const { data: interns } = await supabase
+      .from('accounts')
+      .select('id')
+      .eq('role', 'intern')
+      .eq('department_id', department_id);
+    const internIds = (interns || []).map(i => i.id);
+    if (internIds.length > 0) {
+      query = query.in('intern_id', internIds);
+    } else {
+      query = query.in('intern_id', [-1]);
+    }
   }
 
   // Add search capability for document name and type.
@@ -1144,12 +1189,13 @@ export async function createSupervisor(payload) {
   if (!password) throw new Error('Password is required');
 
   const password_hash = await bcrypt.hash(password, 10);
-  const department = department_id ? await findDepartmentById(Number(department_id)) : null;
+  const deptId = department_id && department_id !== '' ? Number(department_id) : null;
+  const department = deptId ? await findDepartmentById(deptId) : null;
   const departmentName = department?.name || rest.department_name || null;
 
   const { data, error } = await supabase
     .from('accounts')
-    .insert([{ ...rest, password_hash, role: 'supervisor', department_id, department_name: departmentName }])
+    .insert([{ ...rest, password_hash, role: 'supervisor', department_id: deptId, department_name: departmentName }])
     .select('id, username, full_name, email, role, department_id, department_name, status, phone, home_address')
     .single();
 
@@ -1165,10 +1211,11 @@ export async function updateSupervisor(id, payload) {
     updates.password_hash = await bcrypt.hash(password, 10);
   }
 
-  if (department_id) {
-    const department = await findDepartmentById(department_id);
-    updates.department_name = department?.name || rest.department_name || null;
-    updates.department_id = department_id;
+  if (department_id !== undefined) {
+    const deptId = department_id && department_id !== '' ? Number(department_id) : null;
+    const department = deptId ? await findDepartmentById(deptId) : null;
+    updates.department_name = department?.name || null;
+    updates.department_id = deptId;
   }
 
   const { data, error } = await supabase
