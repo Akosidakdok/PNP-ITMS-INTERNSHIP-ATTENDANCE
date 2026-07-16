@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Eye, CheckCircle, AlertCircle, FileText } from 'lucide-react';
+import { Eye, FileText } from 'lucide-react';
 import api from '../../utils/api.js';
 import DataTable from '../../components/common/DataTable.jsx';
 import Modal from '../../components/common/Modal.jsx';
@@ -7,38 +7,63 @@ import DocumentPreview from '../../components/common/DocumentPreview.jsx';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
 
+/** Delays invoking `fn` until `delay` ms have elapsed since the last call. */
+function useDebounce(value, delay = 350) {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedValue(value), delay);
+    return () => clearTimeout(id);
+  }, [value, delay]);
+  return debouncedValue;
+}
+
 export default function DocumentReview() {
   const [docs, setDocs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('pending');
+  const [searchQuery, setSearchQuery] = useState('');
   const [previewDoc, setPreviewDoc] = useState(null);
-  const [reviewModal, setReviewModal] = useState(null);
   const [reviewForm, setReviewForm] = useState({ status: 'accepted', admin_remarks: '' });
   const [saving, setSaving] = useState(false);
+
+  // Only fire the API call once the user has stopped typing for 350ms
+  const debouncedSearch = useDebounce(searchQuery, 350);
 
   const fetchDocs = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await api.get('/documents', { params: { status: statusFilter || undefined } });
+      const params = {
+        status: statusFilter || undefined,
+        search: debouncedSearch || undefined,
+      };
+      const res = await api.get('/documents', { params });
       setDocs(res.data.documents);
     } catch { toast.error('Failed to load documents'); }
     finally { setLoading(false); }
-  }, [statusFilter]);
+  }, [statusFilter, debouncedSearch]);
 
   useEffect(() => { fetchDocs(); }, [fetchDocs]);
 
-  const handleReview = async () => {
+  const handleReview = async (docId) => {
     setSaving(true);
     try {
-      await api.patch(`/documents/${reviewModal.id}/status`, reviewForm);
+      await api.patch(`/documents/${docId}/status`, reviewForm);
       toast.success(`Document marked as ${reviewForm.status}`);
-      setReviewModal(null);
+      setPreviewDoc(null);
       fetchDocs();
     } catch { toast.error('Review failed'); }
     finally { setSaving(false); }
   };
 
   const formatSize = (bytes) => bytes > 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${(bytes / 1024).toFixed(0)} KB`;
+
+  const openReview = (doc) => {
+    setPreviewDoc(doc);
+    setReviewForm({
+      status: doc.status === 'pending' ? 'accepted' : doc.status,
+      admin_remarks: doc.admin_remarks || '',
+    });
+  };
 
   const columns = [
     {
@@ -78,11 +103,8 @@ export default function DocumentReview() {
       key: 'id', label: 'Actions',
       render: (_, row) => (
         <div className="flex gap-1">
-          <button id={`preview-doc-${row.id}`} className="btn btn-secondary btn-sm" onClick={() => setPreviewDoc(row)}>
-            <Eye className="w-3.5 h-3.5" /> Preview
-          </button>
-          <button id={`review-doc-${row.id}`} className="btn btn-primary btn-sm" onClick={() => { setReviewModal(row); setReviewForm({ status: 'accepted', admin_remarks: '' }); }}>
-            Review
+          <button id={`review-doc-${row.id}`} className="btn btn-primary btn-sm" onClick={() => openReview(row)}>
+            <Eye className="w-3.5 h-3.5" /> View & Review
           </button>
         </div>
       )
@@ -96,16 +118,31 @@ export default function DocumentReview() {
         <p className="text-gray-500 text-sm">Review and manage intern-submitted documents</p>
       </div>
 
-      <div className="flex gap-2">
-        {['', 'pending', 'accepted', 'revision'].map(s => (
-          <button
-            key={s}
-            className={`btn btn-sm ${statusFilter === s ? 'btn-primary' : 'btn-secondary'}`}
-            onClick={() => setStatusFilter(s)}
-          >
-            {s === '' ? 'All' : s.charAt(0).toUpperCase() + s.slice(1)}
-          </button>
-        ))}
+      <div className="flex flex-col md:flex-row gap-2 justify-between">
+        <div className="flex gap-2">
+          {['', 'pending', 'accepted', 'revision'].map(s => (
+            <button
+              key={s}
+              className={`btn btn-sm ${statusFilter === s ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => setStatusFilter(s)}
+            >
+              {s === '' ? 'All' : s.charAt(0).toUpperCase() + s.slice(1)}
+            </button>
+          ))}
+        </div>
+        <div className="relative md:max-w-xs w-full">
+          <input
+            type="text"
+            className="form-input form-input-sm w-full"
+            placeholder="Search by document name or type…"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+          {/* Subtle loading indicator while debounce is in-flight */}
+          {searchQuery !== debouncedSearch && (
+            <span className="absolute right-3 top-1/2 -translate-y-1/2 w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+          )}
+        </div>
       </div>
 
       <DataTable
@@ -119,45 +156,47 @@ export default function DocumentReview() {
         emptyMessage="No documents found"
       />
 
-      {/* Review Modal */}
-      <Modal
-        isOpen={!!reviewModal}
-        onClose={() => setReviewModal(null)}
-        title="Review Document"
-        size="sm"
-        footer={
-          <>
-            <button className="btn btn-secondary" onClick={() => setReviewModal(null)}>Cancel</button>
-            <button id="confirm-review-btn" className="btn btn-primary" onClick={handleReview} disabled={saving}>
-              {saving ? 'Saving...' : 'Save Review'}
-            </button>
-          </>
-        }
-      >
-        {reviewModal && (
-          <div className="space-y-4">
-            <div className="bg-blue-50 rounded-xl p-3 text-sm">
-              <p><strong>{reviewModal.document_type}</strong></p>
-              <p className="text-gray-500">{reviewModal.full_name}</p>
+      {/* Unified Document Preview & Review Modal */}
+      {previewDoc && (
+        <Modal
+          isOpen={!!previewDoc}
+          onClose={() => setPreviewDoc(null)}
+          title={`Review: ${previewDoc.document_type}`}
+          size="lg"
+          footer={
+            <>
+              <button className="btn btn-secondary" onClick={() => setPreviewDoc(null)}>Cancel</button>
+              <button id="confirm-review-btn" className="btn btn-primary" onClick={() => handleReview(previewDoc.id)} disabled={saving}>
+                {saving ? 'Saving...' : 'Save Review'}
+              </button>
+            </>
+          }
+        >
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="md:col-span-2">
+              <DocumentPreview document={previewDoc} isEmbedded={true} />
             </div>
-            <div className="form-group">
-              <label className="form-label">Status</label>
-              <select className="form-input form-select" value={reviewForm.status} onChange={e => setReviewForm(f => ({ ...f, status: e.target.value }))}>
-                <option value="accepted">Accept</option>
-                <option value="revision">Needs Revision</option>
-                <option value="pending">Reset to Pending</option>
-              </select>
-            </div>
-            <div className="form-group">
-              <label className="form-label">Admin Remarks</label>
-              <textarea className="form-input" rows={3} value={reviewForm.admin_remarks} onChange={e => setReviewForm(f => ({ ...f, admin_remarks: e.target.value }))} placeholder="Add feedback..." />
+            <div className="space-y-4">
+              <div className="bg-blue-50 rounded-xl p-3 text-sm">
+                <p><strong>{previewDoc.full_name}</strong></p>
+                <p className="text-gray-500">{previewDoc.original_name}</p>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Status</label>
+                <select className="form-input form-select" value={reviewForm.status} onChange={e => setReviewForm(f => ({ ...f, status: e.target.value }))}>
+                  <option value="accepted">Accept</option>
+                  <option value="revision">Needs Revision</option>
+                  <option value="pending">Reset to Pending</option>
+                </select>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Admin Remarks</label>
+                <textarea className="form-input" rows={5} value={reviewForm.admin_remarks} onChange={e => setReviewForm(f => ({ ...f, admin_remarks: e.target.value }))} placeholder="Add feedback for the intern..." />
+              </div>
             </div>
           </div>
-        )}
-      </Modal>
-
-      {/* Document Preview */}
-      <DocumentPreview isOpen={!!previewDoc} onClose={() => setPreviewDoc(null)} document={previewDoc} />
+        </Modal>
+      )}
     </div>
   );
 }

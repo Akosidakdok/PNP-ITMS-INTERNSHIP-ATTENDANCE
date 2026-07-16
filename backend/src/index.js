@@ -481,7 +481,12 @@ app.put('/evaluations/:id', authMiddleware, adminMiddleware, async (req, res) =>
 
 app.get('/documents', authMiddleware, async (req, res) => {
   try {
-    const documents = await getDocuments(req.user.id, req.user.role === 'admin' || req.user.role === 'supervisor', req.query.status);
+    const isAdmin = req.user.role === 'admin' || req.user.role === 'supervisor';
+    const options = {
+      status: req.query.status,
+      search: req.query.search,
+    };
+    const documents = await getDocuments(req.user.id, isAdmin, options);
     return res.json({ documents });
   } catch (error) {
     return res.status(500).json({ error: error.message });

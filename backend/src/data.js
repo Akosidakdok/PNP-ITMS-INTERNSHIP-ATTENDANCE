@@ -897,7 +897,7 @@ export async function updateEvaluation(id, payload) {
   return data;
 }
 
-export async function getDocuments(userId, isAdmin, status) {
+export async function getDocuments(userId, isAdmin, { status, search } = {}) {
   let query = supabase
     .from('documents')
     // Select all columns from documents, and the full_name from the joined accounts table
@@ -913,6 +913,12 @@ export async function getDocuments(userId, isAdmin, status) {
 
   if (status) {
     query = query.eq('status', status);
+  }
+
+  // Add search capability for document name and type.
+  // Note: Searching by intern name here would require a more complex query or a database view.
+  if (search) {
+    query = query.or(`original_name.ilike.%${search}%,document_type.ilike.%${search}%`);
   }
 
   const { data: documents, error } = await query;
@@ -1206,4 +1212,3 @@ export async function resetSupervisorPassword(id, newPassword) {
   if (error) throw error;
   return { success: true };
 }
-
