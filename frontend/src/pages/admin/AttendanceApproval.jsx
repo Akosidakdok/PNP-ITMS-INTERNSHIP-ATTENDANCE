@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { CheckCircle, XCircle, Clock, Filter, Calendar } from 'lucide-react';
+import { CheckCircle, XCircle, Clock, Filter, Calendar, Camera } from 'lucide-react';
 import api from '../../utils/api.js';
 import DataTable from '../../components/common/DataTable.jsx';
 import Modal from '../../components/common/Modal.jsx';
@@ -16,6 +16,7 @@ export default function AttendanceApproval() {
   const [selected, setSelected] = useState(null);
   const [remarks, setRemarks] = useState('');
   const [saving, setSaving] = useState(false);
+  const [previewPhoto, setPreviewPhoto] = useState(null);
 
   const fetchLogs = useCallback(async () => {
     setLoading(true);
@@ -74,6 +75,20 @@ export default function AttendanceApproval() {
       render: v => <span className={`badge badge-${v}`}>{v}</span>
     },
     { key: 'remarks', label: 'Remarks', render: v => <span className="text-xs text-gray-500">{v || '—'}</span> },
+    {
+      key: 'photo', label: 'Selfie Preview',
+      render: (v) => {
+        if (!v) return <span className="text-xs text-gray-400">—</span>;
+        return (
+          <button 
+            className="btn btn-ghost btn-sm text-blue-600 font-semibold flex items-center gap-1 hover:bg-blue-50 px-2 py-1 rounded"
+            onClick={() => setPreviewPhoto(v)}
+          >
+            <Camera className="w-3.5 h-3.5" strokeWidth={2} /> Preview
+          </button>
+        );
+      }
+    },
     {
       key: 'id', label: 'Actions',
       render: (_, row) => row.approval_status === 'pending' ? (
@@ -158,6 +173,25 @@ export default function AttendanceApproval() {
             </div>
           </div>
         )}
+      </Modal>
+
+      {/* Selfie Preview Modal */}
+      <Modal
+        isOpen={!!previewPhoto}
+        onClose={() => setPreviewPhoto(null)}
+        title="Selfie Verification Preview"
+        size="sm"
+        footer={
+          <button className="btn btn-secondary w-full" onClick={() => setPreviewPhoto(null)}>Close</button>
+        }
+      >
+        <div className="flex flex-col items-center justify-center p-2">
+          {previewPhoto ? (
+            <img src={previewPhoto} alt="Intern Selfie" className="rounded-xl max-w-full h-auto border shadow-sm" />
+          ) : (
+            <p className="text-gray-500">No photo available</p>
+          )}
+        </div>
       </Modal>
     </div>
   );

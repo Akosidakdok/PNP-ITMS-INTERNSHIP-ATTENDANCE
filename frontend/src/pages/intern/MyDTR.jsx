@@ -33,7 +33,7 @@ export default function MyDTR() {
   const approvedHours = records.filter(r => r.approval_status === 'approved').reduce((s, r) => s + (r.total_hours || 0), 0);
 
   const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-  const years = [2024, 2025, 2026, 2027];
+  const years = [2024, 2025, 2026, 2027, 2028, 2029, 2030, 2031, 2032, 2033, 2034, 2035, 2036, 2037, 2038, 2039, 2040];
 
   return (
     <div className="space-y-6 animate-fade-in">

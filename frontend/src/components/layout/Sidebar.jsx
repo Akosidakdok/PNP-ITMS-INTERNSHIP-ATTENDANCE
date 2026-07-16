@@ -3,16 +3,19 @@ import { useAuth } from '../../context/AuthContext.jsx';
 import {
   LayoutDashboard, Users, CalendarCheck, FileText, Star,
   Building2, BarChart3, QrCode, Clock, Upload, Award, Calendar,
-  Shield, ChevronLeft, LogOut, X, User
+  Shield, ChevronLeft, LogOut, X, User, Briefcase, GraduationCap
 } from 'lucide-react';
 
 const adminNav = [
   { to: '/admin', icon: LayoutDashboard, label: 'Dashboard', end: true },
   { to: '/admin/interns', icon: Users, label: 'Interns' },
+  { to: '/admin/supervisors', icon: Briefcase, label: 'Supervisors' },
   { to: '/admin/attendance', icon: CalendarCheck, label: 'Attendance' },
+  { to: '/admin/dtr', icon: Clock, label: 'Intern DTRs' },
   { to: '/admin/documents', icon: FileText, label: 'Documents' },
   { to: '/admin/evaluations', icon: Star, label: 'Evaluations' },
   { to: '/admin/departments', icon: Building2, label: 'Departments' },
+  { to: '/admin/schools', icon: GraduationCap, label: 'Schools' },
   { to: '/admin/calendar', icon: Calendar, label: 'Calendar' },
   { to: '/admin/reports', icon: BarChart3, label: 'Reports' },
   { to: '/admin/profile', icon: User, label: 'My Profile' },
@@ -30,7 +33,9 @@ const internNav = [
 
 const supervisorNav = [
   { to: '/admin', icon: LayoutDashboard, label: 'Dashboard', end: true },
+  { to: '/admin/interns', icon: Users, label: 'Interns' },
   { to: '/admin/attendance', icon: CalendarCheck, label: 'Attendance' },
+  { to: '/admin/calendar', icon: Calendar, label: 'Calendar' },
   { to: '/admin/documents', icon: FileText, label: 'Documents' },
   { to: '/admin/evaluations', icon: Star, label: 'Evaluations' },
   { to: '/admin/reports', icon: BarChart3, label: 'Reports' },
@@ -63,9 +68,8 @@ export default function Sidebar({ isOpen, onClose }) {
       <aside className={`sidebar ${isOpen ? 'open' : ''} lg:translate-x-0`}>
         {/* Header */}
         <div className="p-5 border-b border-white/10 flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-            style={{ background: 'linear-gradient(135deg, #f0b830, #d4a017)' }}>
-            <Shield className="w-5 h-5 text-white" />
+          <div className="flex-shrink-0 w-12 h-12 rounded-full border-2 border-amber-400 overflow-hidden flex items-center justify-center">
+            <img src="/ITMS_LOGO.png" alt="ITMS Logo" className="w-full h-full object-contain" />
           </div>
           <div className="min-w-0">
             <p className="text-white font-bold text-sm truncate" style={{ fontFamily: 'Outfit, sans-serif' }}>PNP-ITMS</p>

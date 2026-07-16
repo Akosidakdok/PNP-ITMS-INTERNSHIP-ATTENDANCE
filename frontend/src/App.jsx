@@ -10,13 +10,17 @@ import SetPassword from './pages/auth/SetPassword.jsx';
 
 // Admin pages
 import AdminDashboard from './pages/admin/AdminDashboard.jsx';
+import SupervisorDashboard from './SupervisorDashboard.jsx';
 import InternManagement from './pages/admin/InternManagement.jsx';
+import SupervisorManagement from './pages/admin/SupervisorManagement.jsx';
 import AttendanceApproval from './pages/admin/AttendanceApproval.jsx';
 import DocumentReview from './pages/admin/DocumentReview.jsx';
 import PerformanceEval from './pages/admin/PerformanceEval.jsx';
 import Departments from './pages/admin/Departments.jsx';
+import Schools from './pages/admin/Schools.jsx';
 import Reports from './pages/admin/Reports.jsx';
 import AdminCalendar from './pages/admin/Calendar.jsx';
+import AdminDTRViewer from './pages/admin/AdminDTRViewer.jsx';
 
 // Intern pages
 import InternDashboard from './pages/intern/InternDashboard.jsx';
@@ -65,14 +69,26 @@ function AppRoutes() {
 
       {/* Admin & Supervisor Routes */}
       <Route path="/admin" element={<ProtectedRoute roles={['admin', 'supervisor']}><Layout /></ProtectedRoute>}>
-        <Route index element={<AdminDashboard />} />
+        <Route 
+          index 
+          element={
+            <ProtectedRoute roles={['admin', 'supervisor']}>
+              {isAdminLike(user?.role) && user.role === 'supervisor' 
+                ? <SupervisorDashboard /> 
+                : <AdminDashboard />
+              }
+            </ProtectedRoute>
+          } />
         <Route path="interns" element={<InternManagement />} />
+        <Route path="supervisors" element={<ProtectedRoute roles={['admin']}><SupervisorManagement /></ProtectedRoute>} />
         <Route path="attendance" element={<AttendanceApproval />} />
         <Route path="documents" element={<DocumentReview />} />
         <Route path="evaluations" element={<PerformanceEvalWrapper />} />
-        <Route path="departments" element={<Departments />} />
         <Route path="calendar" element={<AdminCalendar />} />
+        <Route path="departments" element={<ProtectedRoute roles={['admin']}><Departments /></ProtectedRoute>} />
+        <Route path="schools" element={<ProtectedRoute roles={['admin']}><Schools /></ProtectedRoute>} />
         <Route path="reports" element={<Reports />} />
+        <Route path="dtr" element={<AdminDTRViewer />} />
         <Route path="profile" element={<Profile role="admin" />} />
       </Route>
 

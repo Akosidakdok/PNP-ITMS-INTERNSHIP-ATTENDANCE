@@ -143,7 +143,7 @@ export default function AdminCalendar() {
         </div>
         <div className="form-group mb-0">
           <select className="form-input form-select text-sm" value={currentDate.year} onChange={e => handleDateChange('year', e.target.value)}>
-            {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
+            {[2024, 2025, 2026, 2027, 2028, 2029, 2030, 2031, 2032, 2033, 2034, 2035, 2036, 2037, 2038, 2039, 2040].map(y => <option key={y} value={y}>{y}</option>)}
           </select>
         </div>
         <div className="flex-1" />

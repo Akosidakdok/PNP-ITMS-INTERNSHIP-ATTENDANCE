@@ -5,6 +5,41 @@ const MONTH_NAMES = [
   'July','August','September','October','November','December'
 ];
 
+function getHolidayName(year, month, day) {
+  // Fixed dates
+  if (month === 1 && day === 1) return "New Year's Day";
+  if (month === 4 && day === 9) return "Araw ng Kagitingan";
+  if (month === 5 && day === 1) return "Labor Day";
+  if (month === 6 && day === 12) return "Independence Day";
+  if (month === 11 && day === 30) return "Bonifacio Day";
+  if (month === 12 && day === 25) return "Christmas Day";
+  if (month === 12 && day === 30) return "Rizal Day";
+
+  // Movable holidays for 2024, 2025, 2026, 2027
+  if (year === 2024) {
+    if (month === 3 && day === 28) return "Maundy Thursday";
+    if (month === 3 && day === 29) return "Good Friday";
+    if (month === 8 && day === 26) return "National Heroes Day";
+  }
+  if (year === 2025) {
+    if (month === 4 && day === 17) return "Maundy Thursday";
+    if (month === 4 && day === 18) return "Good Friday";
+    if (month === 8 && day === 25) return "National Heroes Day";
+  }
+  if (year === 2026) {
+    if (month === 4 && day === 2) return "Maundy Thursday";
+    if (month === 4 && day === 3) return "Good Friday";
+    if (month === 8 && day === 31) return "National Heroes Day";
+  }
+  if (year === 2027) {
+    if (month === 3 && day === 25) return "Maundy Thursday";
+    if (month === 3 && day === 26) return "Good Friday";
+    if (month === 8 && day === 30) return "National Heroes Day";
+  }
+
+  return null;
+}
+
 /**
  * Split a full name into { lastName, firstName, middleName }
  * Best-effort: treats last word as last name, second-to-last as middle (if 3+ words)
@@ -47,7 +82,7 @@ function StatusBadge({ status, large = false }) {
   );
 }
 
-export default function DTRTable({ records, intern, month, year }) {
+export default function DTRTable({ records, intern, month, year, onRowClick }) {
   const daysInMonth = month && year ? getDaysInMonth(new Date(year, month - 1, 1)) : 31;
 
   // Build lookup: Manila calendar day → record
@@ -251,14 +286,156 @@ export default function DTRTable({ records, intern, month, year }) {
         <tbody>
           {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(day => {
             const rec = recordsByDay[day];
+            const dateObj = new Date(year, month - 1, day);
+            const dayOfWeek = dateObj.getDay(); // 0 = Sunday, 6 = Saturday
+            const holidayName = getHolidayName(year, month, day);
+            const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+
+            // Click helper
+            const handleRowClick = () => {
+              if (onRowClick) {
+                onRowClick(day, rec);
+              }
+            };
+
+            if (rec?.is_override) {
+              if (rec.override_type === 'suspended') {
+                return (
+                  <tr
+                    key={day}
+                    onClick={handleRowClick}
+                    style={{ cursor: onRowClick ? 'pointer' : 'default' }}
+                    className={onRowClick ? 'hover:bg-blue-50/20 transition-colors' : ''}
+                  >
+                    {/* Date formatted as MM/DD/YYYY */}
+                    <td style={tdStyle({ textAlign: 'center', fontWeight: '600', borderRight: '1px solid #000', height: '18px', fontSize: '9px' })}>
+                      {`${String(month).padStart(2, '0')}/${String(day).padStart(2, '0')}/${year}`}
+                    </td>
+                    <td colSpan={6} style={tdStyle({
+                      textAlign: 'center',
+                      fontWeight: 'bold',
+                      fontStyle: 'italic',
+                      backgroundColor: '#f3f4f6', // Suspension gray
+                      color: '#4b5563',
+                      fontSize: '9px',
+                      letterSpacing: '0.5px',
+                      height: '18px'
+                    })}>
+                      SUSPENDED: {rec.remarks || 'Suspension'}
+                    </td>
+                  </tr>
+                );
+              } else if (rec.override_type === 'excused') {
+                return (
+                  <tr
+                    key={day}
+                    onClick={handleRowClick}
+                    style={{ cursor: onRowClick ? 'pointer' : 'default' }}
+                    className={onRowClick ? 'hover:bg-blue-50/20 transition-colors' : ''}
+                  >
+                    {/* Date formatted as MM/DD/YYYY */}
+                    <td style={tdStyle({ textAlign: 'center', fontWeight: '600', borderRight: '1px solid #000', height: '18px', fontSize: '9px' })}>
+                      {`${String(month).padStart(2, '0')}/${String(day).padStart(2, '0')}/${year}`}
+                    </td>
+                    <td colSpan={4} style={tdStyle({
+                      textAlign: 'center',
+                      fontWeight: 'bold',
+                      fontStyle: 'italic',
+                      backgroundColor: '#e6fffa', // excused green-ish
+                      color: '#0d9488',
+                      fontSize: '9px',
+                      letterSpacing: '0.5px',
+                      height: '18px',
+                      borderRight: '1px solid #000'
+                    })}>
+                      EXCUSED: {rec.remarks || 'Excused'}
+                    </td>
+                    <td style={tdStyle({ textAlign: 'center', borderRight: '1px solid #000', fontSize: '9px', fontWeight: 'bold', color: '#0d9488' })}>
+                      8.00
+                    </td>
+                    <td style={tdStyle({ textAlign: 'center' })}>
+                      <StatusBadge status="approved" />
+                    </td>
+                  </tr>
+                );
+              } else if (rec.override_type === 'others') {
+                return (
+                  <tr
+                    key={day}
+                    onClick={handleRowClick}
+                    style={{ cursor: onRowClick ? 'pointer' : 'default' }}
+                    className={onRowClick ? 'hover:bg-blue-50/20 transition-colors' : ''}
+                  >
+                    {/* Date formatted as MM/DD/YYYY */}
+                    <td style={tdStyle({ textAlign: 'center', fontWeight: '600', borderRight: '1px solid #000', height: '18px', fontSize: '9px' })}>
+                      {`${String(month).padStart(2, '0')}/${String(day).padStart(2, '0')}/${year}`}
+                    </td>
+                    <td colSpan={4} style={tdStyle({
+                      textAlign: 'center',
+                      fontWeight: 'bold',
+                      fontStyle: 'italic',
+                      backgroundColor: '#f3e8ff', // light purple
+                      color: '#7e22ce',
+                      fontSize: '9px',
+                      letterSpacing: '0.5px',
+                      height: '18px',
+                      borderRight: '1px solid #000'
+                    })}>
+                      {rec.remarks ? rec.remarks.toUpperCase() : 'OTHERS'}
+                    </td>
+                    <td style={tdStyle({ textAlign: 'center', borderRight: '1px solid #000', fontSize: '9px', fontWeight: 'bold', color: '#7e22ce' })}>
+                      {(rec.total_hours || 0).toFixed(2)}
+                    </td>
+                    <td style={tdStyle({ textAlign: 'center' })}>
+                      <StatusBadge status="approved" />
+                    </td>
+                  </tr>
+                );
+              }
+            }
+
+            if ((isWeekend || holidayName) && !rec) {
+              return (
+                <tr
+                  key={day}
+                  onClick={handleRowClick}
+                  style={{ cursor: onRowClick ? 'pointer' : 'default' }}
+                  className={onRowClick ? 'hover:bg-blue-50/20 transition-colors' : ''}
+                >
+                  {/* Date formatted as MM/DD/YYYY */}
+                  <td style={tdStyle({ textAlign: 'center', fontWeight: '600', borderRight: '1px solid #000', height: '18px', fontSize: '9px' })}>
+                    {`${String(month).padStart(2, '0')}/${String(day).padStart(2, '0')}/${year}`}
+                  </td>
+                  {/* Spanned label across all remaining columns */}
+                  <td colSpan={6} style={tdStyle({
+                    textAlign: 'center',
+                    fontWeight: 'bold',
+                    fontStyle: 'italic',
+                    backgroundColor: holidayName ? '#fef3c7' : '#f3f4f6', // Light amber for holiday, light gray for weekend
+                    color: holidayName ? '#b45309' : '#6b7280',
+                    fontSize: '9px',
+                    letterSpacing: '1px',
+                    height: '18px'
+                  })}>
+                    {holidayName ? holidayName.toUpperCase() : dayOfWeek === 6 ? 'SATURDAY' : 'SUNDAY'}
+                  </td>
+                </tr>
+              );
+            }
+
             return (
-              <tr key={day}>
+              <tr
+                key={day}
+                onClick={handleRowClick}
+                style={{ cursor: onRowClick ? 'pointer' : 'default' }}
+                className={onRowClick ? 'hover:bg-blue-50/20 transition-colors' : ''}
+              >
                 {/* Date formatted as MM/DD/YYYY */}
                 <td style={tdStyle({ textAlign: 'center', fontWeight: '600', borderRight: '1px solid #000', height: '18px', fontSize: '9px' })}>
                   {`${String(month).padStart(2, '0')}/${String(day).padStart(2, '0')}/${year}`}
                 </td>
 
-                {/* AM Time In (capped: early scans show as 8:00 AM) */}
+                {/* AM Time In */}
                 <td style={tdStyle({ backgroundColor: '#e8f4ff', textAlign: 'center', fontSize: '9px' })}>
                   {rec ? formatTime(rec.am_time_in) : ''}
                 </td>
@@ -268,12 +445,12 @@ export default function DTRTable({ records, intern, month, year }) {
                   {rec?.am_time_in ? <StatusBadge status={rec.am_status} /> : <>&nbsp;</>}
                 </td>
 
-                {/* Time Out — shows PM Time Out; falls back to AM Time Out if intern left during AM */}
+                {/* Time Out */}
                 <td style={tdStyle({ backgroundColor: '#ffe8eb', textAlign: 'center', fontSize: '9px' })}>
                   {rec ? formatTime(rec.pm_time_out || rec.am_time_out) : ''}
                 </td>
 
-                {/* Time Out Status — uses PM status when PM exists, AM status otherwise */}
+                {/* Time Out Status */}
                 <td style={tdStyle({ backgroundColor: '#ffe8eb', textAlign: 'center', borderRight: '1px solid #000' })}>
                   {rec?.pm_time_out
                     ? <StatusBadge status={rec.pm_status} />
@@ -283,13 +460,25 @@ export default function DTRTable({ records, intern, month, year }) {
                 </td>
 
                 {/* Total Hrs */}
-                <td style={tdStyle({ textAlign: 'center', borderRight: '1px solid #000', fontSize: '9px' })}>
+                <td style={tdStyle({
+                  textAlign: 'center',
+                  borderRight: '1px solid #000',
+                  fontSize: '9px',
+                  fontWeight: rec?.is_override ? 'bold' : 'normal',
+                  color: rec?.is_override ? '#2563eb' : 'inherit'
+                })}>
                   {rec && rec.total_hours ? rec.total_hours.toFixed(2) : ''}
+                  {rec?.is_override && <span style={{ fontSize: '7px', display: 'block', color: '#2563eb', fontWeight: 'bold' }}>Override</span>}
                 </td>
 
                 {/* Overall Status for the day */}
                 <td style={tdStyle({ textAlign: 'center' })}>
                   {rec ? <StatusBadge status={rec.approval_status} /> : <>&nbsp;</>}
+                  {rec?.is_override && rec.override_remarks && (
+                    <span style={{ fontSize: '7px', display: 'block', color: '#4b5563' }} className="truncate max-w-16 mx-auto">
+                      {rec.override_remarks}
+                    </span>
+                  )}
                 </td>
               </tr>
             );

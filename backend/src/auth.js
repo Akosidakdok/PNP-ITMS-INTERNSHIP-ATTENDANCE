@@ -10,7 +10,7 @@ if (!JWT_SECRET) {
 export async function loginUser(username, password) {
   const { data, error } = await supabase
     .from('accounts')
-    .select('id, username, password_hash, role, full_name, email')
+    .select('id, username, password_hash, role, full_name, email, department_id, department_name')
     .eq('username', username)
     .single();
 
@@ -27,7 +27,7 @@ export async function loginUser(username, password) {
     throw new Error('Invalid username or password');
   }
 
-  const token = jwt.sign({ id: data.id, username: data.username, full_name: data.full_name, email: data.email, role: data.role }, JWT_SECRET, { expiresIn: '8h' });
+  const token = jwt.sign({ id: data.id, username: data.username, full_name: data.full_name, email: data.email, role: data.role, department_id: data.department_id, department_name: data.department_name }, JWT_SECRET, { expiresIn: '8h' });
 
   return {
     user: {
@@ -36,6 +36,8 @@ export async function loginUser(username, password) {
       full_name: data.full_name,
       email: data.email,
       role: data.role,
+      department_id: data.department_id,
+      department_name: data.department_name,
     },
     token,
   };

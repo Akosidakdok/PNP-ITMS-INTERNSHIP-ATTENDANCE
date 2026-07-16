@@ -77,22 +77,117 @@ export async function findDepartmentById(id) {
   return data;
 }
 
-export async function getInterns({ search, page = 1, limit = 10, department_id } = {}) {
+export async function getSchools() {
+  const { data: schools, error } = await supabase
+    .from('schools')
+    .select('*')
+    .order('name', { ascending: true });
+
+  if (error) throw error;
+  
+  const { data: interns, error: internsError } = await supabase
+    .from('accounts')
+    .select('school_id')
+    .eq('role', INTERN_ROLE);
+
+  if (internsError) throw internsError;
+
+  const counts = interns.reduce((acc, intern) => {
+    const id = intern.school_id || 0;
+    if (id) {
+      acc[id] = (acc[id] || 0) + 1;
+    }
+    return acc;
+  }, {});
+
+  return schools.map((school) => ({
+    ...school,
+    intern_count: counts[school.id] || 0,
+  }));
+}
+
+export async function createSchool(payload) {
+  const { data, error } = await supabase
+    .from('schools')
+    .insert([{ ...payload }])
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function updateSchool(id, payload) {
+  const { data, error } = await supabase
+    .from('schools')
+    .update({ ...payload })
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteSchool(id) {
+  const { error } = await supabase
+    .from('schools')
+    .delete()
+    .eq('id', id);
+
+  if (error) throw error;
+  return { success: true };
+}
+
+export async function findSchoolById(id) {
+  const { data, error } = await supabase
+    .from('schools')
+    .select('*')
+    .eq('id', id)
+    .single();
+
+  if (error && error.code !== 'PGRST116') throw error;
+  return data;
+}
+
+export async function getInterns({ search, page = 1, limit = 10, department_id, school_id, status, sortBy = 'full_name', sortOrder = 'asc' } = {}) {
   let query = supabase
     .from('accounts')
     .select(
-      'id, username, full_name, email, role, school, course, department_id, department_name, status, start_date, end_date, required_hours, rendered_hours, student_id, year_level, phone, home_address, emergency_name, emergency_relation, emergency_phone',
+      'id, username, full_name, email, role, school, school_id, course, department_id, department_name, status, start_date, end_date, required_hours, rendered_hours, student_id, year_level, phone, home_address, emergency_name, emergency_relation, emergency_phone',
       { count: 'exact' }
     )
-    .eq('role', INTERN_ROLE)
-    .order('full_name', { ascending: true });
+    .eq('role', INTERN_ROLE);
 
   if (search) {
-    query = query.or(`full_name.ilike.%${search}%,username.ilike.%${search}%,email.ilike.%${search}%`);
+    query = query.or(`full_name.ilike.%${search}%,username.ilike.%${search}%,email.ilike.%${search}%,school.ilike.%${search}%,department_name.ilike.%${search}%`);
   }
 
   if (department_id) {
     query = query.eq('department_id', department_id);
+  }
+
+  if (school_id) {
+    query = query.eq('school_id', school_id);
+  }
+
+  if (status) {
+    if (status === 'active') {
+      query = query.neq('status', 'archived');
+    } else {
+      query = query.eq('status', status);
+    }
+  } else {
+    query = query.neq('status', 'archived');
+  }
+
+  const isAscending = sortOrder === 'asc';
+  if (sortBy === 'department') {
+    query = query.order('department_name', { ascending: isAscending });
+  } else if (sortBy === 'school') {
+    query = query.order('school', { ascending: isAscending });
+  } else {
+    query = query.order(sortBy || 'full_name', { ascending: isAscending });
   }
 
   const from = (page - 1) * limit;
@@ -124,17 +219,23 @@ function normalizeDepartmentName(departmentId, departmentName) {
 }
 
 export async function createIntern(payload) {
-  const { password, department_id, ...rest } = payload;
+  const { password, department_id, school_id, ...rest } = payload;
   if (!password) throw new Error('Password is required');
 
   const password_hash = await bcrypt.hash(password, 10);
-  const department = department_id ? await findDepartmentById(Number(department_id)) : null;
+  
+  const deptId = department_id && department_id !== '' ? Number(department_id) : null;
+  const department = deptId ? await findDepartmentById(deptId) : null;
   const departmentName = department?.name || rest.department_name || null;
+
+  const schId = school_id && school_id !== '' ? Number(school_id) : null;
+  const school = schId ? await findSchoolById(schId) : null;
+  const schoolName = school?.name || rest.school || null;
 
   const { data, error } = await supabase
     .from('accounts')
-    .insert([{ ...rest, password_hash, role: INTERN_ROLE, department_id, department_name: departmentName }])
-    .select('id, username, full_name, email, role, school, course, department_id, department_name, status, start_date, end_date, required_hours, rendered_hours, student_id, year_level, phone, home_address, emergency_name, emergency_relation, emergency_phone')
+    .insert([{ ...rest, password_hash, role: INTERN_ROLE, department_id: deptId, department_name: departmentName, school_id: schId, school: schoolName }])
+    .select('id, username, full_name, email, role, school, school_id, course, department_id, department_name, status, start_date, end_date, required_hours, rendered_hours, student_id, year_level, phone, home_address, emergency_name, emergency_relation, emergency_phone')
     .single();
 
   if (error) throw error;
@@ -142,17 +243,25 @@ export async function createIntern(payload) {
 }
 
 export async function updateIntern(id, payload) {
-  const { password, department_id, ...rest } = payload;
+  const { password, department_id, school_id, ...rest } = payload;
   const updates = { ...rest };
 
   if (password) {
     updates.password_hash = await bcrypt.hash(password, 10);
   }
 
-  if (department_id) {
-    const department = await findDepartmentById(department_id);
-    updates.department_name = department?.name || rest.department_name || null;
-    updates.department_id = department_id;
+  if (department_id !== undefined) {
+    const deptId = department_id && department_id !== '' ? Number(department_id) : null;
+    const department = deptId ? await findDepartmentById(deptId) : null;
+    updates.department_name = department?.name || null;
+    updates.department_id = deptId;
+  }
+
+  if (school_id !== undefined) {
+    const schId = school_id && school_id !== '' ? Number(school_id) : null;
+    const school = schId ? await findSchoolById(schId) : null;
+    updates.school = school?.name || null;
+    updates.school_id = schId;
   }
 
   const { data, error } = await supabase
@@ -160,7 +269,7 @@ export async function updateIntern(id, payload) {
     .update(updates)
     .eq('id', id)
     .eq('role', INTERN_ROLE)
-    .select('id, username, full_name, email, role, school, course, department_id, department_name, status, start_date, end_date, required_hours, rendered_hours, student_id, year_level, phone, home_address, emergency_name, emergency_relation, emergency_phone')
+    .select('id, username, full_name, email, role, school, school_id, course, department_id, department_name, status, start_date, end_date, required_hours, rendered_hours, student_id, year_level, phone, home_address, emergency_name, emergency_relation, emergency_phone')
     .single();
 
   if (error) throw error;
@@ -289,10 +398,10 @@ export async function changePassword(userId, currentPassword, newPassword) {
   return { success: true };
 }
 
-export async function getAttendanceLogs({ status, date, page = 1, limit = 15 } = {}) {
+export async function getAttendanceLogs({ status, date, page = 1, limit = 15, department_id } = {}) {
   let query = supabase
     .from('attendance_logs')
-    .select('*', { count: 'exact' })
+    .select('*, attendance_photos(photo)', { count: 'exact' })
     .order('scan_time', { ascending: false });
 
   if (status) {
@@ -305,6 +414,16 @@ export async function getAttendanceLogs({ status, date, page = 1, limit = 15 } =
     const end = new Date(date);
     end.setHours(23, 59, 59, 999);
     query = query.gte('scan_time', start.toISOString()).lte('scan_time', end.toISOString());
+  }
+
+  if (department_id) {
+    // Get intern IDs for this department
+    const { data: accounts } = await supabase.from('accounts').select('id').eq('department_id', department_id).eq('role', 'intern');
+    const internIds = accounts ? accounts.map(a => a.id) : [];
+    if (internIds.length === 0) {
+      return { logs: [], total: 0 };
+    }
+    query = query.in('intern_id', internIds);
   }
 
   const from = (page - 1) * limit;
@@ -330,8 +449,10 @@ export async function getAttendanceLogs({ status, date, page = 1, limit = 15 } =
 
   const mappedData = (data || []).map(log => {
     const accObj = accountsMap[log.intern_id];
+    const photo = log.attendance_photos?.[0]?.photo || null;
     return {
       ...log,
+      photo,
       full_name: accObj?.full_name || log.intern_name,
       department_name: accObj?.department_name
     };
@@ -435,11 +556,128 @@ export async function getAdminDashboardStats() {
   };
 }
 
+export async function getSupervisorDashboardStats(user) {
+  if (!user || user.role !== 'supervisor' || !user.department_id) {
+    throw new Error('Permission denied or supervisor is not assigned to a department.');
+  }
+
+  const departmentId = user.department_id;
+
+  // Get all intern IDs in the supervisor's department
+  const { data: departmentInterns, error: deptInternsError } = await supabase
+    .from('accounts')
+    .select('id')
+    .eq('role', 'intern')
+    .eq('department_id', departmentId);
+
+  if (deptInternsError) throw deptInternsError;
+  const departmentInternIds = departmentInterns.map(i => i.id);
+
+  let pendingAttendanceCount = 0;
+  let pendingDocumentsCount = 0;
+  let recentAttendance = [];
+  let presentToday = 0;
+  let approvedToday = 0;
+
+  if (departmentInternIds.length > 0) {
+    const today = new Date();
+    const start = new Date(today);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(today);
+    end.setHours(23, 59, 59, 999);
+
+    // Get today's attendance logs for the department's interns
+    const { data: todayLogsData, error: todayLogsError } = await supabase
+      .from('attendance_logs')
+      .select('id, intern_id, scan_time, approval_status')
+      .in('intern_id', departmentInternIds)
+      .gte('scan_time', start.toISOString())
+      .lte('scan_time', end.toISOString());
+    
+    if (todayLogsError) throw todayLogsError;
+    const todayLogs = todayLogsData || [];
+    
+    const presentSet = new Set(todayLogs
+      .filter((log) => log.approval_status !== 'rejected')
+      .map((log) => log.intern_id));
+      
+    presentToday = presentSet.size;
+    approvedToday = todayLogs.filter((log) => log.approval_status === 'approved').length;
+
+    // Get pending attendance logs for the department's interns
+    const { count: pendingLogsCount, error: pendingLogsError } = await supabase
+      .from('attendance_logs')
+      .select('id', { count: 'exact', head: true })
+      .in('intern_id', departmentInternIds)
+      .eq('approval_status', 'pending');
+
+    if (pendingLogsError) throw pendingLogsError;
+    pendingAttendanceCount = pendingLogsCount || 0;
+
+    // Get pending documents for the department's interns
+    const { count: pendingDocsCount, error: pendingDocsError } = await supabase
+      .from('documents')
+      .select('id', { count: 'exact', head: true })
+      .in('intern_id', departmentInternIds)
+      .eq('status', 'pending');
+
+    if (pendingDocsError) throw pendingDocsError;
+    pendingDocumentsCount = pendingDocsCount || 0;
+
+    // Get recent attendance logs for the department's interns
+    const { data: recentLogs, error: recentLogsError } = await supabase
+      .from('attendance_logs')
+      .select('*')
+      .in('intern_id', departmentInternIds)
+      .order('scan_time', { ascending: false })
+      .limit(5);
+
+    if (recentLogsError) throw recentLogsError;
+    recentAttendance = recentLogs || [];
+  }
+
+  let accountsMap = {};
+  if (departmentInternIds.length > 0) {
+    const { data: accounts, error: accountsError } = await supabase
+      .from('accounts')
+      .select('id, full_name, department_name')
+      .in('id', departmentInternIds);
+    if (!accountsError && accounts) {
+      accountsMap = accounts.reduce((acc, accObj) => {
+        acc[accObj.id] = accObj;
+        return acc;
+      }, {});
+    }
+  }
+
+  const mappedRecent = (recentAttendance || []).map(log => {
+    const accObj = accountsMap[log.intern_id];
+    return {
+      ...log,
+      full_name: accObj?.full_name || log.intern_name,
+      department_name: accObj?.department_name
+    };
+  });
+
+  return {
+    stats: {
+      total_interns: departmentInternIds.length,
+      present_today: presentToday,
+      pending_attendance: pendingAttendanceCount,
+      approved_today: approvedToday,
+      pending_documents: pendingDocumentsCount,
+      department_name: user.department_name || 'Your Department',
+    },
+    recentAttendance: mappedRecent,
+    departmentInterns: departmentInterns || [],
+  };
+}
+
 export async function getAttendanceReport({ month, year, department_id } = {}) {
   const filters = { role: INTERN_ROLE };
   let internQuery = supabase
     .from('accounts')
-    .select('id, full_name, school, course, department_name, department_id, required_hours, rendered_hours')
+    .select('id, full_name, school, course, department_name, department_id, required_hours')
     .eq('role', INTERN_ROLE)
     .order('full_name', { ascending: true });
 
@@ -450,42 +688,42 @@ export async function getAttendanceReport({ month, year, department_id } = {}) {
   const { data: interns, error: internsError } = await internQuery;
   if (internsError) throw internsError;
 
-  let logQuery = supabase
-    .from('attendance_logs')
-    .select('intern_id, scan_time, approval_status');
+  const reportData = await Promise.all(
+    interns.map(async (intern) => {
+      const mNum = month ? Number(month) : undefined;
+      const yNum = year ? Number(year) : undefined;
 
-  if (month && year) {
-    const start = new Date(year, month - 1, 1);
-    const end = new Date(year, month, 0, 23, 59, 59, 999);
-    logQuery = logQuery.gte('scan_time', start.toISOString()).lte('scan_time', end.toISOString());
-  }
+      // 1. Get DTR records for the selected month/year
+      const monthlyDtr = await getDtrRecords(intern.id, { month: mNum, year: yNum });
+      
+      // 2. Get all-time DTR records for cumulative approved hours (limit 500 days)
+      const allTimeDtr = await getDtrRecords(intern.id, { limit: 500 });
 
-  const { data: logs, error: logsError } = await logQuery;
-  if (logsError) throw logsError;
+      // Sum of hours for the selected month
+      const monthlyTotalHours = monthlyDtr.reduce((sum, r) => sum + (r.total_hours || 0), 0);
 
-  const attendanceByIntern = logs.reduce((acc, log) => {
-    const dateKey = log.scan_time.slice(0, 10);
-    const key = `${log.intern_id}-${dateKey}`;
-    acc[key] = true;
-    return acc;
-  }, {});
+      // Sum of approved hours for all-time (determines overall progress)
+      const cumulativeApprovedHours = allTimeDtr
+        .filter(r => r.approval_status === 'approved')
+        .reduce((sum, r) => sum + (r.total_hours || 0), 0);
 
-  const dailyCounts = Object.keys(attendanceByIntern).reduce((acc, key) => {
-    const internId = Number(key.split('-')[0]);
-    acc[internId] = (acc[internId] || 0) + 1;
-    return acc;
-  }, {});
+      // Days present = number of days with DTR logs in the selected month
+      const daysPresent = monthlyDtr.length;
 
-  return interns.map((intern) => ({
-    id: intern.id,
-    full_name: intern.full_name,
-    school: intern.school,
-    department_name: intern.department_name,
-    days_present: dailyCounts[intern.id] || 0,
-    total_hours: Number(intern.rendered_hours || 0),
-    required_hours: Number(intern.required_hours || 0),
-    rendered_hours: Number(intern.rendered_hours || 0),
-  }));
+      return {
+        id: intern.id,
+        full_name: intern.full_name,
+        school: intern.school,
+        department_name: intern.department_name,
+        days_present: daysPresent,
+        total_hours: Number(monthlyTotalHours.toFixed(2)),
+        required_hours: Number(intern.required_hours || 0),
+        rendered_hours: Number(cumulativeApprovedHours.toFixed(2)),
+      };
+    })
+  );
+
+  return reportData;
 }
 
 export async function getDtrRecords(userId, { month, year, limit = 31 } = {}) {
@@ -536,10 +774,10 @@ export async function getDtrRecords(userId, { month, year, limit = 31 } = {}) {
     return acc;
   }, {});
 
-  return Object.entries(grouped).map(([date, entries]) => {
+  function computeStandardDtrRecord(date, entries) {
     // Sort scans chronologically; take at most 4 slots
-    entries.sort((a, b) => new Date(a.scan_time) - new Date(b.scan_time));
-    const [s1, s2, s3, s4] = entries;
+    const sorted = [...entries].sort((a, b) => new Date(a.scan_time) - new Date(b.scan_time));
+    const [s1, s2, s3, s4] = sorted;
 
     // Positional slot assignment: AM-in, AM-out, PM-in, PM-out
     const amInRaw  = s1?.scan_type === 'time_in'  ? new Date(s1.scan_time) : null;
@@ -548,49 +786,38 @@ export async function getDtrRecords(userId, { month, year, limit = 31 } = {}) {
     const pmOutRaw = s4?.scan_type === 'time_out' ? new Date(s4.scan_time) : null;
 
     // ── Time-floor rules (Manila clock) ─────────────────────────────────────
-    // AM Time In: any scan strictly before 08:00 MNL → register as 08:00 MNL
     let effectiveAmIn = null;
     if (amInRaw) {
       const m = toMNLDate(amInRaw);
       effectiveAmIn = m.getUTCHours() < 8
-        ? new Date(`${date}T08:00:00+08:00`)   // UTC = date T00:00:00Z
+        ? new Date(`${date}T08:00:00+08:00`)
         : amInRaw;
     }
 
-    // PM Time In: scan at or before 13:00 MNL → register as 13:00 MNL (no grace)
     let effectivePmIn = null;
     if (pmInRaw) {
       const m = toMNLDate(pmInRaw);
       const h = m.getUTCHours(), min = m.getUTCMinutes();
       effectivePmIn = (h < 13 || (h === 13 && min === 0))
-        ? new Date(`${date}T13:00:00+08:00`)   // UTC = date T05:00:00Z
+        ? new Date(`${date}T13:00:00+08:00`)
         : pmInRaw;
     }
 
-    // PM Time Out: honored as-is (overtime counted)
     const effectivePmOut = pmOutRaw;
-
-    // ── Total hours calculation ──────────────────────────────────────────────
-    // Manila noon anchor for AM session end
-    const noon = new Date(`${date}T12:00:00+08:00`); // UTC = date T04:00:00Z
+    const noon = new Date(`${date}T12:00:00+08:00`);
 
     let totalHours = 0;
-
     if (effectiveAmIn && effectivePmIn && effectivePmOut) {
-      // Full day: AM session (effectiveAmIn → noon) + PM session (effectivePmIn → effectivePmOut)
       const amSession = Math.max(0, (noon - effectiveAmIn) / 3600000);
       const pmSession = Math.max(0, (effectivePmOut - effectivePmIn) / 3600000);
       totalHours = amSession + pmSession;
     } else if (effectiveAmIn && amOutRaw) {
-      // AM only (scan 1 + 2 present, no PM)
       const amEnd = amOutRaw < noon ? amOutRaw : noon;
       totalHours = Math.max(0, (amEnd - effectiveAmIn) / 3600000);
     } else if (effectivePmIn && effectivePmOut) {
-      // PM only (rare edge case)
       totalHours = Math.max(0, (effectivePmOut - effectivePmIn) / 3600000);
     }
 
-    // ── Statuses ─────────────────────────────────────────────────────────────
     const amStatus      = s1?.approval_status || 'pending';
     const pmStatus      = s4?.approval_status || s3?.approval_status || 'pending';
     const allStatuses   = entries.map(e => e.approval_status).filter(Boolean);
@@ -600,21 +827,104 @@ export async function getDtrRecords(userId, { month, year, limit = 31 } = {}) {
 
     return {
       date,
-      // Display times in Manila (HH:MM) — caps already applied
       am_time_in:  mnlTimeStr(effectiveAmIn),
       am_time_out: mnlTimeStr(amOutRaw),
       pm_time_in:  mnlTimeStr(effectivePmIn),
       pm_time_out: mnlTimeStr(effectivePmOut),
-      // Per-slot statuses
       am_status:   amStatus,
       pm_status:   pmStatus,
-      // Overall for the day
       approval_status: overallStatus,
       total_hours: Number(totalHours.toFixed(2)),
-      // Backward-compat fields used by MyDTR summary stats
       time_in:  mnlTimeStr(effectiveAmIn),
       time_out: mnlTimeStr(effectivePmOut),
     };
+  }
+
+  return Object.entries(grouped).map(([date, entries]) => {
+    // Check if there is an override log for this day
+    const overrideLog = entries.find(l => l.remarks && l.remarks.startsWith('OVERRIDE:'));
+    if (overrideLog) {
+      const parts = overrideLog.remarks.split(':');
+      const overrideType = parts[1]; // 'SUSPENDED', 'EXCUSED', or 'HOURS'
+      
+      if (overrideType === 'SUSPENDED') {
+        const textRemarks = parts.slice(2).join(':');
+        return {
+          date,
+          am_time_in: null,
+          am_time_out: null,
+          pm_time_in: null,
+          pm_time_out: null,
+          am_status: 'approved',
+          pm_status: 'approved',
+          approval_status: 'approved',
+          total_hours: 0,
+          time_in: null,
+          time_out: null,
+          remarks: textRemarks || 'Suspension',
+          is_override: true,
+          override_type: 'suspended',
+          override_remarks: textRemarks
+        };
+      } else if (overrideType === 'EXCUSED') {
+        const textRemarks = parts.slice(2).join(':');
+        return {
+          date,
+          am_time_in: null,
+          am_time_out: null,
+          pm_time_in: null,
+          pm_time_out: null,
+          am_status: 'approved',
+          pm_status: 'approved',
+          approval_status: 'approved',
+          total_hours: 8.0, // Credited hours
+          time_in: null,
+          time_out: null,
+          remarks: textRemarks || 'Excused',
+          is_override: true,
+          override_type: 'excused',
+          override_remarks: textRemarks
+        };
+      } else if (overrideType === 'HOURS') {
+        const customHrs = Number(parts[2]) || 0;
+        const textRemarks = parts.slice(3).join(':');
+        // Filter out override log to compute scans normally
+        const normalScans = entries.filter(l => l.id !== overrideLog.id);
+        const standardRecord = computeStandardDtrRecord(date, normalScans);
+        return {
+          ...standardRecord,
+          total_hours: customHrs,
+          remarks: textRemarks || 'Hours Overridden',
+          is_override: true,
+          override_type: 'hours',
+          override_hours: customHrs,
+          override_remarks: textRemarks
+        };
+      } else if (overrideType === 'OTHERS') {
+        const customHrs = Number(parts[2]) || 0;
+        const textRemarks = parts.slice(3).join(':');
+        return {
+          date,
+          am_time_in: null,
+          am_time_out: null,
+          pm_time_in: null,
+          pm_time_out: null,
+          am_status: 'approved',
+          pm_status: 'approved',
+          approval_status: 'approved',
+          total_hours: customHrs,
+          time_in: null,
+          time_out: null,
+          remarks: textRemarks || 'Others',
+          is_override: true,
+          override_type: 'others',
+          override_hours: customHrs,
+          override_remarks: textRemarks
+        };
+      }
+    }
+
+    return computeStandardDtrRecord(date, entries);
   }).sort((a, b) => b.date.localeCompare(a.date));
 }
 
@@ -652,7 +962,7 @@ export async function markAllNotificationsRead(userId, isAdmin) {
   return { success: true };
 }
 
-export async function getEvaluations(userId, isAdmin) {
+export async function getEvaluations(userId, isAdmin, department_id = null) {
   let query = supabase
     .from('evaluations')
     .select('*')
@@ -662,9 +972,38 @@ export async function getEvaluations(userId, isAdmin) {
     query = query.eq('intern_id', userId);
   }
 
+  if (department_id) {
+    const { data: accounts } = await supabase.from('accounts').select('id').eq('department_id', department_id).eq('role', 'intern');
+    const internIds = accounts ? accounts.map(a => a.id) : [];
+    if (internIds.length === 0) {
+      return [];
+    }
+    query = query.in('intern_id', internIds);
+  }
+
   const { data, error } = await query;
   if (error) throw error;
-  return data || [];
+
+  const evaluations = data || [];
+  const internIds = [...new Set(evaluations.map(e => e.intern_id).filter(Boolean))];
+  let accountsMap = {};
+  if (internIds.length > 0) {
+    const { data: accounts, error: accountsError } = await supabase
+      .from('accounts')
+      .select('id, full_name')
+      .in('id', internIds);
+    if (!accountsError && accounts) {
+      accountsMap = accounts.reduce((acc, accObj) => {
+        acc[accObj.id] = accObj;
+        return acc;
+      }, {});
+    }
+  }
+
+  return evaluations.map(e => ({
+    ...e,
+    full_name: accountsMap[e.intern_id]?.full_name || 'Unknown Intern'
+  }));
 }
 
 export async function createEvaluation(payload, evaluatorId, evaluatorName) {
@@ -698,13 +1037,13 @@ export async function updateEvaluation(id, payload) {
   return data;
 }
 
-export async function getDocuments(userId, isAdmin, status) {
+export async function getDocuments(userId, isAdmin, { status, search, department_id } = {}) {
   let query = supabase
     .from('documents')
     // Select all columns from documents, and the full_name from the joined accounts table
     .select(`
       *,
-      account:accounts(full_name)
+      account:accounts!inner(full_name, department_id)
     `)
     .order('upload_date', { ascending: false });
 
@@ -712,8 +1051,32 @@ export async function getDocuments(userId, isAdmin, status) {
     query = query.eq('intern_id', userId);
   }
 
+  if (department_id) {
+    query = query.eq('account.department_id', department_id);
+  }
+
   if (status) {
     query = query.eq('status', status);
+  }
+
+  if (department_id) {
+    const { data: interns } = await supabase
+      .from('accounts')
+      .select('id')
+      .eq('role', 'intern')
+      .eq('department_id', department_id);
+    const internIds = (interns || []).map(i => i.id);
+    if (internIds.length > 0) {
+      query = query.in('intern_id', internIds);
+    } else {
+      query = query.in('intern_id', [-1]);
+    }
+  }
+
+  // Add search capability for document name and type.
+  // Note: Searching by intern name here would require a more complex query or a database view.
+  if (search) {
+    query = query.or(`original_name.ilike.%${search}%,document_type.ilike.%${search}%`);
   }
 
   const { data: documents, error } = await query;
@@ -895,6 +1258,114 @@ export async function deleteCalendarEvent(id) {
     .from('calendar_events')
     .delete()
     .eq('id', id);
+
+  if (error) throw error;
+  return { success: true };
+}
+
+export async function getSupervisors({ search, page = 1, limit = 10, department_id } = {}) {
+  let query = supabase
+    .from('accounts')
+    .select(
+      'id, username, full_name, email, role, department_id, department_name, status, phone, home_address',
+      { count: 'exact' }
+    )
+    .eq('role', 'supervisor')
+    .order('full_name', { ascending: true });
+
+  if (search) {
+    query = query.or(`full_name.ilike.%${search}%,username.ilike.%${search}%,email.ilike.%${search}%`);
+  }
+
+  if (department_id) {
+    query = query.eq('department_id', department_id);
+  }
+
+  const from = (page - 1) * limit;
+  const to = from + limit - 1;
+  query = query.range(from, to);
+
+  const { data, error, count } = await query;
+  if (error) throw error;
+  return { supervisors: data || [], total: count || 0 };
+}
+
+export async function getSupervisorById(id) {
+  const { data, error } = await supabase
+    .from('accounts')
+    .select('id, username, full_name, email, role, department_id, department_name, status, phone, home_address')
+    .eq('id', id)
+    .eq('role', 'supervisor')
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function createSupervisor(payload) {
+  const { password, department_id, ...rest } = payload;
+  if (!password) throw new Error('Password is required');
+
+  const password_hash = await bcrypt.hash(password, 10);
+  const deptId = department_id && department_id !== '' ? Number(department_id) : null;
+  const department = deptId ? await findDepartmentById(deptId) : null;
+  const departmentName = department?.name || rest.department_name || null;
+
+  const { data, error } = await supabase
+    .from('accounts')
+    .insert([{ ...rest, password_hash, role: 'supervisor', department_id: deptId, department_name: departmentName }])
+    .select('id, username, full_name, email, role, department_id, department_name, status, phone, home_address')
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function updateSupervisor(id, payload) {
+  const { password, department_id, ...rest } = payload;
+  const updates = { ...rest };
+
+  if (password) {
+    updates.password_hash = await bcrypt.hash(password, 10);
+  }
+
+  if (department_id !== undefined) {
+    const deptId = department_id && department_id !== '' ? Number(department_id) : null;
+    const department = deptId ? await findDepartmentById(deptId) : null;
+    updates.department_name = department?.name || null;
+    updates.department_id = deptId;
+  }
+
+  const { data, error } = await supabase
+    .from('accounts')
+    .update(updates)
+    .eq('id', id)
+    .eq('role', 'supervisor')
+    .select('id, username, full_name, email, role, department_id, department_name, status, phone, home_address')
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteSupervisor(id) {
+  const { error } = await supabase
+    .from('accounts')
+    .delete()
+    .eq('id', id)
+    .eq('role', 'supervisor');
+
+  if (error) throw error;
+  return { success: true };
+}
+
+export async function resetSupervisorPassword(id, newPassword) {
+  const password_hash = await bcrypt.hash(newPassword, 10);
+  const { error } = await supabase
+    .from('accounts')
+    .update({ password_hash })
+    .eq('id', id)
+    .eq('role', 'supervisor');
 
   if (error) throw error;
   return { success: true };

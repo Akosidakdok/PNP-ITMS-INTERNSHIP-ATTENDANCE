@@ -64,14 +64,14 @@ export async function getTodayScanStatus(internId) {
   }
 
   const scanCount = Array.isArray(todayLogs) ? todayLogs.length : 0;
-  const nextScanLabel = scanCount >= 4
+  const nextScanLabel = scanCount >= 2
     ? 'All scans completed for today'
-    : ['AM Time In', 'AM Time Out', 'PM Time In', 'PM Time Out'][scanCount];
+    : ['Time In', 'Time Out'][scanCount];
 
   return { next_scan_label: nextScanLabel, scan_count: scanCount };
 }
 
-export async function scanAttendance({ qr_code, user }) {
+export async function scanAttendance({ qr_code, user, photo } = {}) {
   if (!qr_code) {
     throw new Error('QR code is required');
   }
@@ -97,7 +97,7 @@ export async function scanAttendance({ qr_code, user }) {
   }
 
   let scanType = 'time_in';
-  let scanLabel = 'AM Time In';
+  let scanLabel = 'Time In';
   let scanOrder = 1;
 
   if (internId) {
@@ -133,13 +133,13 @@ export async function scanAttendance({ qr_code, user }) {
     }
 
     const scanCount = Array.isArray(todayLogs) ? todayLogs.length : 0;
-    if (scanCount >= 4) {
-      throw new Error('You have already completed 4 attendance scans today. Please try again tomorrow.');
+    if (scanCount >= 2) {
+      throw new Error('You have already completed 2 attendance scans (Time In - Time Out) today. Please try again tomorrow.');
     }
 
     scanOrder = scanCount + 1;
     scanType = scanOrder % 2 === 1 ? 'time_in' : 'time_out';
-    scanLabel = ['AM Time In', 'AM Time Out', 'PM Time In', 'PM Time Out'][scanCount];
+    scanLabel = ['Time In', 'Time Out'][scanCount];
   }
 
   const scanTime = new Date().toISOString();
@@ -154,12 +154,26 @@ export async function scanAttendance({ qr_code, user }) {
   ]).select().single();
 
   if (insertError || !record) {
-    throw new Error('Failed to record attendance');
+    console.error('Database insert error:', insertError);
+    throw new Error(`Failed to record attendance: ${insertError?.message || 'Unknown database error'}`);
   }
 
-  const nextScanLabel = scanOrder >= 4
+  if (photo) {
+    const { error: photoError } = await supabase.from('attendance_photos').insert([
+      {
+        attendance_log_id: record.id,
+        photo: photo,
+      }
+    ]);
+    if (photoError) {
+      console.error('Photo database insert error:', photoError);
+      throw new Error(`Failed to save selfie verification: ${photoError?.message || 'Unknown database error'}`);
+    }
+  }
+
+  const nextScanLabel = scanOrder >= 2
     ? 'All scans completed for today'
-    : ['AM Time In', 'AM Time Out', 'PM Time In', 'PM Time Out'][scanOrder];
+    : ['Time In', 'Time Out'][scanOrder];
 
   return {
     message: `${scanLabel} recorded successfully`,
