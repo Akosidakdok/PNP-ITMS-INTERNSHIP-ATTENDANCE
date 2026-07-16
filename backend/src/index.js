@@ -97,7 +97,12 @@ app.post('/auth/change-password', authMiddleware, async (req, res) => {
 });
 
 app.get('/auth/me', authMiddleware, async (req, res) => {
-  return res.json({ user: req.user });
+  try {
+    const profile = await getCurrentUserProfile(req.user.id);
+    return res.json({ user: profile });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
 });
 
 app.get('/admin/dashboard-stats', authMiddleware, adminMiddleware, async (req, res) => {
@@ -112,7 +117,8 @@ app.get('/admin/dashboard-stats', authMiddleware, adminMiddleware, async (req, r
 app.get('/supervisor/dashboard-stats', authMiddleware, async (req, res) => {
   if (req.user.role !== 'supervisor') return res.status(403).json({ error: 'Permission denied' });
   try {
-    const stats = await getSupervisorDashboardStats(req.user);
+    const userProfile = await getCurrentUserProfile(req.user.id);
+    const stats = await getSupervisorDashboardStats(userProfile);
     return res.json(stats);
   } catch (error) {
     return res.status(500).json({ error: error.message });
