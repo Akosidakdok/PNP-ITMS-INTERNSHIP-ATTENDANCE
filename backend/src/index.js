@@ -125,8 +125,6 @@ app.get('/supervisor/dashboard-stats', authMiddleware, async (req, res) => {
   try {
     const userProfile = await getCurrentUserProfile(req.user.id);
     const stats = await getSupervisorDashboardStats(userProfile);
-    const userProfile = await getCurrentUserProfile(req.user.id);
-    const stats = await getSupervisorDashboardStats(userProfile);
     return res.json(stats);
   } catch (error) {
     return res.status(500).json({ error: error.message });
