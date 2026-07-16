@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { UserPlus, Edit2, Trash2, Key } from 'lucide-react';
+import { UserPlus, Edit2, Trash2, Key, Archive } from 'lucide-react';
 import api from '../../utils/api.js';
 import DataTable from '../../components/common/DataTable.jsx';
 import Modal from '../../components/common/Modal.jsx';
@@ -34,6 +34,37 @@ const generatePassword = (fullName, studentId) => {
   return `${surname}-${last4}`;
 };
 
+const calculateEstimatedEndDate = (startDateStr, requiredHours) => {
+  if (!startDateStr || !requiredHours) return '';
+  const parts = startDateStr.split('-');
+  if (parts.length !== 3) return '';
+  const start = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+  if (isNaN(start.getTime())) return '';
+  
+  let hours = Number(requiredHours);
+  if (isNaN(hours) || hours <= 0) return '';
+  
+  let daysNeeded = Math.ceil(hours / 8);
+  let current = new Date(start);
+  
+  let daysAdded = 0;
+  while (daysNeeded > 0) {
+    if (daysAdded > 0) {
+      current.setDate(current.getDate() + 1);
+    }
+    const dayOfWeek = current.getDay();
+    if (dayOfWeek !== 0 && dayOfWeek !== 6) { // Skip Sunday (0) and Saturday (6)
+      daysNeeded--;
+    }
+    daysAdded++;
+  }
+  
+  const yyyy = current.getFullYear();
+  const mm = String(current.getMonth() + 1).padStart(2, '0');
+  const dd = String(current.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+};
+
 export default function InternManagement() {
   const [interns, setInterns] = useState([]);
   const [total, setTotal] = useState(0);
@@ -48,16 +79,28 @@ export default function InternManagement() {
   const [saving, setSaving] = useState(false);
   const [resetPwd, setResetPwd] = useState('');
   const [newSchoolName, setNewSchoolName] = useState('');
+  const [activeTab, setActiveTab] = useState('active'); // 'active' | 'archived'
+  const [sortBy, setSortBy] = useState('full_name'); // 'full_name' | 'department' | 'school'
+  const [sortOrder, setSortOrder] = useState('asc'); // 'asc' | 'desc'
 
   const fetchInterns = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await api.get('/interns', { params: { search, page, limit: 10 } });
+      const res = await api.get('/interns', {
+        params: {
+          search,
+          page,
+          limit: 10,
+          status: activeTab,
+          sort_by: sortBy,
+          sort_order: sortOrder
+        }
+      });
       setInterns(res.data.interns);
       setTotal(res.data.total);
     } catch { toast.error('Failed to load interns'); }
     finally { setLoading(false); }
-  }, [search, page]);
+  }, [search, page, activeTab, sortBy, sortOrder]);
 
   useEffect(() => {
     api.get('/departments')
@@ -69,6 +112,15 @@ export default function InternManagement() {
   }, []);
 
   useEffect(() => { fetchInterns(); }, [fetchInterns]);
+
+  useEffect(() => {
+    if (form.start_date && form.required_hours) {
+      const estimatedEnd = calculateEstimatedEndDate(form.start_date, form.required_hours);
+      if (estimatedEnd && form.end_date !== estimatedEnd) {
+        setForm(f => ({ ...f, end_date: estimatedEnd }));
+      }
+    }
+  }, [form.start_date, form.required_hours]);
 
   const openCreate = () => { setForm(INIT_FORM); setNewSchoolName(''); setModal('create'); };
   const openEdit = (i) => {
@@ -87,6 +139,7 @@ export default function InternManagement() {
   };
   const openDelete = (i) => { setSelected(i); setModal('delete'); };
   const openReset = (i) => { setSelected(i); setResetPwd(''); setModal('reset'); };
+  const openArchive = (i) => { setSelected(i); setModal('archive'); };
 
   const handleSave = async () => {
     if (!form.full_name || !form.full_name.trim()) {
@@ -176,6 +229,19 @@ export default function InternManagement() {
     finally { setSaving(false); }
   };
 
+  const handleArchiveToggle = async () => {
+    setSaving(true);
+    try {
+      const isArchived = selected.status === 'archived';
+      const newStatus = isArchived ? 'active' : 'archived';
+      await api.put(`/interns/${selected.id}`, { status: newStatus });
+      toast.success(`Intern ${isArchived ? 'unarchived' : 'archived'} successfully`);
+      setModal(null);
+      fetchInterns();
+    } catch { toast.error('Archive operation failed'); }
+    finally { setSaving(false); }
+  };
+
   const columns = [
     {
       key: 'full_name', label: 'Intern Name',
@@ -218,6 +284,13 @@ export default function InternManagement() {
         <div className="flex gap-1">
           <button className="btn btn-ghost btn-icon btn-sm" data-tooltip="Edit" onClick={() => openEdit(row)}><Edit2 className="w-3.5 h-3.5" /></button>
           <button className="btn btn-ghost btn-icon btn-sm" data-tooltip="Reset Password" onClick={() => openReset(row)}><Key className="w-3.5 h-3.5" /></button>
+          <button 
+            className={`btn btn-ghost btn-icon btn-sm ${row.status === 'archived' ? 'text-amber-600' : 'text-gray-500'}`} 
+            data-tooltip={row.status === 'archived' ? 'Unarchive' : 'Archive'} 
+            onClick={() => openArchive(row)}
+          >
+            <Archive className="w-3.5 h-3.5" />
+          </button>
           <button className="btn btn-ghost btn-icon btn-sm text-red-500" data-tooltip="Delete" onClick={() => openDelete(row)}><Trash2 className="w-3.5 h-3.5" /></button>
         </div>
       )
@@ -452,7 +525,7 @@ export default function InternManagement() {
             />
           </div>
           <div className="form-group">
-            <label className="form-label text-[11px] text-gray-500 uppercase font-bold tracking-wider">Internship End Date</label>
+            <label className="form-label text-[11px] text-gray-500 uppercase font-bold tracking-wider">Estimated Internship End Date</label>
             <input
               type="date"
               className="form-input bg-gray-50/50"
@@ -471,11 +544,34 @@ export default function InternManagement() {
                 <option value="active">Active</option>
                 <option value="completed">Completed</option>
                 <option value="dropped">Dropped</option>
+                <option value="archived">Archived</option>
               </select>
             </div>
           )}
         </div>
       </div>
+    </div>
+  );
+
+  const tableActions = (
+    <div className="flex items-center gap-2">
+      <label className="text-xs font-bold uppercase text-gray-400 tracking-wider">Sort By:</label>
+      <select
+        className="form-input form-select text-xs py-1 px-2 bg-gray-50 border border-gray-200 rounded-lg max-w-40"
+        value={sortBy}
+        onChange={e => { setSortBy(e.target.value); setPage(1); }}
+      >
+        <option value="full_name">Name</option>
+        <option value="department">Department</option>
+        <option value="school">School</option>
+      </select>
+      <button
+        className="btn btn-ghost btn-sm btn-icon border border-gray-200 bg-white hover:bg-gray-50 rounded-lg flex items-center justify-center w-8 h-8"
+        data-tooltip={sortOrder === 'asc' ? 'Sort Ascending' : 'Sort Descending'}
+        onClick={() => { setSortOrder(o => o === 'asc' ? 'desc' : 'asc'); setPage(1); }}
+      >
+        <span className="text-xs font-bold">{sortOrder === 'asc' ? '▲' : '▼'}</span>
+      </button>
     </div>
   );
 
@@ -491,6 +587,30 @@ export default function InternManagement() {
         </button>
       </div>
 
+      {/* Archive Tabs */}
+      <div className="flex border-b border-gray-200 mb-2 gap-2">
+        <button
+          className={`px-4 py-2 text-sm font-semibold border-b-2 transition-all ${
+            activeTab === 'active'
+              ? 'border-blue-600 text-blue-600'
+              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+          }`}
+          onClick={() => { setActiveTab('active'); setPage(1); }}
+        >
+          Active Interns
+        </button>
+        <button
+          className={`px-4 py-2 text-sm font-semibold border-b-2 transition-all ${
+            activeTab === 'archived'
+              ? 'border-blue-600 text-blue-600'
+              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+          }`}
+          onClick={() => { setActiveTab('archived'); setPage(1); }}
+        >
+          Archived Interns
+        </button>
+      </div>
+
       <DataTable
         columns={columns}
         data={interns}
@@ -501,8 +621,9 @@ export default function InternManagement() {
         onPageChange={setPage}
         searchValue={search}
         onSearchChange={v => { setSearch(v); setPage(1); }}
-        searchPlaceholder="Search by name, email, username..."
+        searchPlaceholder="Search Here"
         emptyMessage="No interns found"
+        actions={tableActions}
       />
 
       {/* Create/Edit Modal */}
@@ -554,6 +675,23 @@ export default function InternManagement() {
           <label className="form-label">New Password</label>
           <input type="password" className="form-input" value={resetPwd} onChange={e => setResetPwd(e.target.value)} placeholder="Minimum 8 characters" />
         </div>
+      </Modal>
+
+      {/* Archive Modal */}
+      <Modal isOpen={modal === 'archive'} onClose={() => setModal(null)} title={selected?.status === 'archived' ? "Unarchive Intern" : "Archive Intern"} size="sm"
+        footer={
+          <>
+            <button className="btn btn-secondary" onClick={() => setModal(null)}>Cancel</button>
+            <button id="confirm-archive-btn" className="btn btn-primary" onClick={handleArchiveToggle} disabled={saving}>
+              {saving ? 'Processing...' : selected?.status === 'archived' ? 'Unarchive' : 'Archive'}
+            </button>
+          </>
+        }
+      >
+        <p className="text-gray-600">
+          Are you sure you want to {selected?.status === 'archived' ? 'unarchive' : 'archive'} <strong>{selected?.full_name}</strong>?
+          {selected?.status !== 'archived' && " Archiving will keep their account and profile history in the database but change their status to Archived."}
+        </p>
       </Modal>
     </div>
   );

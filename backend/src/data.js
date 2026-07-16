@@ -149,18 +149,17 @@ export async function findSchoolById(id) {
   return data;
 }
 
-export async function getInterns({ search, page = 1, limit = 10, department_id, school_id } = {}) {
+export async function getInterns({ search, page = 1, limit = 10, department_id, school_id, status, sortBy = 'full_name', sortOrder = 'asc' } = {}) {
   let query = supabase
     .from('accounts')
     .select(
       'id, username, full_name, email, role, school, school_id, course, department_id, department_name, status, start_date, end_date, required_hours, rendered_hours, student_id, year_level, phone, home_address, emergency_name, emergency_relation, emergency_phone',
       { count: 'exact' }
     )
-    .eq('role', INTERN_ROLE)
-    .order('full_name', { ascending: true });
+    .eq('role', INTERN_ROLE);
 
   if (search) {
-    query = query.or(`full_name.ilike.%${search}%,username.ilike.%${search}%,email.ilike.%${search}%`);
+    query = query.or(`full_name.ilike.%${search}%,username.ilike.%${search}%,email.ilike.%${search}%,school.ilike.%${search}%,department_name.ilike.%${search}%`);
   }
 
   if (department_id) {
@@ -169,6 +168,25 @@ export async function getInterns({ search, page = 1, limit = 10, department_id, 
 
   if (school_id) {
     query = query.eq('school_id', school_id);
+  }
+
+  if (status) {
+    if (status === 'active') {
+      query = query.neq('status', 'archived');
+    } else {
+      query = query.eq('status', status);
+    }
+  } else {
+    query = query.neq('status', 'archived');
+  }
+
+  const isAscending = sortOrder === 'asc';
+  if (sortBy === 'department') {
+    query = query.order('department_name', { ascending: isAscending });
+  } else if (sortBy === 'school') {
+    query = query.order('school', { ascending: isAscending });
+  } else {
+    query = query.order(sortBy || 'full_name', { ascending: isAscending });
   }
 
   const from = (page - 1) * limit;
@@ -333,7 +351,7 @@ export async function changePassword(userId, currentPassword, newPassword) {
 export async function getAttendanceLogs({ status, date, page = 1, limit = 15, department_id } = {}) {
   let query = supabase
     .from('attendance_logs')
-    .select('*', { count: 'exact' })
+    .select('*, attendance_photos(photo)', { count: 'exact' })
     .order('scan_time', { ascending: false });
 
   if (status) {
@@ -385,8 +403,10 @@ export async function getAttendanceLogs({ status, date, page = 1, limit = 15, de
 
   const mappedData = (data || []).map(log => {
     const accObj = accountsMap[log.intern_id];
+    const photo = log.attendance_photos?.[0]?.photo || null;
     return {
       ...log,
+      photo,
       full_name: accObj?.full_name || log.intern_name,
       department_name: accObj?.department_name
     };

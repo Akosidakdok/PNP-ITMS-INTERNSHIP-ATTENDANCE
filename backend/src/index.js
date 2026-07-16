@@ -49,6 +49,7 @@ import {
   updateSchool,
   deleteSchool,
 } from './data.js';
+import { supabase } from './supabaseClient.js';
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -264,7 +265,10 @@ app.get('/interns', authMiddleware, adminMiddleware, async (req, res) => {
       page: Number(req.query.page) || 1,
       limit: Number(req.query.limit) || 10,
       department_id: departmentId,
-      school_id: req.query.school_id ? Number(req.query.school_id) : undefined
+      school_id: req.query.school_id ? Number(req.query.school_id) : undefined,
+      status: req.query.status,
+      sortBy: req.query.sort_by,
+      sortOrder: req.query.sort_order
     });
     return res.json(result);
   } catch (error) {
@@ -637,14 +641,56 @@ app.get('/attendance/next-scan', authMiddleware, async (req, res) => {
   }
 });
 
-app.post('/attendance/scan', authMiddleware, async (req, res) => {
+app.post('/attendance/validate-qr', authMiddleware, async (req, res) => {
   const { qr_code } = req.body;
   if (!qr_code) {
     return res.status(400).json({ error: 'QR code is required' });
   }
 
   try {
-    const scanResult = await scanAttendance({ qr_code, user: req.user });
+    const now = new Date().toISOString();
+    const { data: qrData, error: qrError } = await supabase
+      .from('qr_codes')
+      .select('id, is_active, expires_at')
+      .eq('qr_code', qr_code)
+      .eq('is_active', true)
+      .gt('expires_at', now)
+      .single();
+
+    if (qrError || !qrData) {
+      return res.status(400).json({ error: 'Invalid or expired QR code' });
+    }
+
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const todayEnd = new Date();
+    todayEnd.setHours(23, 59, 59, 999);
+
+    const { data: todayLogs } = await supabase
+      .from('attendance_logs')
+      .select('id')
+      .eq('intern_id', req.user.id)
+      .gte('scan_time', todayStart.toISOString())
+      .lte('scan_time', todayEnd.toISOString());
+
+    if (todayLogs && todayLogs.length >= 2) {
+      return res.status(400).json({ error: 'You have already completed 2 attendance scans (Time In - Time Out) today. Please try again tomorrow.' });
+    }
+
+    return res.json({ success: true, message: 'QR scan is good! Proceed to take your selfie.' });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/attendance/scan', authMiddleware, async (req, res) => {
+  const { qr_code, photo } = req.body;
+  if (!qr_code) {
+    return res.status(400).json({ error: 'QR code is required' });
+  }
+
+  try {
+    const scanResult = await scanAttendance({ qr_code, user: req.user, photo });
     return res.json(scanResult);
   } catch (error) {
     return res.status(400).json({ error: error.message });

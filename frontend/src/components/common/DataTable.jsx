@@ -26,7 +26,8 @@ export default function DataTable({
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               <input
                 type="text"
-                className="form-input pl-9 text-sm"
+                className="form-input text-sm"
+                style={{ paddingLeft: '2.25rem' }}
                 placeholder={searchPlaceholder}
                 value={searchValue}
                 onChange={e => onSearchChange(e.target.value)}
