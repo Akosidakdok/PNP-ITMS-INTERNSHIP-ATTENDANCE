@@ -153,7 +153,7 @@ export async function getInterns({ search, page = 1, limit = 10, department_id, 
   let query = supabase
     .from('accounts')
     .select(
-      'id, username, full_name, email, role, school, school_id, course, department_id, department_name, status, start_date, end_date, required_hours, rendered_hours, student_id, year_level, phone, home_address, emergency_name, emergency_relation, emergency_phone',
+      'id, username, full_name, first_name, middle_name, last_name, name_suffix, email, role, school, school_id, course, department_id, department_name, status, start_date, end_date, required_hours, rendered_hours, student_id, year_level, phone, home_address, emergency_name, emergency_relation, emergency_phone',
       { count: 'exact' }
     )
     .eq('role', INTERN_ROLE);
@@ -201,7 +201,7 @@ export async function getInterns({ search, page = 1, limit = 10, department_id, 
 export async function getInternById(id) {
   const { data, error } = await supabase
     .from('accounts')
-    .select('id, username, full_name, email, role, school, course, department_id, department_name, status, start_date, end_date, required_hours, rendered_hours, student_id, year_level, phone, home_address, emergency_name, emergency_relation, emergency_phone')
+    .select('id, username, full_name, first_name, middle_name, last_name, name_suffix, email, role, school, course, department_id, department_name, status, start_date, end_date, required_hours, rendered_hours, student_id, year_level, phone, home_address, emergency_name, emergency_relation, emergency_phone')
     .eq('id', id)
     .eq('role', INTERN_ROLE)
     .single();
@@ -219,6 +219,9 @@ function normalizeDepartmentName(departmentId, departmentName) {
 
 export async function createIntern(payload) {
   const { password, department_id, school_id, ...rest } = payload;
+  if (rest.first_name || rest.last_name) {
+    rest.full_name = [rest.first_name, rest.middle_name, rest.last_name, rest.name_suffix].filter(Boolean).join(' ');
+  }
   if (!password) throw new Error('Password is required');
 
   const password_hash = await bcrypt.hash(password, 10);
@@ -234,7 +237,7 @@ export async function createIntern(payload) {
   const { data, error } = await supabase
     .from('accounts')
     .insert([{ ...rest, password_hash, role: INTERN_ROLE, department_id: deptId, department_name: departmentName, school_id: schId, school: schoolName }])
-    .select('id, username, full_name, email, role, school, school_id, course, department_id, department_name, status, start_date, end_date, required_hours, rendered_hours, student_id, year_level, phone, home_address, emergency_name, emergency_relation, emergency_phone')
+    .select('id, username, full_name, first_name, middle_name, last_name, name_suffix, email, role, school, school_id, course, department_id, department_name, status, start_date, end_date, required_hours, rendered_hours, student_id, year_level, phone, home_address, emergency_name, emergency_relation, emergency_phone')
     .single();
 
   if (error) throw error;
@@ -243,7 +246,19 @@ export async function createIntern(payload) {
 
 export async function updateIntern(id, payload) {
   const { password, department_id, school_id, ...rest } = payload;
+  if (rest.first_name || rest.last_name) {
+    rest.full_name = [rest.first_name, rest.middle_name, rest.last_name, rest.name_suffix].filter(Boolean).join(' ');
+  }
   const updates = { ...rest };
+  if (rest.first_name !== undefined || rest.last_name !== undefined) {
+    const fn = rest.first_name || '';
+    const mn = rest.middle_name || '';
+    const ln = rest.last_name || '';
+    const sn = rest.name_suffix || '';
+    if (fn || ln) {
+      updates.full_name = [fn, mn, ln, sn].filter(Boolean).join(' ');
+    }
+  }
 
   if (password) {
     updates.password_hash = await bcrypt.hash(password, 10);
@@ -268,7 +283,7 @@ export async function updateIntern(id, payload) {
     .update(updates)
     .eq('id', id)
     .eq('role', INTERN_ROLE)
-    .select('id, username, full_name, email, role, school, school_id, course, department_id, department_name, status, start_date, end_date, required_hours, rendered_hours, student_id, year_level, phone, home_address, emergency_name, emergency_relation, emergency_phone')
+    .select('id, username, full_name, first_name, middle_name, last_name, name_suffix, email, role, school, school_id, course, department_id, department_name, status, start_date, end_date, required_hours, rendered_hours, student_id, year_level, phone, home_address, emergency_name, emergency_relation, emergency_phone')
     .single();
 
   if (error) throw error;
@@ -301,7 +316,7 @@ export async function resetInternPassword(id, newPassword) {
 export async function getCurrentUserProfile(userId) {
   const { data, error } = await supabase
     .from('accounts')
-    .select('id, username, full_name, email, role, school, course, department_id, department_name, status, start_date, end_date, required_hours, rendered_hours, student_id, year_level, phone, home_address, emergency_name, emergency_relation, emergency_phone')
+    .select('id, username, full_name, first_name, middle_name, last_name, name_suffix, email, role, school, course, department_id, department_name, status, start_date, end_date, required_hours, rendered_hours, student_id, year_level, phone, home_address, emergency_name, emergency_relation, emergency_phone')
     .eq('id', userId)
     .single();
 
@@ -320,7 +335,7 @@ export async function updateCurrentUserProfile(userId, updates) {
     .from('accounts')
     .update(payload)
     .eq('id', userId)
-    .select('id, username, full_name, email, role, school, course, department_id, department_name, status, start_date, end_date, required_hours, rendered_hours, student_id, year_level, phone, home_address, emergency_name, emergency_relation, emergency_phone')
+    .select('id, username, full_name, first_name, middle_name, last_name, name_suffix, email, role, school, course, department_id, department_name, status, start_date, end_date, required_hours, rendered_hours, student_id, year_level, phone, home_address, emergency_name, emergency_relation, emergency_phone')
     .single();
 
   if (error) throw error;
@@ -1221,7 +1236,7 @@ export async function getSupervisors({ search, page = 1, limit = 10, department_
   let query = supabase
     .from('accounts')
     .select(
-      'id, username, full_name, email, role, department_id, department_name, status, phone, home_address',
+      'id, username, full_name, first_name, middle_name, last_name, name_suffix, email, role, department_id, department_name, status, phone, home_address',
       { count: 'exact' }
     )
     .eq('role', 'supervisor')
@@ -1247,7 +1262,7 @@ export async function getSupervisors({ search, page = 1, limit = 10, department_
 export async function getSupervisorById(id) {
   const { data, error } = await supabase
     .from('accounts')
-    .select('id, username, full_name, email, role, department_id, department_name, status, phone, home_address')
+    .select('id, username, full_name, first_name, middle_name, last_name, name_suffix, email, role, department_id, department_name, status, phone, home_address')
     .eq('id', id)
     .eq('role', 'supervisor')
     .single();
@@ -1258,6 +1273,9 @@ export async function getSupervisorById(id) {
 
 export async function createSupervisor(payload) {
   const { password, department_id, ...rest } = payload;
+  if (rest.first_name || rest.last_name) {
+    rest.full_name = [rest.first_name, rest.middle_name, rest.last_name, rest.name_suffix].filter(Boolean).join(' ');
+  }
   if (!password) throw new Error('Password is required');
 
   const password_hash = await bcrypt.hash(password, 10);
@@ -1268,7 +1286,7 @@ export async function createSupervisor(payload) {
   const { data, error } = await supabase
     .from('accounts')
     .insert([{ ...rest, password_hash, role: 'supervisor', department_id: deptId, department_name: departmentName }])
-    .select('id, username, full_name, email, role, department_id, department_name, status, phone, home_address')
+    .select('id, username, full_name, first_name, middle_name, last_name, name_suffix, email, role, department_id, department_name, status, phone, home_address')
     .single();
 
   if (error) throw error;
@@ -1277,7 +1295,19 @@ export async function createSupervisor(payload) {
 
 export async function updateSupervisor(id, payload) {
   const { password, department_id, ...rest } = payload;
+  if (rest.first_name || rest.last_name) {
+    rest.full_name = [rest.first_name, rest.middle_name, rest.last_name, rest.name_suffix].filter(Boolean).join(' ');
+  }
   const updates = { ...rest };
+  if (rest.first_name !== undefined || rest.last_name !== undefined) {
+    const fn = rest.first_name || '';
+    const mn = rest.middle_name || '';
+    const ln = rest.last_name || '';
+    const sn = rest.name_suffix || '';
+    if (fn || ln) {
+      updates.full_name = [fn, mn, ln, sn].filter(Boolean).join(' ');
+    }
+  }
 
   if (password) {
     updates.password_hash = await bcrypt.hash(password, 10);
@@ -1295,7 +1325,7 @@ export async function updateSupervisor(id, payload) {
     .update(updates)
     .eq('id', id)
     .eq('role', 'supervisor')
-    .select('id, username, full_name, email, role, department_id, department_name, status, phone, home_address')
+    .select('id, username, full_name, first_name, middle_name, last_name, name_suffix, email, role, department_id, department_name, status, phone, home_address')
     .single();
 
   if (error) throw error;

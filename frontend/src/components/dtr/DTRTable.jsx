@@ -40,19 +40,7 @@ function getHolidayName(year, month, day) {
   return null;
 }
 
-/**
- * Split a full name into { lastName, firstName, middleName }
- * Best-effort: treats last word as last name, second-to-last as middle (if 3+ words)
- */
-function splitName(fullName = '') {
-  const parts = fullName.trim().split(/\s+/);
-  if (parts.length === 1) return { lastName: parts[0], firstName: '', middleName: '' };
-  if (parts.length === 2) return { lastName: parts[1], firstName: parts[0], middleName: '' };
-  const lastName  = parts[parts.length - 1];
-  const firstName = parts[0];
-  const middleName = parts.slice(1, parts.length - 1).join(' ');
-  return { lastName, firstName, middleName };
-}
+
 
 /** Color-coded approval status badge */
 function StatusBadge({ status, large = false }) {
@@ -107,7 +95,25 @@ export default function DTRTable({ records, intern, month, year, onRowClick }) {
   if (allStatuses.length && allStatuses.every(s => s === 'approved')) overallStatus = 'approved';
   if (allStatuses.some(s => s === 'rejected')) overallStatus = 'rejected';
 
-  const { lastName, firstName, middleName } = intern ? splitName(intern.full_name) : {};
+  // Fallback to splitName if the new distinct columns are empty (for existing interns before migration)
+  let lastName = intern?.last_name || '';
+  let firstName = intern?.first_name || '';
+  let middleName = intern?.middle_name || '';
+  let nameSuffix = intern?.name_suffix ? `, ${intern.name_suffix}` : '';
+
+  if (intern && !lastName && !firstName && intern.full_name) {
+    const parts = intern.full_name.trim().split(/\s+/);
+    if (parts.length === 1) {
+      lastName = parts[0];
+    } else if (parts.length === 2) {
+      lastName = parts[1];
+      firstName = parts[0];
+    } else if (parts.length > 2) {
+      lastName = parts[parts.length - 1];
+      firstName = parts[0];
+      middleName = parts.slice(1, parts.length - 1).join(' ');
+    }
+  }
 
   // Times come from backend already in Manila HH:MM — just pretty-print them
   const formatTime = (timeStr) => {
@@ -192,10 +198,10 @@ export default function DTRTable({ records, intern, month, year, onRowClick }) {
         {/* Name */}
         <div style={{ marginBottom: '3px' }}>
           <span style={{ fontWeight: 'bold' }}>Name: </span>
-          <span style={{
-            borderBottom: '1px solid #000',
-            display: 'inline-grid',
-            gridTemplateColumns: '1fr 1fr 1fr',
+          <span style={{ 
+            borderBottom: '1px solid #000', 
+            display: 'inline-grid', 
+            gridTemplateColumns: '3fr 3fr 3fr 1fr', 
             gap: '8px',
             minWidth: '420px',
             paddingBottom: '1px',
@@ -203,13 +209,15 @@ export default function DTRTable({ records, intern, month, year, onRowClick }) {
             <span style={{ textAlign: 'center' }}>{intern ? lastName : ''}</span>
             <span style={{ textAlign: 'center' }}>{intern ? firstName : ''}</span>
             <span style={{ textAlign: 'center' }}>{intern ? middleName : ''}</span>
+            <span style={{ textAlign: 'center' }}>{intern ? nameSuffix.replace(', ', '') : ''}</span>
           </span>
         </div>
         {/* Name sub-labels */}
-        <div style={{ display: 'inline-grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', marginLeft: '42px', minWidth: '420px', marginBottom: '3px' }}>
+        <div style={{ display: 'inline-grid', gridTemplateColumns: '3fr 3fr 3fr 1fr', gap: '8px', marginLeft: '42px', minWidth: '420px', marginBottom: '3px' }}>
           <span style={{ fontSize: '9px', textAlign: 'center', color: '#555' }}>Last Name</span>
           <span style={{ fontSize: '9px', textAlign: 'center', color: '#555' }}>First Name</span>
           <span style={{ fontSize: '9px', textAlign: 'center', color: '#555' }}>Middle Name</span>
+          <span style={{ fontSize: '9px', textAlign: 'center', color: '#555' }}>Suffix</span>
         </div>
 
         {/* Course */}

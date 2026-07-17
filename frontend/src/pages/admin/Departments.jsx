@@ -8,7 +8,10 @@ import { AVAILABLE_COURSES } from '../../utils/constants.js';
 const INIT_INTERN_FORM = {
   username: '',
   password: '',
-  full_name: '',
+  first_name: '',
+  middle_name: '',
+  last_name: '',
+  name_suffix: '',
   email: '',
   phone: '',
   school: '',
@@ -25,19 +28,16 @@ const INIT_INTERN_FORM = {
   emergency_phone: ''
 };
 
-const generateUsername = (fullName) => {
-  const cleanName = (fullName || '').trim().toLowerCase();
-  const parts = cleanName.split(/\s+/);
-  if (parts.length === 0 || !cleanName) return '';
-  if (parts.length === 1) return parts[0];
-  const firstName = parts[0];
-  const lastName = parts.slice(1).join('');
-  return `${firstName}.${lastName}`.replace(/[^a-z0-9.]/g, '');
+const generateUsername = (firstName, lastName) => {
+  const cleanFirst = (firstName || '').trim().toLowerCase().split(/\s+/)[0] || '';
+  const cleanLast = (lastName || '').trim().toLowerCase().replace(/\s+/g, '') || '';
+  if (!cleanFirst && !cleanLast) return '';
+  return `${cleanFirst}.${cleanLast}`.replace(/[^a-z0-9.]/g, '');
 };
 
-const generatePassword = (fullName, studentId) => {
-  if (!fullName) return '';
-  const parts = fullName.trim().split(/\s+/);
+const generatePassword = (lastName, studentId) => {
+  if (!lastName) return '';
+  const parts = lastName.trim().split(/\s+/);
   const surname = parts[parts.length - 1].toUpperCase().replace(/[^A-Z]/g, '');
   const digits = (studentId || '').replace(/\D/g, '');
   const last4 = digits.slice(-4).padStart(4, '0');
@@ -147,30 +147,11 @@ export default function Departments() {
     setModal('intern-delete');
   };
 
-  const handleInternNameChange = (val) => {
-    setInternForm(f => {
-      const updated = { ...f, full_name: val };
-      if (!selectedIntern) {
-        updated.username = generateUsername(val);
-        updated.password = generatePassword(val, f.student_id);
-      }
-      return updated;
-    });
-  };
 
-  const handleInternStudentIdChange = (val) => {
-    setInternForm(f => {
-      const updated = { ...f, student_id: val };
-      if (!selectedIntern) {
-        updated.password = generatePassword(f.full_name, val);
-      }
-      return updated;
-    });
-  };
 
   const handleInternSave = async () => {
-    if (!internForm.full_name || !internForm.full_name.trim()) {
-      toast.error('Full Name is required');
+    if (!internForm.first_name || !internForm.first_name.trim() || !internForm.last_name || !internForm.last_name.trim()) {
+      toast.error('First Name and Last Name are required');
       return;
     }
     if (!selectedIntern) {
@@ -393,12 +374,59 @@ export default function Departments() {
           </div>
 
           <div className="form-group">
-            <label className="form-label">Full Name *</label>
+            <label className="form-label">First Name *</label>
             <input
               className="form-input"
-              value={internForm.full_name}
-              onChange={e => handleInternNameChange(e.target.value)}
-              placeholder="e.g. Juan dela Cruz"
+              value={internForm.first_name || ''}
+              onChange={e => {
+                const val = e.target.value;
+                setInternForm(f => {
+                  const updated = { ...f, first_name: val };
+                  if (!selectedIntern) updated.username = generateUsername(val, f.last_name);
+                  return updated;
+                });
+              }}
+              placeholder="e.g. Juan"
+            />
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">Middle Name</label>
+            <input
+              className="form-input"
+              value={internForm.middle_name || ''}
+              onChange={e => setInternForm(f => ({ ...f, middle_name: e.target.value }))}
+              placeholder="e.g. Santos"
+            />
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">Last Name *</label>
+            <input
+              className="form-input"
+              value={internForm.last_name || ''}
+              onChange={e => {
+                const val = e.target.value;
+                setInternForm(f => {
+                  const updated = { ...f, last_name: val };
+                  if (!selectedIntern) {
+                    updated.username = generateUsername(f.first_name, val);
+                    updated.password = generatePassword(val, f.student_id);
+                  }
+                  return updated;
+                });
+              }}
+              placeholder="e.g. De La Cruz"
+            />
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">Suffix</label>
+            <input
+              className="form-input"
+              value={internForm.name_suffix || ''}
+              onChange={e => setInternForm(f => ({ ...f, name_suffix: e.target.value }))}
+              placeholder="e.g. Jr., III"
             />
           </div>
 
@@ -407,7 +435,14 @@ export default function Departments() {
             <input
               className="form-input"
               value={internForm.student_id}
-              onChange={e => handleInternStudentIdChange(e.target.value)}
+              onChange={e => {
+                const val = e.target.value;
+                setInternForm(f => {
+                  const updated = { ...f, student_id: val };
+                  if (!selectedIntern) updated.password = generatePassword(f.last_name, val);
+                  return updated;
+                });
+              }}
               placeholder="e.g. 2022-10432"
             />
           </div>
