@@ -3,6 +3,7 @@ import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './context/AuthContext.jsx';
 import { NotificationProvider } from './context/NotificationContext.jsx';
 import Layout from './components/layout/Layout.jsx';
+import InstallPrompt from './components/pwa/InstallPrompt.jsx';
 
 // Auth pages
 import Login from './pages/auth/Login.jsx';
@@ -113,6 +114,7 @@ export default function App() {
       <AuthProvider>
         <NotificationProvider>
           <AppRoutes />
+          <InstallPrompt />
           <Toaster
             position="top-right"
             toastOptions={{
