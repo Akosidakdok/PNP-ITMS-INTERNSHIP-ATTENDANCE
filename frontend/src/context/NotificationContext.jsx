@@ -34,15 +34,23 @@ export function NotificationProvider({ children }) {
   }, [user, fetchNotifications]);
 
   const markAsRead = async (id) => {
-    await api.patch(`/notifications/${id}/read`);
-    setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: 1 } : n));
-    setUnreadCount(prev => Math.max(0, prev - 1));
+    try {
+      await api.patch(`/notifications/${id}/read`);
+      setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: 1 } : n));
+      setUnreadCount(prev => Math.max(0, prev - 1));
+    } catch (error) {
+      console.error('Failed to mark as read:', error);
+    }
   };
 
   const markAllRead = async () => {
-    await api.patch('/notifications/read-all');
-    setNotifications(prev => prev.map(n => ({ ...n, is_read: 1 })));
-    setUnreadCount(0);
+    try {
+      await api.patch('/notifications/read-all');
+      setNotifications(prev => prev.map(n => ({ ...n, is_read: 1 })));
+      setUnreadCount(0);
+    } catch (error) {
+      console.error('Failed to mark all as read:', error);
+    }
   };
 
   return (

@@ -956,7 +956,11 @@ export async function markNotificationRead(notificationId, userId, isAdmin) {
 
 export async function markAllNotificationsRead(userId, isAdmin) {
   let query = supabase.from('notifications').update({ is_read: true });
-  if (!isAdmin) query = query.eq('user_id', userId);
+  if (!isAdmin) {
+    query = query.eq('user_id', userId);
+  } else {
+    query = query.neq('id', 0);
+  }
   const { error } = await query;
   if (error) throw error;
   return { success: true };
