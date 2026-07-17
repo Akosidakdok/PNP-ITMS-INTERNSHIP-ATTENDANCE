@@ -47,8 +47,9 @@ import {
   getSchools,
   createSchool,
   updateSchool,
-  deleteSchool,
+  deleteSchool
 } from './data.js';
+import { sendWelcomeEmail } from './mailer.js';
 import { supabase } from './supabaseClient.js';
 
 const app = express();
@@ -319,6 +320,13 @@ app.post('/interns', authMiddleware, adminMiddleware, async (req, res) => {
       req.body.department_id = req.user.department_id;
     }
     const intern = await createIntern(req.body);
+    
+    // Send welcome email asynchronously
+    if (intern.email) {
+      const name = intern.first_name ? `${intern.first_name} ${intern.last_name}` : intern.full_name;
+      sendWelcomeEmail(intern.email, name, intern.username, req.body.password);
+    }
+    
     return res.json({ intern });
   } catch (error) {
     console.error('Error creating intern:', error);
