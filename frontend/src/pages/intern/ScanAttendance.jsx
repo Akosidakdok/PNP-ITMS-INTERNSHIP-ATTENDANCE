@@ -20,6 +20,7 @@ export default function ScanAttendance() {
   const [tempQrCode, setTempQrCode] = useState(null);
   const [photo, setPhoto] = useState(null);
   const [isCapturingPhoto, setIsCapturingPhoto] = useState(false);
+  const [videoReady, setVideoReady] = useState(false);
   const videoRef = useRef(null);
   const streamRef = useRef(null);
 
@@ -45,20 +46,28 @@ export default function ScanAttendance() {
 
   useEffect(() => {
     if (isCapturingPhoto && !photo) {
+      setVideoReady(false);
       navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } })
         .then(stream => {
           streamRef.current = stream;
-          if (videoRef.current) {
-            videoRef.current.srcObject = stream;
+          const video = videoRef.current;
+          if (video) {
+            video.srcObject = stream;
+            // iOS fires loadedmetadata once dimensions are known
+            const onReady = () => setVideoReady(true);
+            video.addEventListener('loadedmetadata', onReady, { once: true });
+            // Fallback: if loadedmetadata already fired or won't fire, mark ready after 1s
+            setTimeout(() => setVideoReady(true), 1000);
           }
         })
-        .catch(err => {
+        .catch(() => {
           toast.error('Failed to access front camera for selfie. Please check permissions.');
           setIsCapturingPhoto(false);
           setScannerActive(true);
           setTempQrCode(null);
         });
     } else {
+      setVideoReady(false);
       stopCamera();
     }
     return () => stopCamera();
@@ -99,13 +108,25 @@ export default function ScanAttendance() {
   const capturePhoto = () => {
     if (!videoRef.current) return;
     const video = videoRef.current;
+
+    // On iOS, videoWidth/videoHeight can still be 0 if metadata hasn't loaded.
+    // Guard against that by falling back to common selfie resolution.
+    const rawW = video.videoWidth || 640;
+    const rawH = video.videoHeight || 480;
+
+    // Cap width at 640px to keep base64 payload small (avoids 413 on mobile networks)
+    const MAX_W = 640;
+    const scale = rawW > MAX_W ? MAX_W / rawW : 1;
+    const canvasW = Math.round(rawW * scale);
+    const canvasH = Math.round(rawH * scale);
+
     const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth || 640;
-    canvas.height = video.videoHeight || 480;
+    canvas.width = canvasW;
+    canvas.height = canvasH;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    ctx.drawImage(video, 0, 0, canvasW, canvasH);
 
     // Date and time overlay strictly in Asia/Manila (Philippines) timezone
     const options = {
@@ -137,7 +158,7 @@ export default function ScanAttendance() {
     ctx.strokeText(stampText, 20, canvas.height - 25);
     ctx.fillText(stampText, 20, canvas.height - 25);
 
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.65);
     setPhoto(dataUrl);
     stopCamera();
   };
@@ -245,10 +266,12 @@ export default function ScanAttendance() {
                 </div>
                 <p className="text-xs text-gray-400 text-center">Please take a clear photo of yourself inside the office to complete your scan.</p>
                 <button
-                  className="btn btn-primary w-full flex items-center justify-center gap-2"
+                  className="btn btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                   onClick={capturePhoto}
+                  disabled={!videoReady}
                 >
-                  <Camera className="w-4 h-4" /> Capture Photo
+                  <Camera className="w-4 h-4" />
+                  {videoReady ? 'Capture Photo' : 'Camera loading…'}
                 </button>
               </div>
             ) : (
