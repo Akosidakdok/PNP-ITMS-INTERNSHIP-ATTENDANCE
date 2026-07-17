@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './context/AuthContext.jsx';
@@ -45,16 +46,50 @@ function PerformanceEvalWrapper() {
   return <PerformanceEval readOnly={user?.role === 'supervisor'} />;
 }
 
-function ProtectedRoute({ children, roles }) {
-  const { user, loading } = useAuth();
-  if (loading) return (
+function LoadingScreen() {
+  const [slowLoad, setSlowLoad] = useState(false);
+
+  useEffect(() => {
+    const t = setTimeout(() => setSlowLoad(true), 4000);
+    return () => clearTimeout(t);
+  }, []);
+
+  return (
     <div className="min-h-screen flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #001240 0%, #003087 100%)' }}>
-      <div className="text-center animate-fade-in">
-        <div className="w-16 h-16 rounded-full border-4 border-white border-t-transparent animate-spin mx-auto mb-4" />
-        <p className="text-white font-medium text-lg">Loading PNP-ITMS...</p>
+      <div className="text-center animate-fade-in px-6">
+        {/* Logo */}
+        <img src="/ITMS_LOGO.png" alt="PNP-ITMS" className="w-20 h-20 object-contain mx-auto mb-5 rounded-2xl shadow-lg" />
+
+        {/* Spinner */}
+        <div className="w-12 h-12 rounded-full border-4 border-white/30 border-t-white animate-spin mx-auto mb-5" />
+
+        {!slowLoad ? (
+          <p className="text-white font-medium text-lg">Loading PNP-ITMS...</p>
+        ) : (
+          <div className="space-y-2">
+            <p className="text-white font-semibold text-lg">Waking up server...</p>
+            <p className="text-blue-200 text-sm max-w-xs mx-auto leading-relaxed">
+              The server was sleeping due to inactivity. This usually takes <strong className="text-white">20–40 seconds</strong> on first load.
+            </p>
+            <div className="flex items-center justify-center gap-1.5 mt-3">
+              {[0,1,2].map(i => (
+                <div
+                  key={i}
+                  className="w-2 h-2 rounded-full bg-white/60"
+                  style={{ animation: `pulse 1.2s ease-in-out ${i * 0.2}s infinite` }}
+                />
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
+}
+
+function ProtectedRoute({ children, roles }) {
+  const { user, loading } = useAuth();
+  if (loading) return <LoadingScreen />;
   if (!user) return <Navigate to="/login" replace />;
   if (roles && !roles.includes(user.role)) return <Navigate to={getHomePath(user.role)} replace />;
   return children;

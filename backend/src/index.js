@@ -748,6 +748,11 @@ app.get('/', (req, res) => {
   res.json({ status: 'ok', message: 'PNP ITMS backend is running' });
 });
 
+// Keep-alive endpoint — pinged by cron-job.org every 14 minutes to prevent Render cold starts
+app.get('/ping', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
 app.listen(port, host, () => {
   console.log(`Backend listening on port ${port} at host ${host}.`);
   console.log(`To access on your local network, use http://<your-local-ip>:${port}`);
