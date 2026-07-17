@@ -44,7 +44,7 @@ export default function ScanAttendance() {
   }, [cooldown]);
 
   useEffect(() => {
-    if (isCapturingPhoto) {
+    if (isCapturingPhoto && !photo) {
       navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } })
         .then(stream => {
           streamRef.current = stream;
@@ -62,7 +62,7 @@ export default function ScanAttendance() {
       stopCamera();
     }
     return () => stopCamera();
-  }, [isCapturingPhoto]);
+  }, [isCapturingPhoto, photo]);
 
   const stopCamera = () => {
     if (streamRef.current) {
