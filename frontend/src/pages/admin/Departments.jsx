@@ -3,6 +3,7 @@ import { Building2, PlusCircle, Edit2, Trash2, UserPlus, Users } from 'lucide-re
 import api from '../../utils/api.js';
 import Modal from '../../components/common/Modal.jsx';
 import toast from 'react-hot-toast';
+import { AVAILABLE_COURSES } from '../../utils/constants.js';
 
 const INIT_INTERN_FORM = {
   username: '',
@@ -463,12 +464,16 @@ export default function Departments() {
 
           <div className="form-group">
             <label className="form-label">Course / Program</label>
-            <input
-              className="form-input"
+            <select
+              className="form-input form-select"
               value={internForm.course}
               onChange={e => setInternForm(f => ({ ...f, course: e.target.value }))}
-              placeholder="e.g. BS Information Technology"
-            />
+            >
+              <option value="">Select course</option>
+              {AVAILABLE_COURSES.map(c => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
           </div>
 
           {/* Internship parameters */}
