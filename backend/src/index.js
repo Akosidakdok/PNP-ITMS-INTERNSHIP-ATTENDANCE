@@ -276,6 +276,7 @@ app.get('/interns', authMiddleware, adminMiddleware, async (req, res) => {
       page: Number(req.query.page) || 1,
       limit: Number(req.query.limit) || 10,
       department_id: deptId,
+      status: req.query.status,
       school_id: req.query.school_id ? Number(req.query.school_id) : undefined
     });
     return res.json(result);
