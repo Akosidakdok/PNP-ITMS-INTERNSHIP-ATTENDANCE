@@ -136,22 +136,22 @@ export default function MyDocuments() {
     <div className="space-y-6 animate-fade-in">
 
       {/* ── Header ── */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-800" style={{ fontFamily: 'Outfit, sans-serif' }}>My Documents</h1>
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-800" style={{ fontFamily: 'Outfit, sans-serif' }}>My Documents</h1>
           <p className="text-gray-500 text-sm">{docs.length} document{docs.length !== 1 ? 's' : ''} uploaded</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 w-full sm:w-auto">
           <button
             id="toggle-checklist-btn"
-            className="btn btn-secondary"
+            className="btn btn-secondary flex-1 sm:flex-none"
             onClick={() => setShowChecklist(v => !v)}
             title="Toggle document checklist"
           >
             <ListChecks className="w-4 h-4" />
             <span className="hidden sm:inline">Checklist</span>
           </button>
-          <button id="upload-doc-btn" className="btn btn-primary" onClick={() => setUploadModal(true)}>
+          <button id="upload-doc-btn" className="btn btn-primary flex-1 sm:flex-none" onClick={() => setUploadModal(true)}>
             <Upload className="w-4 h-4" /> Upload
           </button>
         </div>
@@ -179,7 +179,7 @@ export default function MyDocuments() {
               <X className="w-4 h-4" />
             </button>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
             {checklistTypes.map(type => {
               const entries = docsByType[type] || [];
               const accepted = entries.some(d => d.status === 'accepted');

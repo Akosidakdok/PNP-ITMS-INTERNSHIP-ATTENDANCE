@@ -254,7 +254,7 @@ export default function Profile({ role }) {
                 </h2>
               </div>
               <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="p-4 bg-gray-50 rounded-xl">
                     <p className="text-xs text-gray-400">Username</p>
                     <p className="font-semibold text-gray-800 mt-1">{user.username}</p>
@@ -358,7 +358,7 @@ export default function Profile({ role }) {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4 pt-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
                   <div>
                     <p className="text-[10px] text-blue-300 font-bold uppercase tracking-wider mb-1">Start Date</p>
                     <p className="font-semibold text-white text-xs">{profile.start_date || '—'}</p>

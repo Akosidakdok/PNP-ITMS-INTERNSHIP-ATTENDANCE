@@ -53,10 +53,10 @@ export default function AdminDashboard() {
   const stats = data?.stats || {};
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-6 animate-fade-in dashboard-module">
       {/* Page Header */}
       <div>
-        <h1 className="text-2xl font-bold text-gray-800" style={{ fontFamily: 'Outfit, sans-serif' }}>
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-800" style={{ fontFamily: 'Outfit, sans-serif' }}>
           Administrator Dashboard
         </h1>
         <p className="text-gray-500 text-sm mt-1">
@@ -65,7 +65,7 @@ export default function AdminDashboard() {
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3 sm:gap-4">
         <StatCard icon={Users} label="Total Interns" value={loading ? '—' : stats.total_interns || 0} gradient="stat-gradient-blue" />
         <StatCard icon={UserCheck} label="Present Today" value={loading ? '—' : stats.present_today || 0} gradient="stat-gradient-green" />
         <StatCard icon={Clock} label="Pending Attendance" value={loading ? '—' : stats.pending_attendance || 0} gradient="stat-gradient-gold" />
@@ -74,7 +74,7 @@ export default function AdminDashboard() {
         <StatCard icon={FileText} label="Pending Docs" value={loading ? '—' : stats.pending_documents || 0} gradient="stat-gradient-red" />
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 sm:gap-6">
         {/* Recent Attendance */}
         <div className="xl:col-span-2 card p-5">
           <div className="flex items-center justify-between mb-4">

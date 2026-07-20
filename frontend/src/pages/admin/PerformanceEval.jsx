@@ -342,17 +342,19 @@ export default function PerformanceEval() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-800" style={{ fontFamily: 'Outfit, sans-serif' }}>Performance Evaluations</h1>
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-800" style={{ fontFamily: 'Outfit, sans-serif' }}>Performance Evaluations</h1>
           <p className="text-gray-500 text-sm">{evals.length} evaluations on record</p>
         </div>
-        <button id="create-eval-btn" className="btn btn-primary" onClick={openCreate}>
+        <button id="create-eval-btn" className="btn btn-primary w-full sm:w-auto" onClick={openCreate}>
           <PlusCircle className="w-4 h-4" /> Evaluate Intern
         </button>
       </div>
 
-      <DataTable columns={columns} data={evals} loading={loading} total={evals.length} page={1} limit={100} onPageChange={() => {}} emptyMessage="No evaluations yet" />
+      <div className="table-responsive">
+        <DataTable columns={columns} data={evals} loading={loading} total={evals.length} page={1} limit={100} onPageChange={() => {}} emptyMessage="No evaluations yet" />
+      </div>
 
       {/* Add / Edit Evaluation Modal (Admins can do both, Supervisors can only add/create) */}
       {modal === 'form' && (
@@ -668,6 +670,7 @@ export default function PerformanceEval() {
               {/* A. Project Evaluation */}
               <div>
                 <h3 className="font-extrabold text-xs text-gray-900 mb-2">A. Project Evaluation (60% of Total Grade)</h3>
+                <div className="overflow-x-auto">
                 <table className="w-full text-left border border-collapse border-gray-300 text-xs">
                   <thead>
                     <tr className="bg-gray-100 font-bold border-b border-gray-300 text-gray-700">
@@ -698,6 +701,7 @@ export default function PerformanceEval() {
                     </tr>
                   </tbody>
                 </table>
+                </div>
                 {details.project_comments && (
                   <div className="mt-2.5 border border-gray-200 rounded-lg p-3 bg-gray-50/50">
                     <p className="text-[10px] font-bold text-gray-500 uppercase mb-0.5">Comments on Project Performance:</p>
@@ -709,6 +713,7 @@ export default function PerformanceEval() {
               {/* B. Performance Evaluation */}
               <div>
                 <h3 className="font-extrabold text-xs text-gray-900 mb-2">B. OJT Performance Evaluation (40% of Total Grade)</h3>
+                <div className="overflow-x-auto">
                 <table className="w-full text-left border border-collapse border-gray-300 text-xs">
                   <thead>
                     <tr className="bg-gray-100 font-bold border-b border-gray-300 text-gray-700">
@@ -739,6 +744,7 @@ export default function PerformanceEval() {
                     </tr>
                   </tbody>
                 </table>
+                </div>
                 {details.performance_comments && (
                   <div className="mt-2.5 border border-gray-200 rounded-lg p-3 bg-gray-50/50">
                     <p className="text-[10px] font-bold text-gray-500 uppercase mb-0.5">Evaluator&apos;s Comments:</p>
@@ -764,7 +770,7 @@ export default function PerformanceEval() {
               </div>
 
               {/* Signatures block */}
-              <div className="grid grid-cols-2 gap-12 mt-10 pt-6 border-t border-dashed border-gray-200">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-10 pt-6 border-t border-dashed border-gray-200">
                 <div className="text-center space-y-1">
                   <div className="border-b border-gray-600 h-10 w-[80%] mx-auto" />
                   <p className="text-xs font-bold text-gray-700">Evaluator&apos;s Signature</p>

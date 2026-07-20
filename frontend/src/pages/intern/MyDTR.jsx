@@ -38,12 +38,12 @@ export default function MyDTR() {
   return (
     <div className="space-y-6 animate-fade-in">
       <div>
-        <h1 className="text-2xl font-bold text-gray-800" style={{ fontFamily: 'Outfit, sans-serif' }}>Daily Time Record</h1>
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-800" style={{ fontFamily: 'Outfit, sans-serif' }}>Daily Time Record</h1>
         <p className="text-gray-500 text-sm">View and export your attendance records</p>
       </div>
 
       {/* Summary Stats */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="card p-4 text-center">
           <p className="text-2xl font-bold text-blue-600">{records.length}</p>
           <p className="text-xs text-gray-500 mt-1">Days Present</p>
@@ -59,16 +59,16 @@ export default function MyDTR() {
       </div>
 
       {/* Filters */}
-      <div className="card p-4 flex flex-wrap gap-3 items-end">
+      <div className="card p-4 flex flex-col sm:flex-row flex-wrap gap-3 items-start sm:items-end">
         <div className="form-group">
           <label className="form-label">Month</label>
-          <select className="form-input form-select text-sm" value={filters.month} onChange={e => setFilters(f => ({ ...f, month: Number(e.target.value) }))}>
+          <select className="form-input form-select text-sm w-full sm:w-auto" value={filters.month} onChange={e => setFilters(f => ({ ...f, month: Number(e.target.value) }))}>
             {months.map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
           </select>
         </div>
         <div className="form-group">
           <label className="form-label">Year</label>
-          <select className="form-input form-select text-sm" value={filters.year} onChange={e => setFilters(f => ({ ...f, year: Number(e.target.value) }))}>
+          <select className="form-input form-select text-sm w-full sm:w-auto" value={filters.year} onChange={e => setFilters(f => ({ ...f, year: Number(e.target.value) }))}>
             {years.map(y => <option key={y} value={y}>{y}</option>)}
           </select>
         </div>
@@ -81,7 +81,9 @@ export default function MyDTR() {
           <p className="text-gray-500 text-sm">Loading DTR records...</p>
         </div>
       ) : (
-        <DTRPrint records={records} intern={intern} month={filters.month} year={filters.year} />
+        <div className="table-responsive">
+          <DTRPrint records={records} intern={intern} month={filters.month} year={filters.year} />
+        </div>
       )}
     </div>
   );

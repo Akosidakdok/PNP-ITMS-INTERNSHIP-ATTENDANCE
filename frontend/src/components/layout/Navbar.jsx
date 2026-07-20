@@ -86,7 +86,7 @@ export default function Navbar({ onMenuClick }) {
           </button>
 
           {notifOpen && (
-            <div className="absolute right-0 top-full mt-2 w-80 card animate-scale-in z-50 overflow-hidden">
+            <div className="absolute right-0 top-full mt-2 w-80 card animate-scale-in z-50 overflow-hidden notif-dropdown">
               <div className="p-4 border-b border-gray-100 flex items-center justify-between">
                 <h3 className="font-semibold text-sm text-gray-800">Notifications</h3>
                 {unreadCount > 0 && (

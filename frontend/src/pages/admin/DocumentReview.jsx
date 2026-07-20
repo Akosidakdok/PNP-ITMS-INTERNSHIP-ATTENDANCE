@@ -114,12 +114,12 @@ export default function DocumentReview() {
   return (
     <div className="space-y-6 animate-fade-in">
       <div>
-        <h1 className="text-2xl font-bold text-gray-800" style={{ fontFamily: 'Outfit, sans-serif' }}>Document Review</h1>
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-800" style={{ fontFamily: 'Outfit, sans-serif' }}>Document Review</h1>
         <p className="text-gray-500 text-sm">Review and manage intern-submitted documents</p>
       </div>
 
       <div className="flex flex-col md:flex-row gap-2 justify-between">
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           {['', 'pending', 'accepted', 'revision'].map(s => (
             <button
               key={s}
@@ -145,16 +145,18 @@ export default function DocumentReview() {
         </div>
       </div>
 
-      <DataTable
-        columns={columns}
-        data={docs}
-        loading={loading}
-        total={docs.length}
-        page={1}
-        limit={docs.length || 1}
-        onPageChange={() => {}} // No-op as pagination is not implemented here
-        emptyMessage="No documents found"
-      />
+      <div className="table-responsive">
+        <DataTable
+          columns={columns}
+          data={docs}
+          loading={loading}
+          total={docs.length}
+          page={1}
+          limit={docs.length || 1}
+          onPageChange={() => {}} // No-op as pagination is not implemented here
+          emptyMessage="No documents found"
+        />
+      </div>
 
       {/* Unified Document Preview & Review Modal */}
       {previewDoc && (

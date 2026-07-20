@@ -206,9 +206,9 @@ export default function ScanAttendance() {
   };
 
   return (
-    <div className="max-w-lg mx-auto space-y-6 animate-fade-in">
+    <div className="max-w-lg mx-auto space-y-6 animate-fade-in px-4 sm:px-0">
       <div className="text-center">
-        <h1 className="text-2xl font-bold text-gray-800 mb-1" style={{ fontFamily: 'Outfit, sans-serif' }}>
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-800 mb-1" style={{ fontFamily: 'Outfit, sans-serif' }}>
           QR Attendance Scanner
         </h1>
         <p className="text-gray-500 text-sm">Scan the office QR code to record your attendance</p>
@@ -313,6 +313,7 @@ export default function ScanAttendance() {
               <QrCode className="w-5 h-5 text-blue-600" />
               <h2 className="font-bold text-gray-800">Camera Scanner</h2>
             </div>
+            <div className="max-w-sm mx-auto">
             {scanning && (
               <div className="mb-3 p-3 bg-yellow-50 border border-yellow-200 rounded-xl flex items-center gap-2 text-sm text-yellow-700">
                 <Clock className="w-4 h-4 animate-spin" />
@@ -329,6 +330,7 @@ export default function ScanAttendance() {
               </div>
             )}
             <QRScanner onScan={handleScan} isActive={scannerActive} />
+            </div>
           </div>
         )
       ) : (

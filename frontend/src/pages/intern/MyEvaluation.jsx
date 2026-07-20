@@ -90,7 +90,7 @@ export default function MyEvaluation() {
   return (
     <div className="space-y-6 animate-fade-in">
       <div>
-        <h1 className="text-2xl font-bold text-gray-800" style={{ fontFamily: 'Outfit, sans-serif' }}>Performance Evaluations</h1>
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-800" style={{ fontFamily: 'Outfit, sans-serif' }}>Performance Evaluations</h1>
         <p className="text-gray-500 text-sm">{visibleEvaluations.length} evaluation(s) visible</p>
       </div>
 
@@ -168,6 +168,7 @@ export default function MyEvaluation() {
               {/* A. Project Evaluation */}
               <div>
                 <h3 className="font-extrabold text-xs text-gray-900 mb-2">A. Project Evaluation (60% of Total Grade)</h3>
+                <div className="table-responsive">
                 <table className="w-full text-left border border-collapse border-gray-300 text-xs">
                   <thead>
                     <tr className="bg-gray-100 font-bold border-b border-gray-300 text-gray-700">
@@ -198,6 +199,7 @@ export default function MyEvaluation() {
                     </tr>
                   </tbody>
                 </table>
+                </div>
                 {details.project_comments && (
                   <div className="mt-2.5 border border-gray-250 rounded-lg p-3 bg-gray-50/50">
                     <p className="text-[10px] font-bold text-gray-500 uppercase mb-0.5">Comments on Project Performance:</p>
@@ -209,6 +211,7 @@ export default function MyEvaluation() {
               {/* B. Performance Evaluation */}
               <div>
                 <h3 className="font-extrabold text-xs text-gray-900 mb-2">B. OJT Performance Evaluation (40% of Total Grade)</h3>
+                <div className="table-responsive">
                 <table className="w-full text-left border border-collapse border-gray-300 text-xs">
                   <thead>
                     <tr className="bg-gray-100 font-bold border-b border-gray-300 text-gray-700">
@@ -239,6 +242,7 @@ export default function MyEvaluation() {
                     </tr>
                   </tbody>
                 </table>
+                </div>
                 {details.performance_comments && (
                   <div className="mt-2.5 border border-gray-250 rounded-lg p-3 bg-gray-50/50">
                     <p className="text-[10px] font-bold text-gray-500 uppercase mb-0.5">Evaluator&apos;s Comments:</p>
@@ -264,7 +268,7 @@ export default function MyEvaluation() {
               </div>
 
               {/* Signatures block */}
-              <div className="grid grid-cols-2 gap-12 mt-10 pt-6 border-t border-dashed border-gray-200">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-10 pt-6 border-t border-dashed border-gray-200">
                 <div className="text-center space-y-1">
                   <div className="border-b border-gray-600 h-10 w-[80%] mx-auto" />
                   <p className="text-xs font-bold text-gray-700">Evaluator&apos;s Signature</p>

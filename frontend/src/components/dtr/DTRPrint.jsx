@@ -68,18 +68,20 @@ export default function DTRPrint({ records, intern, month, year }) {
   return (
     <div>
       {/* Action buttons — hidden during print */}
-      <div className="flex gap-2 mb-4 no-print">
-        <button className="btn btn-secondary btn-sm" onClick={handlePrint}>
+      <div className="flex flex-col sm:flex-row gap-2 mb-4 no-print">
+        <button className="btn btn-secondary btn-sm w-full sm:w-auto" onClick={handlePrint}>
           <Printer className="w-4 h-4" /> Print
         </button>
-        <button className="btn btn-primary btn-sm" onClick={handleExportPDF}>
+        <button className="btn btn-primary btn-sm w-full sm:w-auto" onClick={handleExportPDF}>
           <FileDown className="w-4 h-4" /> Export PDF
         </button>
       </div>
 
-      {/* The printable area */}
-      <div ref={printRef} style={{ backgroundColor: '#fff' }}>
-        <DTRTable records={records} intern={intern} month={month} year={year} />
+      {/* The printable area — horizontal scroll on mobile */}
+      <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+        <div ref={printRef} style={{ backgroundColor: '#fff' }}>
+          <DTRTable records={records} intern={intern} month={month} year={year} />
+        </div>
       </div>
     </div>
   );

@@ -60,7 +60,7 @@ export default function Sidebar({ isOpen, onClose }) {
       {/* Mobile overlay */}
       {isOpen && (
         <div
-          className="fixed inset-0 bg-black/50 z-30 lg:hidden"
+          className="fixed inset-0 bg-black/50 z-30 xl:hidden"
           onClick={onClose}
         />
       )}
@@ -75,7 +75,7 @@ export default function Sidebar({ isOpen, onClose }) {
             <p className="text-white font-bold text-sm truncate" style={{ fontFamily: 'Outfit, sans-serif' }}>PNP-ITMS</p>
             <p className="text-blue-300 text-xs truncate">Internship System</p>
           </div>
-          <button className="lg:hidden ml-auto text-white/60 hover:text-white" onClick={onClose}>
+          <button className="xl:hidden ml-auto text-white/60 hover:text-white" onClick={onClose}>
             <X className="w-4 h-4" />
           </button>
         </div>

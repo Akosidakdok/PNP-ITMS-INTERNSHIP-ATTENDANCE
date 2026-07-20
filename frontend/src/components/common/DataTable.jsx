@@ -20,13 +20,13 @@ export default function DataTable({
     <div>
       {/* Controls */}
       {(onSearchChange || actions) && (
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
           {onSearchChange && (
-            <div className="relative flex-1 min-w-48 max-w-xs">
+            <div className="relative w-full sm:flex-1 sm:min-w-48 sm:max-w-xs">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               <input
                 type="text"
-                className="form-input text-sm"
+                className="form-input text-sm w-full"
                 style={{ paddingLeft: '2.25rem' }}
                 placeholder={searchPlaceholder}
                 value={searchValue}
@@ -34,13 +34,13 @@ export default function DataTable({
               />
             </div>
           )}
-          {actions && <div className="flex gap-2">{actions}</div>}
+          {actions && <div className="flex flex-wrap gap-2">{actions}</div>}
         </div>
       )}
 
       {/* Table */}
       <div className="card overflow-hidden">
-        <div className="overflow-x-auto">
+        <div className="table-responsive">
           <table className="data-table">
             <thead>
               <tr>
@@ -90,9 +90,12 @@ export default function DataTable({
 
         {/* Pagination */}
         {totalPages > 1 && (
-          <div className="p-4 border-t border-gray-100 flex items-center justify-between text-sm">
-            <p className="text-gray-500">
+          <div className="p-3 sm:p-4 border-t border-gray-100 flex items-center justify-between text-sm gap-2">
+            <p className="text-gray-500 text-xs sm:text-sm hidden sm:block">
               Showing {Math.min((page - 1) * limit + 1, total)}–{Math.min(page * limit, total)} of {total}
+            </p>
+            <p className="text-gray-500 text-xs sm:hidden">
+              {page} / {totalPages}
             </p>
             <div className="flex items-center gap-1">
               <button className="btn btn-ghost btn-sm btn-icon" onClick={() => onPageChange(1)} disabled={page === 1}>
@@ -101,7 +104,7 @@ export default function DataTable({
               <button className="btn btn-ghost btn-sm btn-icon" onClick={() => onPageChange(page - 1)} disabled={page === 1}>
                 <ChevronLeft className="w-4 h-4" />
               </button>
-              <span className="px-3 py-1 rounded-lg bg-pnp-50 text-pnp-700 font-medium">
+              <span className="px-2 sm:px-3 py-1 rounded-lg bg-pnp-50 text-pnp-700 font-medium text-xs sm:text-sm">
                 {page} / {totalPages}
               </span>
               <button className="btn btn-ghost btn-sm btn-icon" onClick={() => onPageChange(page + 1)} disabled={page === totalPages}>
