@@ -48,10 +48,10 @@ export default function Modal({ isOpen, onClose, title, children, size = 'md', f
     >
       <div
         className={`card w-full ${sizeClass} animate-scale-in flex flex-col`}
-        style={{ maxHeight: 'calc(100vh - 4rem)' }}
+        style={{ maxHeight: 'calc(100vh - 2rem)' }}
       >
         {/* Header */}
-        <div className="flex items-center justify-between p-5 border-b border-gray-100 flex-shrink-0">
+        <div className="flex items-center justify-between p-4 sm:p-5 border-b border-gray-100 flex-shrink-0">
           <h2 className="text-lg font-bold text-gray-800" style={{ fontFamily: 'Outfit, sans-serif' }}>
             {title}
           </h2>
@@ -66,13 +66,13 @@ export default function Modal({ isOpen, onClose, title, children, size = 'md', f
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto p-5">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-5">
           {children}
         </div>
 
         {/* Footer */}
         {footer && (
-          <div className="p-5 border-t border-gray-100 flex justify-end gap-3 flex-shrink-0">
+          <div className="p-4 sm:p-5 border-t border-gray-100 flex flex-wrap justify-end gap-2 sm:gap-3 flex-shrink-0">
             {footer}
           </div>
         )}

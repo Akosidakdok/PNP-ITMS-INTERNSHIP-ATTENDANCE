@@ -47,7 +47,7 @@ export default function DocumentChecklist({ internId }) {
 
   if (loading) {
     return (
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
         {Array.from({ length: 6 }).map((_, i) => (
           <div key={i} className="skeleton h-16 rounded-xl" />
         ))}
@@ -66,7 +66,7 @@ export default function DocumentChecklist({ internId }) {
         {' · '}
         <span className="text-gray-400 font-medium">{checklistStats.missing} not yet uploaded</span>
       </p>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
         {checklistTypes.map(type => {
           const entries = docsByType[type] || [];
           const accepted = entries.some(d => d.status === 'accepted');

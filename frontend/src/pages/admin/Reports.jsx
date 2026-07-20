@@ -42,38 +42,38 @@ export default function Reports() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-800" style={{ fontFamily: 'Outfit, sans-serif' }}>Reports</h1>
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-800" style={{ fontFamily: 'Outfit, sans-serif' }}>Reports</h1>
           <p className="text-gray-500 text-sm">Attendance and performance summary reports</p>
         </div>
-        <button id="export-csv-btn" className="btn btn-primary" onClick={exportCSV} disabled={report.length === 0}>
+        <button id="export-csv-btn" className="btn btn-primary w-full sm:w-auto" onClick={exportCSV} disabled={report.length === 0}>
           <Download className="w-4 h-4" /> Export CSV
         </button>
       </div>
 
       {/* Filters */}
-      <div className="card p-4 flex flex-wrap gap-3 items-end">
-        <div className="form-group">
+      <div className="card p-4 flex flex-col sm:flex-row sm:flex-wrap gap-3 sm:items-end">
+        <div className="form-group w-full sm:w-auto">
           <label className="form-label">Month</label>
-          <select className="form-input form-select text-sm" value={filters.month} onChange={e => setFilters(f => ({ ...f, month: e.target.value }))}>
+          <select className="form-input form-select text-sm w-full sm:w-auto" value={filters.month} onChange={e => setFilters(f => ({ ...f, month: e.target.value }))}>
             {months.map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
           </select>
         </div>
-        <div className="form-group">
+        <div className="form-group w-full sm:w-auto">
           <label className="form-label">Year</label>
-          <select className="form-input form-select text-sm" value={filters.year} onChange={e => setFilters(f => ({ ...f, year: e.target.value }))}>
+          <select className="form-input form-select text-sm w-full sm:w-auto" value={filters.year} onChange={e => setFilters(f => ({ ...f, year: e.target.value }))}>
             {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
           </select>
         </div>
-        <div className="form-group">
+        <div className="form-group w-full sm:w-auto">
           <label className="form-label">Department</label>
-          <select className="form-input form-select text-sm" value={filters.department_id} onChange={e => setFilters(f => ({ ...f, department_id: e.target.value }))}>
+          <select className="form-input form-select text-sm w-full sm:w-auto" value={filters.department_id} onChange={e => setFilters(f => ({ ...f, department_id: e.target.value }))}>
             <option value="">All Departments</option>
             {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
           </select>
         </div>
-        <button id="generate-report-btn" className="btn btn-primary btn-sm" onClick={fetchReport} disabled={loading}>
+        <button id="generate-report-btn" className="btn btn-primary btn-sm w-full sm:w-auto" onClick={fetchReport} disabled={loading}>
           <Filter className="w-4 h-4" /> {loading ? 'Loading...' : 'Generate'}
         </button>
       </div>

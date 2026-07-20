@@ -38,26 +38,26 @@ export default function InternCalendar() {
   return (
     <div className="space-y-6 animate-fade-in">
       <div>
-        <h1 className="text-2xl font-bold text-gray-800" style={{ fontFamily: 'Outfit, sans-serif' }}>Program Calendar</h1>
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-800" style={{ fontFamily: 'Outfit, sans-serif' }}>Program Calendar</h1>
         <p className="text-gray-500 text-sm">View holidays, announcements, and memos.</p>
       </div>
 
       {/* Filters */}
-      <div className="card p-3 flex flex-wrap gap-3 items-center">
-        <Filter className="w-4 h-4 text-gray-400" />
-        <div className="form-group mb-0">
-          <select className="form-input form-select text-sm" value={currentDate.month} onChange={e => handleDateChange('month', e.target.value)}>
+      <div className="card p-3 flex flex-col sm:flex-row flex-wrap gap-3 sm:items-center">
+        <Filter className="w-4 h-4 text-gray-400 hidden sm:block" />
+        <div className="form-group mb-0 w-full sm:w-auto">
+          <select className="form-input form-select text-sm w-full" value={currentDate.month} onChange={e => handleDateChange('month', e.target.value)}>
             {['January','February','March','April','May','June','July','August','September','October','November','December'].map((m, i) => <option key={i} value={i}>{m}</option>)}
           </select>
         </div>
-        <div className="form-group mb-0">
-          <select className="form-input form-select text-sm" value={currentDate.year} onChange={e => handleDateChange('year', e.target.value)}>
+        <div className="form-group mb-0 w-full sm:w-auto">
+          <select className="form-input form-select text-sm w-full" value={currentDate.year} onChange={e => handleDateChange('year', e.target.value)}>
             {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
           </select>
         </div>
       </div>
 
-      <div className="card p-4">
+      <div className="card p-4 overflow-x-auto">
         <FullCalendar
           ref={calendarRef}
           plugins={[dayGridPlugin]}

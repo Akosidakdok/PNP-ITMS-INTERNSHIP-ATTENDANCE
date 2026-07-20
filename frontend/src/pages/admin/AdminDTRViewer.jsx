@@ -141,13 +141,13 @@ export default function AdminDTRViewer() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-800" style={{ fontFamily: 'Outfit, sans-serif' }}>Intern DTR Management</h1>
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-800" style={{ fontFamily: 'Outfit, sans-serif' }}>Intern DTR Management</h1>
           <p className="text-gray-500 text-sm">View, manage, and override or excuse attendance sheets for trainees</p>
         </div>
         <button
-          className="btn btn-secondary flex items-center gap-1.5"
+          className="btn btn-secondary flex items-center gap-1.5 w-full sm:w-auto"
           onClick={() => {
             setBulkForm({
               date: new Date().toISOString().slice(0, 10),
@@ -163,8 +163,8 @@ export default function AdminDTRViewer() {
       </div>
 
       {/* Trainee & Period Selectors */}
-      <div className="card p-4 flex flex-wrap gap-4 items-end">
-        <div className="form-group flex-1 min-w-[200px]">
+      <div className="card p-4 flex flex-col sm:flex-row flex-wrap gap-4 items-end">
+        <div className="form-group w-full sm:flex-1 sm:min-w-[200px]">
           <label className="form-label font-bold text-xs text-gray-700">Trainee / Intern</label>
           <select
             className="form-input form-select text-sm font-medium"
@@ -249,7 +249,7 @@ export default function AdminDTRViewer() {
 
           {/* DTR Sheet Rendering */}
           <div className="xl:col-span-3 card p-6 bg-white overflow-hidden shadow-sm flex flex-col items-center">
-            <div className="w-full max-w-[800px] border border-gray-300 rounded-xl p-4 bg-gray-50/50">
+            <div className="w-full max-w-[800px] border border-gray-300 rounded-xl p-4 bg-gray-50/50 overflow-x-auto">
               <DTRTable
                 intern={selectedInternData}
                 records={dtrRecords}

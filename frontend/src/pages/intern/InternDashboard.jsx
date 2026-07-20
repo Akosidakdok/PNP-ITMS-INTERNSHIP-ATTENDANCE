@@ -60,14 +60,14 @@ export default function InternDashboard() {
   const recentNotifs = notifications.filter(n => !n.is_read).slice(0, 3);
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-6 animate-fade-in dashboard-module">
       {/* Welcome Banner */}
       <div className="rounded-2xl p-6 text-white stat-gradient-blue relative overflow-hidden">
         <div className="absolute right-6 top-0 bottom-0 flex items-center opacity-20">
           <TrendingUp className="w-32 h-32" />
         </div>
         <p className="text-blue-200 text-sm mb-1">Good {new Date().getHours() < 12 ? 'morning' : 'afternoon'},</p>
-        <h1 className="text-2xl font-bold mb-1" style={{ fontFamily: 'Outfit, sans-serif' }}>
+        <h1 className="text-xl sm:text-2xl font-bold mb-1" style={{ fontFamily: 'Outfit, sans-serif' }}>
           {loading ? '...' : intern?.full_name || user?.username}
         </h1>
         <p className="text-blue-200 text-sm">{loading ? '' : intern?.department_name || 'PNP-ITMS'}</p>
@@ -85,7 +85,7 @@ export default function InternDashboard() {
       )}
 
       {/* Stats Row */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {[
           { icon: CheckCircle, label: 'Hours Rendered',  value: loading ? '—' : `${approvedRendered.toFixed(1)}h`,  color: 'text-green-600',  bg: 'bg-green-50'  },
           { icon: Clock,        label: 'Hours Required',  value: loading ? '—' : `${requiredHours}h`,                color: 'text-blue-600',   bg: 'bg-blue-50'   },

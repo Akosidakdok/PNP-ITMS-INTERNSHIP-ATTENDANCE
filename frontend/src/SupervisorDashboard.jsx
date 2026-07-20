@@ -55,10 +55,10 @@ export default function SupervisorDashboard() {
   const stats = data?.stats || {};
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-6 animate-fade-in dashboard-module">
       {/* Page Header */}
       <div>
-        <h1 className="text-2xl font-bold text-gray-800" style={{ fontFamily: 'Outfit, sans-serif' }}>
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-800" style={{ fontFamily: 'Outfit, sans-serif' }}>
           Supervisor Dashboard
         </h1>
         <p className="text-gray-500 text-sm mt-1">

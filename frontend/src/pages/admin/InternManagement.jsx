@@ -304,7 +304,7 @@ export default function InternManagement() {
           <p className="text-[10px] uppercase font-extrabold tracking-widest text-blue-500">
             Portal Authentication Credentials
           </p>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="form-group">
               <label className="form-label text-[11px] text-gray-500 uppercase font-bold tracking-wider">Username <span className="text-red-500">*</span></label>
               <input
@@ -333,7 +333,7 @@ export default function InternManagement() {
         <p className="text-[10px] uppercase font-extrabold tracking-widest text-blue-500">
           Personal Information
         </p>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="form-group">
             <label className="form-label text-[11px] text-gray-500 uppercase font-bold tracking-wider">First Name <span className="text-red-500">*</span></label>
             <input
@@ -496,7 +496,7 @@ export default function InternManagement() {
         <p className="text-[10px] uppercase font-extrabold tracking-widest text-blue-500">
           Emergency Contact Details
         </p>
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="form-group">
             <label className="form-label text-[11px] text-gray-500 uppercase font-bold tracking-wider">Contact Name</label>
             <input
@@ -532,7 +532,7 @@ export default function InternManagement() {
         <p className="text-[10px] uppercase font-extrabold tracking-widest text-blue-500">
           ITMS Deployment Information
         </p>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="form-group">
             <label className="form-label text-[11px] text-gray-500 uppercase font-bold tracking-wider">Department Assignment</label>
             {useAuth().user?.role === 'supervisor' ? (
@@ -626,18 +626,18 @@ export default function InternManagement() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-800" style={{ fontFamily: 'Outfit, sans-serif' }}>Intern Management</h1>
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-800" style={{ fontFamily: 'Outfit, sans-serif' }}>Intern Management</h1>
           <p className="text-gray-500 text-sm">{total} total interns</p>
         </div>
-        <button id="create-intern-btn" className="btn btn-primary" onClick={openCreate}>
+        <button id="create-intern-btn" className="btn btn-primary w-full sm:w-auto" onClick={openCreate}>
           <UserPlus className="w-4 h-4" /> Add Intern
         </button>
       </div>
 
       {/* Archive Tabs */}
-      <div className="flex border-b border-gray-200 mb-2 gap-2">
+      <div className="flex flex-wrap border-b border-gray-200 mb-2 gap-1">
         <button
           className={`px-4 py-2 text-sm font-semibold border-b-2 transition-all ${
             activeTab === 'active'

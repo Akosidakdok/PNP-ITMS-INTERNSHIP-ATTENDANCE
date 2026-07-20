@@ -173,7 +173,7 @@ export default function SupervisorManagement() {
           <p className="text-[10px] uppercase font-extrabold tracking-widest text-blue-500">
             Portal Authentication Credentials
           </p>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="form-group">
               <label className="form-label text-[11px] text-gray-500 uppercase font-bold tracking-wider">Username <span className="text-red-500">*</span></label>
               <input
@@ -202,7 +202,7 @@ export default function SupervisorManagement() {
         <p className="text-[10px] uppercase font-extrabold tracking-widest text-blue-500">
           Personal Information
         </p>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="form-group">
             <label className="form-label text-[11px] text-gray-500 uppercase font-bold tracking-wider">Full Name <span className="text-red-500">*</span></label>
             <input
@@ -241,7 +241,7 @@ export default function SupervisorManagement() {
               onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
             />
           </div>
-          <div className="form-group col-span-2">
+          <div className="form-group sm:col-span-2">
             <label className="form-label text-[11px] text-gray-500 uppercase font-bold tracking-wider">Home Address</label>
             <input
               className="form-input bg-gray-50/50"
@@ -258,7 +258,7 @@ export default function SupervisorManagement() {
         <p className="text-[10px] uppercase font-extrabold tracking-widest text-blue-500">
           Deployment Information
         </p>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="form-group">
             <label className="form-label text-[11px] text-gray-500 uppercase font-bold tracking-wider">Department Assignment</label>
             <select
@@ -290,12 +290,12 @@ export default function SupervisorManagement() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-800" style={{ fontFamily: 'Outfit, sans-serif' }}>Supervisor Management</h1>
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-800" style={{ fontFamily: 'Outfit, sans-serif' }}>Supervisor Management</h1>
           <p className="text-gray-500 text-sm">{total} total supervisors</p>
         </div>
-        <button id="create-supervisor-btn" className="btn btn-primary" onClick={openCreate}>
+        <button id="create-supervisor-btn" className="btn btn-primary w-full sm:w-auto" onClick={openCreate}>
           <UserPlus className="w-4 h-4" /> Add Supervisor
         </button>
       </div>

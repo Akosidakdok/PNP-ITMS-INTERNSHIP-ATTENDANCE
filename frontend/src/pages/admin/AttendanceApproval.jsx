@@ -107,38 +107,40 @@ export default function AttendanceApproval() {
   return (
     <div className="space-y-6 animate-fade-in">
       <div>
-        <h1 className="text-2xl font-bold text-gray-800" style={{ fontFamily: 'Outfit, sans-serif' }}>Attendance Approval</h1>
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-800" style={{ fontFamily: 'Outfit, sans-serif' }}>Attendance Approval</h1>
         <p className="text-gray-500 text-sm">Review and approve intern attendance records</p>
       </div>
 
       {/* Filters */}
-      <div className="card p-4 flex flex-wrap gap-3 items-end">
-        <div className="form-group">
+      <div className="card p-4 flex flex-col sm:flex-row sm:flex-wrap gap-3 sm:items-end">
+        <div className="form-group w-full sm:w-auto">
           <label className="form-label">Status</label>
-          <select className="form-input form-select text-sm" value={filters.status} onChange={e => setFilters(f => ({ ...f, status: e.target.value }))}>
+          <select className="form-input form-select text-sm w-full sm:w-auto" value={filters.status} onChange={e => setFilters(f => ({ ...f, status: e.target.value }))}>
             <option value="">All</option>
             <option value="pending">Pending</option>
             <option value="approved">Approved</option>
             <option value="rejected">Rejected</option>
           </select>
         </div>
-        <div className="form-group">
+        <div className="form-group w-full sm:w-auto">
           <label className="form-label">Date</label>
-          <input type="date" className="form-input text-sm" value={filters.date} onChange={e => setFilters(f => ({ ...f, date: e.target.value }))} />
+          <input type="date" className="form-input text-sm w-full sm:w-auto" value={filters.date} onChange={e => setFilters(f => ({ ...f, date: e.target.value }))} />
         </div>
-        <button className="btn btn-secondary btn-sm" onClick={() => setFilters({ status: 'pending', date: '' })}>Reset</button>
+        <button className="btn btn-secondary btn-sm w-full sm:w-auto" onClick={() => setFilters({ status: 'pending', date: '' })}>Reset</button>
       </div>
 
-      <DataTable
-        columns={columns}
-        data={logs}
-        loading={loading}
-        total={total}
-        page={page}
-        limit={15}
-        onPageChange={setPage}
-        emptyMessage="No attendance records found"
-      />
+      <div className="table-responsive">
+        <DataTable
+          columns={columns}
+          data={logs}
+          loading={loading}
+          total={total}
+          page={page}
+          limit={15}
+          onPageChange={setPage}
+          emptyMessage="No attendance records found"
+        />
+      </div>
 
       {/* Approve/Reject Modal */}
       <Modal

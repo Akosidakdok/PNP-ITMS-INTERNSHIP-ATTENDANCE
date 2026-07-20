@@ -81,12 +81,12 @@ export default function Schools() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-800" style={{ fontFamily: 'Outfit, sans-serif' }}>Schools / Universities</h1>
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-800" style={{ fontFamily: 'Outfit, sans-serif' }}>Schools / Universities</h1>
           <p className="text-gray-500 text-sm">{schools.length} schools</p>
         </div>
-        <button id="create-school-btn" className="btn btn-primary" onClick={openCreate}>
+        <button id="create-school-btn" className="btn btn-primary w-full sm:w-auto" onClick={openCreate}>
           <PlusCircle className="w-4 h-4" /> Add School
         </button>
       </div>

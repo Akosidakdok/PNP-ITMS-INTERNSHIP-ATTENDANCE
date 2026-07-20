@@ -59,6 +59,8 @@
 
 html {
   scroll-behavior: smooth;
+  overflow-x: hidden;
+  max-width: 100vw;
 }
 
 body {
@@ -68,6 +70,13 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   min-height: 100vh;
+  overflow-x: hidden;
+  max-width: 100vw;
+}
+
+#root {
+  overflow-x: hidden;
+  max-width: 100vw;
 }
 
 /* === Dark Mode === */
@@ -234,6 +243,9 @@ body {
 .main-layout {
   display: flex;
   min-height: 100vh;
+  width: 100%;
+  max-width: 100vw;
+  overflow-x: hidden;
 }
 .content-area {
   flex: 1;
@@ -242,10 +254,17 @@ body {
   display: flex;
   flex-direction: column;
   transition: margin-left 0.3s ease;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: hidden;
 }
 .page-content {
   padding: 1.5rem;
   flex: 1;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: hidden;
+  box-sizing: border-box;
 }
 
 /* === Buttons === */
@@ -502,13 +521,109 @@ body {
   display: none !important;
 }
 
-/* === Responsive === */
-@media (max-width: 768px) {
-  .sidebar { transform: translateX(-100%); }
-  .sidebar.open { transform: translateX(0); }
-  .content-area { margin-left: 0; }
-  .page-content { padding: 1rem; }
-  .mobile-menu-toggle { display: inline-flex !important; }
+/* === Responsive Table Utility === */
+.table-responsive {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* === Tablet (768px – 1023px) === */
+@media (min-width: 768px) and (max-width: 1023px) {
+  /* Sidebar is still a drawer on tablet (Tailwind lg = 1024px) */
+  .sidebar {
+    width: 260px;
+    transform: translateX(-100%);
+    z-index: 50;
+  }
+  .sidebar.open {
+    transform: translateX(0);
+  }
+  /* Content area fills full width since sidebar is hidden */
+  .content-area {
+    margin-left: 0;
+  }
+  .page-content {
+    padding: 1.25rem;
+  }
+  /* Show hamburger on tablet */
+  .mobile-menu-toggle {
+    display: inline-flex !important;
+  }
+  /* Notification dropdown — prevent overflow on tablet */
+  .notif-dropdown {
+    width: 320px;
+    right: 0;
+  }
+}
+
+/* === Mobile (<768px) === */
+@media (max-width: 767px) {
+  html, body, #root, .main-layout, .content-area {
+    overflow-x: hidden !important;
+    max-width: 100vw !important;
+    width: 100% !important;
+  }
+  /* Sidebar becomes off-canvas drawer */
+  .sidebar {
+    transform: translateX(-100%);
+    width: 260px;
+    z-index: 50;
+  }
+  .sidebar.open {
+    transform: translateX(0);
+  }
+  /* Content area fills full width */
+  .content-area {
+    margin-left: 0;
+  }
+  .page-content {
+    padding: 0.75rem;
+    overflow-x: hidden !important;
+    max-width: 100vw !important;
+    box-sizing: border-box;
+  }
+  /* Show mobile hamburger toggle */
+  .mobile-menu-toggle {
+    display: inline-flex !important;
+  }
+  /* Prevent long words from breaking layouts */
+  .data-table td {
+    word-break: break-word;
+    overflow-wrap: break-word;
+  }
+  /* Ensure tables always get horizontal scroll */
+  .data-table {
+    min-width: 560px;
+  }
+  /* Badge wrapping on very narrow cells */
+  .badge {
+    white-space: nowrap;
+  }
+  /* Buttons that should fill on mobile */
+  .btn-mobile-full {
+    width: 100%;
+    justify-content: center;
+  }
+  /* Stack filter bars */
+  .filter-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .filter-bar > * {
+    width: 100%;
+  }
+  /* Enforce 1-column layout on mobile for non-dashboard modules */
+  .page-content:not(:has(.dashboard-module)) .grid:not(.keep-multi-cols) {
+    grid-template-columns: repeat(1, minmax(0, 1fr));
+  }
+
+  /* Notification dropdown: keep within viewport */
+  .notif-dropdown {
+    width: calc(100vw - 2rem);
+    right: -0.5rem;
+    max-height: 70vh;
+  }
 }
 
 /* === Print / DTR Export === */
