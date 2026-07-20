@@ -6,6 +6,7 @@ export const EVENT_TYPES = [
   { key: 'announcement', label: 'Announcement', color: '#3b82f6' },
   { key: 'holiday', label: 'Holiday', color: '#ef4444' },
   { key: 'memo', label: 'Memo', color: '#f97316' },
+  { key: 'suspension', label: 'Suspension', color: '#a855f7' },
 ];
 
 export function useCalendar(calendarRef) {

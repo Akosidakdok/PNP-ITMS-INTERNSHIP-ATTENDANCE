@@ -2,7 +2,7 @@ import { useState, useRef } from 'react';
 import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import interactionPlugin from '@fullcalendar/interaction'; // <-- Import the interaction plugin
-import { Trash2, Tag, Calendar as CalendarIcon, FileText, Filter } from 'lucide-react';
+import { Trash2, Tag, Calendar as CalendarIcon, FileText, Filter, AlertCircle } from 'lucide-react';
 import api from '../../utils/api.js';
 import Modal from '../../components/common/Modal.jsx';
 import toast from 'react-hot-toast';
@@ -96,7 +96,7 @@ export default function AdminCalendar() {
     }
   };
 
-  const eventIcons = { holiday: <Tag className="w-3 h-3 text-red-500" />, announcement: <CalendarIcon className="w-3 h-3 text-blue-500" />, memo: <FileText className="w-3 h-3 text-orange-500" /> };
+  const eventIcons = { holiday: <Tag className="w-3 h-3 text-red-500" />, announcement: <CalendarIcon className="w-3 h-3 text-blue-500" />, memo: <FileText className="w-3 h-3 text-orange-500" />, suspension: <AlertCircle className="w-3 h-3 text-purple-500" /> };
 
   const renderEventContent = (eventInfo) => (
     <div className="flex items-center justify-between w-full p-1 gap-2">
@@ -179,6 +179,7 @@ export default function AdminCalendar() {
           }}
           events={fetchEvents}
           eventClick={(arg) => openEdit(arg.event)}
+          dateClick={(info) => openCreate(info.dateStr)}
           datesSet={handleDatesSet}
           editable={true} // Allows drag-and-drop
           eventDrop={handleEventDrop}
@@ -190,6 +191,11 @@ export default function AdminCalendar() {
       {/* Form Modal */}
       <Modal isOpen={modal === 'form'} onClose={() => setModal(null)} title={selectedEvent ? 'Edit Event' : 'New Event'} size="sm"
         footer={<>
+          {selectedEvent && (
+            <button className="btn btn-outline-primary mr-auto" onClick={() => openCreate(form.event_date)}>
+              Add Another
+            </button>
+          )}
           <button className="btn btn-secondary" onClick={() => setModal(null)}>Cancel</button>
           <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving ? 'Saving...' : 'Save'}</button>
         </>}>

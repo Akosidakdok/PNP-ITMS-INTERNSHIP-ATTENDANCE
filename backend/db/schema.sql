@@ -140,7 +140,7 @@ create table if not exists calendar_events (
   title text not null,
   description text,
   event_date date not null,
-  event_type text not null check (event_type in ('holiday', 'announcement', 'memo')),
+  event_type text not null check (event_type in ('holiday', 'announcement', 'memo', 'suspension')),
   created_by bigint references accounts(id) on delete set null,
   created_at timestamptz not null default now()
 );
