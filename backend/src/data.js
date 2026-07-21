@@ -1313,6 +1313,10 @@ export async function updateSupervisor(id, payload) {
     updates.password_hash = await bcrypt.hash(password, 10);
   }
 
+  if (password) {
+    updates.password_hash = await bcrypt.hash(password, 10);
+  }
+
   if (department_id !== undefined) {
     const deptId = department_id && department_id !== '' ? Number(department_id) : null;
     const department = deptId ? await findDepartmentById(deptId) : null;
@@ -1353,4 +1357,105 @@ export async function resetSupervisorPassword(id, newPassword) {
 
   if (error) throw error;
   return { success: true };
+}
+
+export async function setDtrOverride(internId, payload) {
+  const { date, type, hours, remarks } = payload;
+  const uppercaseType = type.toUpperCase();
+  const customHrs = hours || 0;
+  const customRemarks = remarks || '';
+  const finalRemarks = `OVERRIDE:${uppercaseType}:${customHrs}:${customRemarks}`;
+
+  const { data: intern, error: internError } = await supabase
+    .from('accounts')
+    .select('full_name')
+    .eq('id', internId)
+    .single();
+
+  if (internError) throw internError;
+
+  const startOfDay = new Date(`${date}T00:00:00Z`).toISOString();
+  const endOfDay = new Date(`${date}T23:59:59Z`).toISOString();
+
+  const { data: existingLogs, error: fetchError } = await supabase
+    .from('attendance_logs')
+    .select('id')
+    .eq('intern_id', internId)
+    .gte('scan_time', startOfDay)
+    .lte('scan_time', endOfDay)
+    .like('remarks', 'OVERRIDE:%');
+    
+  if (fetchError) throw fetchError;
+
+  if (existingLogs && existingLogs.length > 0) {
+    const idsToDelete = existingLogs.map(l => l.id);
+    await supabase.from('attendance_logs').delete().in('id', idsToDelete);
+  }
+
+  const { data, error } = await supabase
+    .from('attendance_logs')
+    .insert([{
+      intern_id: internId,
+      intern_name: intern.full_name,
+      scan_type: 'time_in',
+      scan_time: new Date(`${date}T08:00:00Z`).toISOString(),
+      approval_status: 'approved',
+      remarks: finalRemarks
+    }])
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function setBulkDtrOverride(payload) {
+  const { date, type, hours, remarks } = payload;
+  const uppercaseType = type.toUpperCase();
+  const customHrs = hours || 0;
+  const customRemarks = remarks || '';
+  const finalRemarks = `OVERRIDE:${uppercaseType}:${customHrs}:${customRemarks}`;
+
+  const { data: interns, error: internsError } = await supabase
+    .from('accounts')
+    .select('id, full_name')
+    .eq('role', INTERN_ROLE)
+    .eq('status', 'active');
+
+  if (internsError) throw internsError;
+  if (!interns || interns.length === 0) return { count: 0 };
+
+  const startOfDay = new Date(`${date}T00:00:00Z`).toISOString();
+  const endOfDay = new Date(`${date}T23:59:59Z`).toISOString();
+
+  const { data: existingLogs, error: fetchError } = await supabase
+    .from('attendance_logs')
+    .select('id')
+    .gte('scan_time', startOfDay)
+    .lte('scan_time', endOfDay)
+    .like('remarks', 'OVERRIDE:%');
+
+  if (fetchError) throw fetchError;
+
+  if (existingLogs && existingLogs.length > 0) {
+    const idsToDelete = existingLogs.map(l => l.id);
+    await supabase.from('attendance_logs').delete().in('id', idsToDelete);
+  }
+
+  const logsToInsert = interns.map(intern => ({
+    intern_id: intern.id,
+    intern_name: intern.full_name,
+    scan_type: 'time_in',
+    scan_time: new Date(`${date}T08:00:00Z`).toISOString(),
+    approval_status: 'approved',
+    remarks: finalRemarks
+  }));
+
+  const { data, error } = await supabase
+    .from('attendance_logs')
+    .insert(logsToInsert)
+    .select();
+
+  if (error) throw error;
+  return { count: data.length };
 }

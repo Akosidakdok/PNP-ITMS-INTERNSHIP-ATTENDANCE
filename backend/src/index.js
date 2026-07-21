@@ -48,7 +48,9 @@ import {
   getSchools,
   createSchool,
   updateSchool,
-  deleteSchool
+  deleteSchool,
+  setDtrOverride,
+  setBulkDtrOverride
 } from './data.js';
 import { sendWelcomeEmail } from './mailer.js';
 import { supabase } from './supabaseClient.js';
