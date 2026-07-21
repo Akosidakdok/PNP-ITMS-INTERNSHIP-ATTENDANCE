@@ -71,7 +71,9 @@ export async function getTodayScanStatus(internId) {
   return { next_scan_label: nextScanLabel, scan_count: scanCount };
 }
 
-export async function scanAttendance({ qr_code, user, photo } = {}) {
+import { verifyUserFace } from './services/faceVerificationService.js';
+
+export async function scanAttendance({ qr_code, user, photo, face_embedding } = {}) {
   if (!qr_code) {
     throw new Error('QR code is required');
   }
@@ -94,6 +96,30 @@ export async function scanAttendance({ qr_code, user, photo } = {}) {
   if (user?.id) {
     internId = user.id;
     internName = user.full_name || user.username || internName;
+  }
+
+  // Perform Face Verification if internId is present
+  let verificationScore = null;
+  let verificationStatus = 'Unverified';
+
+  if (internId) {
+    if (!face_embedding || !Array.isArray(face_embedding) || face_embedding.length === 0) {
+      const err = new Error('Face verification embedding is required. Please capture a clear selfie.');
+      err.code = 'MISSING_EMBEDDING';
+      throw err;
+    }
+
+    const faceCheck = await verifyUserFace(internId, face_embedding);
+    if (!faceCheck.verified) {
+      const err = new Error(faceCheck.message || 'Face verification failed. Please try again.');
+      err.code = faceCheck.code || 'FACE_VERIFICATION_FAILED';
+      err.similarity = faceCheck.similarity;
+      err.verified = false;
+      throw err;
+    }
+
+    verificationScore = faceCheck.similarity;
+    verificationStatus = 'Verified';
   }
 
   let scanType = 'time_in';
@@ -150,6 +176,8 @@ export async function scanAttendance({ qr_code, user, photo } = {}) {
       scan_type: scanType,
       scan_time: scanTime,
       qr_code_id: qrData.id,
+      verification_score: verificationScore,
+      verification_status: verificationStatus,
     },
   ]).select().single();
 
@@ -176,7 +204,9 @@ export async function scanAttendance({ qr_code, user, photo } = {}) {
     : ['Time In', 'Time Out'][scanOrder];
 
   return {
-    message: `${scanLabel} recorded successfully`,
+    verified: true,
+    similarity: verificationScore,
+    message: `Face verified successfully. ${scanLabel} recorded!`,
     scan_type: scanType,
     scan_label: scanLabel,
     scan_order: scanOrder,

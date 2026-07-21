@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext.jsx';
 import api from '../utils/api.js';
 import toast from 'react-hot-toast';
-import { User, Mail, Phone, MapPin, ShieldAlert, Award, School, Building2, Calendar, Lock } from 'lucide-react';
+import { User, Mail, Phone, MapPin, ShieldAlert, Award, School, Building2, Calendar, Lock, ShieldCheck, UserCheck } from 'lucide-react';
+import FaceRegistrationModal from '../components/face/FaceRegistrationModal.jsx';
 
 export default function Profile({ role }) {
   const { user, refreshUser } = useAuth();
@@ -27,6 +28,7 @@ export default function Profile({ role }) {
 
   const [savingPersonal, setSavingPersonal] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
+  const [showFaceModal, setShowFaceModal] = useState(false);
 
   const fetchProfile = async () => {
     setLoading(true);
@@ -328,6 +330,49 @@ export default function Profile({ role }) {
             </form>
           </div>
 
+          {/* Face Verification Registration Card (only for Interns) */}
+          {role === 'intern' && profile && (
+            <div className="card border border-blue-100 shadow-md rounded-xl overflow-hidden bg-gradient-to-br from-white to-blue-50/30">
+              <div className="p-5 border-b border-gray-100 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className="w-5 h-5 text-blue-600" />
+                  <h3 className="font-bold text-sm text-gray-800 uppercase tracking-wider">
+                    Biometric Face Verification
+                  </h3>
+                </div>
+                <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full flex items-center gap-1 ${
+                  profile.face_registered
+                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                    : 'bg-amber-100 text-amber-800 border border-amber-200'
+                }`}>
+                  <UserCheck className="w-3.5 h-3.5" />
+                  {profile.face_registered ? 'Registered' : 'Not Registered'}
+                </span>
+              </div>
+
+              <div className="p-5 space-y-3">
+                <p className="text-xs text-gray-600">
+                  {profile.face_registered
+                    ? 'Your face profile is registered and active for 1:1 attendance verification.'
+                    : 'Register your face once using your webcam. Face verification will be required when marking attendance.'}
+                </p>
+
+                <button
+                  type="button"
+                  onClick={() => setShowFaceModal(true)}
+                  className={`btn w-full flex items-center justify-center gap-2 font-bold py-2.5 text-xs transition-all ${
+                    profile.face_registered
+                      ? 'btn-secondary text-blue-700 bg-blue-50 hover:bg-blue-100'
+                      : 'btn-primary bg-blue-600 hover:bg-blue-700 text-white shadow-md'
+                  }`}
+                >
+                  <ShieldCheck className="w-4 h-4" />
+                  {profile.face_registered ? 'Update Registered Face' : 'Register Face Now'}
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Institutional Deployment (only for Interns) */}
           {role === 'intern' && profile && (
             <div className="card bg-pnp-950 text-white border border-transparent shadow-lg rounded-xl overflow-hidden">
@@ -373,6 +418,15 @@ export default function Profile({ role }) {
           )}
         </div>
       </div>
+
+      <FaceRegistrationModal
+        isOpen={showFaceModal}
+        onClose={() => setShowFaceModal(false)}
+        onSuccess={() => {
+          fetchProfile();
+          refreshUser();
+        }}
+      />
     </div>
   );
 }
