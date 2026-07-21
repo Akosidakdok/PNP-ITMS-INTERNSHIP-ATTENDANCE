@@ -1,13 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Clock, Filter, AlertCircle, Edit, Calendar } from 'lucide-react';
 import api from '../../utils/api.js';
-import DTRTable from '../../components/dtr/DTRTable.jsx';
+import DTRPrint from '../../components/dtr/DTRPrint.jsx';
 import Modal from '../../components/common/Modal.jsx';
 import toast from 'react-hot-toast';
 
 export default function AdminDTRViewer() {
   const [interns, setInterns] = useState([]);
   const [selectedInternId, setSelectedInternId] = useState('');
+  const [internSearch, setInternSearch] = useState('');
   const [filters, setFilters] = useState({
     month: new Date().getMonth() + 1,
     year: new Date().getFullYear(),
@@ -139,6 +140,11 @@ export default function AdminDTRViewer() {
 
   const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
+  const filteredInterns = interns.filter(i => {
+    const search = internSearch.toLowerCase();
+    return (i.full_name?.toLowerCase().includes(search) || false) || (i.department_name?.toLowerCase().includes(search) || false);
+  });
+
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -163,21 +169,30 @@ export default function AdminDTRViewer() {
       </div>
 
       {/* Trainee & Period Selectors */}
-      <div className="card p-4 flex flex-col sm:flex-row flex-wrap gap-4 items-end">
-        <div className="form-group w-full sm:flex-1 sm:min-w-[200px]">
+      <div className="card p-4 flex flex-col sm:flex-row flex-wrap gap-4 items-start sm:items-end">
+        <div className="form-group w-full sm:flex-1 sm:min-w-[300px]">
           <label className="form-label font-bold text-xs text-gray-700">Trainee / Intern</label>
-          <select
-            className="form-input form-select text-sm font-medium"
-            value={selectedInternId}
-            onChange={e => setSelectedInternId(e.target.value)}
-          >
-            <option value="">Select intern...</option>
-            {interns.map(i => (
-              <option key={i.id} value={i.id}>
-                {i.full_name} ({i.department_name || 'No Dept'})
-              </option>
-            ))}
-          </select>
+          <div className="flex flex-col gap-2">
+            <input 
+              type="text" 
+              className="form-input text-sm"
+              placeholder="Type to filter by name or department..."
+              value={internSearch}
+              onChange={e => setInternSearch(e.target.value)}
+            />
+            <select
+              className="form-input form-select text-sm font-medium"
+              value={selectedInternId}
+              onChange={e => setSelectedInternId(e.target.value)}
+            >
+              <option value="">Select intern...</option>
+              {filteredInterns.map(i => (
+                <option key={i.id} value={i.id}>
+                  {i.full_name} ({i.department_name || 'No Dept'})
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         <div className="form-group">
@@ -250,7 +265,7 @@ export default function AdminDTRViewer() {
           {/* DTR Sheet Rendering */}
           <div className="xl:col-span-3 card p-6 bg-white overflow-hidden shadow-sm flex flex-col items-center">
             <div className="w-full max-w-[800px] border border-gray-300 rounded-xl p-4 bg-gray-50/50 overflow-x-auto">
-              <DTRTable
+              <DTRPrint
                 intern={selectedInternData}
                 records={dtrRecords}
                 month={filters.month}
