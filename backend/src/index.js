@@ -4,6 +4,7 @@ import cors from 'cors';
 import multer from 'multer';
 import { loginUser } from './auth.js';
 import { getActiveQrCode, regenerateQrCode, scanAttendance, getTodayScanStatus } from './attendance.js';
+import { registerUserFace } from './services/faceVerificationService.js';
 import { authMiddleware, adminMiddleware, adminOnlyMiddleware } from './middleware.js';
 import {
   getAdminDashboardStats,
@@ -104,13 +105,10 @@ app.post('/auth/change-password', authMiddleware, async (req, res) => {
 
 app.get('/auth/me', authMiddleware, async (req, res) => {
   try {
-    const profile = await getCurrentUserProfile(req.user.id);
-    return res.json({ user: profile });
-  } catch (error) {
-    return res.status(500).json({ error: error.message });
-  }
-  try {
-    const profile = await getCurrentUserProfile(req.user.id);
+    const profile = await getCurrentUserProfile(req.user?.id);
+    if (!profile) {
+      return res.status(401).json({ error: 'User account not found' });
+    }
     return res.json({ user: profile });
   } catch (error) {
     return res.status(500).json({ error: error.message });
@@ -733,17 +731,41 @@ app.post('/attendance/validate-qr', authMiddleware, async (req, res) => {
   }
 });
 
+app.post('/interns/register-face', authMiddleware, async (req, res) => {
+  const { face_embedding, photo } = req.body;
+  if (!face_embedding || !Array.isArray(face_embedding) || face_embedding.length === 0) {
+    return res.status(400).json({ error: 'Valid facial embedding array is required for registration' });
+  }
+
+  try {
+    const data = await registerUserFace(req.user.id, face_embedding, photo);
+    return res.json({
+      success: true,
+      message: 'Face registered successfully! You can now use face verification for attendance.',
+      user: data
+    });
+  } catch (error) {
+    console.error('Error in POST /interns/register-face:', error);
+    return res.status(500).json({ error: error.message });
+  }
+});
+
 app.post('/attendance/scan', authMiddleware, async (req, res) => {
-  const { qr_code, photo } = req.body;
+  const { qr_code, photo, face_embedding } = req.body;
   if (!qr_code) {
     return res.status(400).json({ error: 'QR code is required' });
   }
 
   try {
-    const scanResult = await scanAttendance({ qr_code, user: req.user, photo });
+    const scanResult = await scanAttendance({ qr_code, user: req.user, photo, face_embedding });
     return res.json(scanResult);
   } catch (error) {
-    return res.status(400).json({ error: error.message });
+    return res.status(400).json({
+      verified: false,
+      error: error.message,
+      code: error.code || 'SCAN_FAILED',
+      similarity: error.similarity ?? 0
+    });
   }
 });
 

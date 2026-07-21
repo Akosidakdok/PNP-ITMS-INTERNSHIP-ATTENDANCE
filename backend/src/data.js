@@ -199,15 +199,26 @@ export async function getInterns({ search, page = 1, limit = 10, department_id, 
 }
 
 export async function getInternById(id) {
-  const { data, error } = await supabase
-    .from('accounts')
-    .select('id, username, full_name, first_name, middle_name, last_name, name_suffix, email, role, school, course, department_id, department_name, status, start_date, end_date, required_hours, rendered_hours, student_id, year_level, phone, home_address, emergency_name, emergency_relation, emergency_phone')
-    .eq('id', id)
-    .eq('role', INTERN_ROLE)
-    .single();
-
-  if (error) throw error;
-  return data;
+  const baseFields = 'id, username, full_name, first_name, middle_name, last_name, name_suffix, email, role, school, course, department_id, department_name, status, start_date, end_date, required_hours, rendered_hours, student_id, year_level, phone, home_address, emergency_name, emergency_relation, emergency_phone';
+  try {
+    const { data, error } = await supabase
+      .from('accounts')
+      .select(`${baseFields}, face_registered, face_registered_at`)
+      .eq('id', id)
+      .eq('role', INTERN_ROLE)
+      .single();
+    if (error) throw error;
+    return data;
+  } catch (err) {
+    const { data, error } = await supabase
+      .from('accounts')
+      .select(baseFields)
+      .eq('id', id)
+      .eq('role', INTERN_ROLE)
+      .single();
+    if (error) throw error;
+    return { ...data, face_registered: false, face_registered_at: null };
+  }
 }
 
 function normalizeDepartmentName(departmentId, departmentName) {
@@ -267,15 +278,15 @@ export async function updateIntern(id, payload) {
   if (department_id !== undefined) {
     const deptId = department_id && department_id !== '' ? Number(department_id) : null;
     const department = deptId ? await findDepartmentById(deptId) : null;
-    updates.department_name = department?.name || null;
     updates.department_id = deptId;
+    updates.department_name = department?.name || rest.department_name || null;
   }
 
   if (school_id !== undefined) {
     const schId = school_id && school_id !== '' ? Number(school_id) : null;
     const school = schId ? await findSchoolById(schId) : null;
-    updates.school = school?.name || null;
     updates.school_id = schId;
+    updates.school = school?.name || rest.school || null;
   }
 
   const { data, error } = await supabase
@@ -314,14 +325,33 @@ export async function resetInternPassword(id, newPassword) {
 }
 
 export async function getCurrentUserProfile(userId) {
-  const { data, error } = await supabase
-    .from('accounts')
-    .select('id, username, full_name, first_name, middle_name, last_name, name_suffix, email, role, school, course, department_id, department_name, status, start_date, end_date, required_hours, rendered_hours, student_id, year_level, phone, home_address, emergency_name, emergency_relation, emergency_phone')
-    .eq('id', userId)
-    .single();
+  if (!userId) return null;
+  const baseFields = 'id, username, full_name, first_name, middle_name, last_name, name_suffix, email, role, school, course, department_id, department_name, status, start_date, end_date, required_hours, rendered_hours, student_id, year_level, phone, home_address, emergency_name, emergency_relation, emergency_phone';
+  try {
+    const { data, error } = await supabase
+      .from('accounts')
+      .select(`${baseFields}, face_registered, face_registered_at`)
+      .eq('id', userId)
+      .single();
 
-  if (error) throw error;
-  return data;
+    if (error) {
+      if (error.code === 'PGRST116') return null;
+      throw error;
+    }
+    return data;
+  } catch (err) {
+    const { data, error } = await supabase
+      .from('accounts')
+      .select(baseFields)
+      .eq('id', userId)
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') return null;
+      throw error;
+    }
+    return { ...data, face_registered: false, face_registered_at: null };
+  }
 }
 
 export async function updateCurrentUserProfile(userId, updates) {
@@ -331,15 +361,28 @@ export async function updateCurrentUserProfile(userId, updates) {
     payload.department_name = department?.name || payload.department_name || null;
   }
 
-  const { data, error } = await supabase
-    .from('accounts')
-    .update(payload)
-    .eq('id', userId)
-    .select('id, username, full_name, first_name, middle_name, last_name, name_suffix, email, role, school, course, department_id, department_name, status, start_date, end_date, required_hours, rendered_hours, student_id, year_level, phone, home_address, emergency_name, emergency_relation, emergency_phone')
-    .single();
+  const baseFields = 'id, username, full_name, first_name, middle_name, last_name, name_suffix, email, role, school, course, department_id, department_name, status, start_date, end_date, required_hours, rendered_hours, student_id, year_level, phone, home_address, emergency_name, emergency_relation, emergency_phone';
+  try {
+    const { data, error } = await supabase
+      .from('accounts')
+      .update(payload)
+      .eq('id', userId)
+      .select(`${baseFields}, face_registered, face_registered_at`)
+      .single();
 
-  if (error) throw error;
-  return data;
+    if (error) throw error;
+    return data;
+  } catch (err) {
+    const { data, error } = await supabase
+      .from('accounts')
+      .update(payload)
+      .eq('id', userId)
+      .select(baseFields)
+      .single();
+
+    if (error) throw error;
+    return { ...data, face_registered: false, face_registered_at: null };
+  }
 }
 
 export async function changePassword(userId, currentPassword, newPassword) {
