@@ -528,6 +528,11 @@ body {
   -webkit-overflow-scrolling: touch;
 }
 
+/* Ensure all tables inside overflow wrappers scroll horizontally instead of squishing text */
+.overflow-x-auto table, .table-responsive table {
+  min-width: 600px;
+}
+
 /* === Tablet (768px – 1023px) === */
 @media (min-width: 768px) and (max-width: 1023px) {
   /* Sidebar is still a drawer on tablet (Tailwind lg = 1024px) */
@@ -592,9 +597,30 @@ body {
     word-break: break-word;
     overflow-wrap: break-word;
   }
-  /* Ensure tables always get horizontal scroll */
-  .data-table {
-    min-width: 560px;
+  /* Card-based tables for mobile */
+  .table-card-mobile, .data-table {
+    display: block !important; width: 100% !important; min-width: 0 !important;
+  }
+  .table-card-mobile thead, .data-table thead { display: none !important; }
+  .table-card-mobile tbody, .data-table tbody { display: block !important; width: 100% !important; }
+  .table-card-mobile tr, .data-table tr {
+    display: block !important; width: 100% !important; margin-bottom: 1rem !important;
+    border: 1px solid #e2e8f0 !important; border-radius: 0.5rem !important; background: white !important;
+  }
+  .table-card-mobile td, .data-table td {
+    display: flex !important; justify-content: space-between !important; align-items: center !important;
+    border-bottom: 1px dashed #e2e8f0 !important; text-align: right !important; padding: 0.75rem 0.5rem !important;
+  }
+  .table-card-mobile td:last-child, .data-table td:last-child { border-bottom: none !important; }
+  .table-card-mobile td::before, .data-table td::before {
+    content: attr(data-label) !important;
+    font-weight: 600 !important; color: #64748b !important; font-size: 0.75rem !important; 
+    text-transform: uppercase !important; text-align: left !important; padding-right: 1rem !important;
+  }
+  
+  /* Disable horizontal scroll constraint since we use cards */
+  .overflow-x-auto table, .table-responsive table {
+    min-width: 0 !important;
   }
   /* Badge wrapping on very narrow cells */
   .badge {
@@ -628,38 +654,24 @@ body {
 
 /* === Print / DTR Export === */
 @media print {
-  /* Hide everything except the DTR form */
-  .sidebar,
-  .navbar,
-  .no-print,
-  .page-header,
-  .space-y-6 > *:not(:has(#dtr-print-root)),
-  button {
-    display: none !important;
+  body * {
+    visibility: hidden;
   }
-
-  html, body {
-    background: #fff !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    overflow: hidden !important;
-    height: 100% !important;
+  * {
+    overflow: visible !important;
   }
-
-  .content-area {
-    margin-left: 0 !important;
-    padding: 0 !important;
+  #dtr-print-root, #dtr-print-root * {
+    visibility: visible;
   }
-
-  .page-content {
-    padding: 0 !important;
-  }
-
   #dtr-print-root {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    margin: 0 !important;
+    padding: 10mm 15mm !important;
     max-width: 100% !important;
-    padding: 5mm 10mm !important;
     font-size: 9pt !important;
-    height: 100% !important;
     box-sizing: border-box !important;
     page-break-inside: avoid !important;
     page-break-after: avoid !important;

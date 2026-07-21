@@ -421,7 +421,7 @@ export default function PerformanceEval() {
                 A. Project Evaluation (60% of Total Grade)
               </h3>
               <div className="overflow-x-auto border border-gray-200 rounded-xl">
-                <table className="w-full text-left border-collapse text-xs">
+                <table className="w-full text-left border-collapse text-xs table-card-mobile">
                   <thead>
                     <tr className="bg-gray-50 text-gray-600 font-semibold border-b border-gray-200">
                       <th className="p-3 w-[55%]">Competency</th>
@@ -436,9 +436,9 @@ export default function PerformanceEval() {
                       const weighted = (scoreVal * c.weight) / 100;
                       return (
                         <tr key={c.key} className="hover:bg-gray-50/50">
-                          <td className="p-3 font-medium text-gray-800">{c.label}</td>
-                          <td className="p-3 text-center font-semibold text-gray-500">{c.weight}%</td>
-                          <td className="p-2 text-center">
+                          <td className="p-3 font-medium text-gray-800" data-label="Competency">{c.label}</td>
+                          <td className="p-3 text-center font-semibold text-gray-500" data-label="Weight">{c.weight}%</td>
+                          <td className="p-2 text-center" data-label="Score Achieved">
                             <input
                               type="number"
                               min="0"
@@ -451,15 +451,15 @@ export default function PerformanceEval() {
                               className="form-input text-center w-20 py-1 font-semibold border border-gray-300 rounded-lg"
                             />
                           </td>
-                          <td className="p-3 text-right font-bold text-blue-700">{weighted.toFixed(2)}</td>
+                          <td className="p-3 text-right font-bold text-blue-700" data-label="Weighted Score">{weighted.toFixed(2)}</td>
                         </tr>
                       );
                     })}
                     <tr className="bg-blue-50/50 font-bold">
-                      <td className="p-3 text-blue-900">Project Score (Total)</td>
-                      <td className="p-3 text-center text-blue-900">60%</td>
-                      <td className="p-3 text-center"></td>
-                      <td className="p-3 text-right text-blue-800 text-sm">{projectScoreLive.toFixed(2)} / 60.00</td>
+                      <td className="p-3 text-blue-900" data-label="Competency">Project Score (Total)</td>
+                      <td className="p-3 text-center text-blue-900" data-label="Weight">60%</td>
+                      <td className="p-3 text-center" data-label="Score Achieved"></td>
+                      <td className="p-3 text-right text-blue-800 text-sm" data-label="Weighted Score">{projectScoreLive.toFixed(2)} / 60.00</td>
                     </tr>
                   </tbody>
                 </table>
@@ -482,7 +482,7 @@ export default function PerformanceEval() {
                 B. OJT Performance Evaluation (40% of Total Grade)
               </h3>
               <div className="overflow-x-auto border border-gray-200 rounded-xl">
-                <table className="w-full text-left border-collapse text-xs">
+                <table className="w-full text-left border-collapse text-xs table-card-mobile">
                   <thead>
                     <tr className="bg-gray-50 text-gray-600 font-semibold border-b border-gray-200">
                       <th className="p-3 w-[55%]">Competency</th>
@@ -497,9 +497,9 @@ export default function PerformanceEval() {
                       const weighted = (scoreVal * c.weight) / 100;
                       return (
                         <tr key={c.key} className="hover:bg-gray-50/50">
-                          <td className="p-3 font-medium text-gray-800">{c.label}</td>
-                          <td className="p-3 text-center font-semibold text-gray-500">{c.weight}%</td>
-                          <td className="p-2 text-center">
+                          <td className="p-3 font-medium text-gray-800" data-label="Competency">{c.label}</td>
+                          <td className="p-3 text-center font-semibold text-gray-500" data-label="Weight">{c.weight}%</td>
+                          <td className="p-2 text-center" data-label="Score Achieved">
                             <input
                               type="number"
                               min="0"
@@ -512,15 +512,15 @@ export default function PerformanceEval() {
                               className="form-input text-center w-20 py-1 font-semibold border border-gray-300 rounded-lg"
                             />
                           </td>
-                          <td className="p-3 text-right font-bold text-blue-700">{weighted.toFixed(2)}</td>
+                          <td className="p-3 text-right font-bold text-blue-700" data-label="Weighted Score">{weighted.toFixed(2)}</td>
                         </tr>
                       );
                     })}
                     <tr className="bg-blue-50/50 font-bold">
-                      <td className="p-3 text-blue-900">Performance Score (Total)</td>
-                      <td className="p-3 text-center text-blue-900">40%</td>
-                      <td className="p-3 text-center"></td>
-                      <td className="p-3 text-right text-blue-800 text-sm">{performanceScoreLive.toFixed(2)} / 40.00</td>
+                      <td className="p-3 text-blue-900" data-label="Competency">Performance Score (Total)</td>
+                      <td className="p-3 text-center text-blue-900" data-label="Weight">40%</td>
+                      <td className="p-3 text-center" data-label="Score Achieved"></td>
+                      <td className="p-3 text-right text-blue-800 text-sm" data-label="Weighted Score">{performanceScoreLive.toFixed(2)} / 40.00</td>
                     </tr>
                   </tbody>
                 </table>

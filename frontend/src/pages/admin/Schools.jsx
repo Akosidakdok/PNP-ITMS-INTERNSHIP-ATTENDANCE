@@ -174,7 +174,7 @@ export default function Schools() {
             </div>
           ) : (
             <div className="overflow-x-auto border border-gray-100 rounded-xl">
-              <table className="w-full text-left border-collapse text-xs">
+              <table className="w-full text-left border-collapse text-xs table-card-mobile">
                 <thead>
                   <tr className="bg-gray-50 text-gray-500 font-semibold border-b border-gray-100">
                     <th className="p-3">Name</th>
@@ -186,12 +186,12 @@ export default function Schools() {
                 <tbody className="divide-y divide-gray-100">
                   {interns.map(i => (
                     <tr key={i.id} className="hover:bg-gray-50/50">
-                      <td className="p-3 font-medium text-gray-800">{i.full_name}</td>
-                      <td className="p-3 text-gray-500">
+                      <td className="p-3 font-medium text-gray-800" data-label="Name">{i.full_name}</td>
+                      <td className="p-3 text-gray-500" data-label="Course">
                         <div className="text-[10px] text-gray-400">{i.course || '—'}</div>
                       </td>
-                      <td className="p-3 text-gray-600">{i.required_hours} hrs</td>
-                      <td className="p-3">
+                      <td className="p-3 text-gray-600" data-label="Required Hours">{i.required_hours} hrs</td>
+                      <td className="p-3" data-label="Status">
                         <span className={`badge ${i.status === 'active' ? 'badge-active' : 'badge-inactive'}`}>
                           {i.status}
                         </span>

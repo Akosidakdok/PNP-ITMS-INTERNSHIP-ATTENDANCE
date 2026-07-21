@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { format, getDaysInMonth, parseISO } from 'date-fns';
 
 const MONTH_NAMES = [
@@ -124,19 +125,84 @@ export default function DTRTable({ records, intern, month, year, onRowClick }) {
   };
 
   return (
-    <div
-      id="dtr-print-root"
-      style={{
-        fontFamily: 'Arial, sans-serif',
-        fontSize: '11px',
-        color: '#000',
-        backgroundColor: '#fff',
-        padding: '16px 20px',
-        maxWidth: '720px',
-        margin: '0 auto',
-        boxSizing: 'border-box',
-      }}
-    >
+    <>
+      {/* ── MOBILE LIST VIEW ── */}
+      <div className="md:hidden space-y-3 no-print bg-gray-50/30 p-1">
+        <div className="flex items-center justify-between mb-4 px-2">
+          <div>
+            <h2 className="font-bold text-gray-800 text-sm">Attendance Log</h2>
+            <p className="text-xs text-gray-500">{month && year ? format(new Date(year, month - 1, 1), 'MMMM yyyy') : ''}</p>
+          </div>
+          <div className="text-right">
+            <span className="font-black text-blue-700 text-lg">{totalHrs}h {totalMin}m</span>
+          </div>
+        </div>
+
+        {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(day => {
+          const rec = recordsByDay[day];
+          const holiday = getHolidayName(year, month, day);
+          const dateStr = month && year ? format(new Date(year, month - 1, day), 'EEE, MMM d') : day;
+          
+          // Skip empty weekends to save space
+          const isWeekend = month && year ? [0, 6].includes(new Date(year, month - 1, day).getDay()) : false;
+          if (!rec && !holiday && isWeekend) return null;
+
+          return (
+            <div 
+              key={day} 
+              className={`p-3 rounded-xl border ${rec ? 'bg-white border-gray-200 shadow-sm cursor-pointer active:bg-gray-50' : 'bg-gray-100/40 border-gray-100'}`}
+              onClick={() => rec && onRowClick && onRowClick(rec)}
+            >
+              <div className="flex justify-between items-center mb-1.5">
+                <span className={`font-bold text-xs ${isWeekend ? 'text-gray-400' : 'text-gray-700'}`}>{dateStr}</span>
+                {rec && <StatusBadge status={rec.approval_status} />}
+              </div>
+              
+              {holiday ? (
+                <div className="text-xs font-semibold text-red-500 italic">{holiday}</div>
+              ) : rec?.remarks && String(rec.remarks).startsWith('OVERRIDE:') ? (
+                <div className="text-[11px] font-semibold text-purple-600 bg-purple-50 p-1.5 rounded inline-block mt-1">
+                  {String(rec.remarks).split(':')[3] || 'Overridden'} 
+                  <span className="opacity-75 ml-1">({Number(String(rec.remarks).split(':')[2] || 0).toFixed(2)}h)</span>
+                </div>
+              ) : rec ? (
+                <div className="grid grid-cols-3 gap-2 text-[11px] mt-2">
+                  <div className="bg-gray-50 p-1.5 rounded">
+                    <span className="text-gray-400 block mb-0.5 text-[9px] uppercase font-bold">In</span>
+                    <span className="font-semibold text-gray-800">{formatTime(rec.time_in) || '--:--'}</span>
+                  </div>
+                  <div className="bg-gray-50 p-1.5 rounded">
+                    <span className="text-gray-400 block mb-0.5 text-[9px] uppercase font-bold">Out</span>
+                    <span className="font-semibold text-gray-800">{formatTime(rec.time_out) || '--:--'}</span>
+                  </div>
+                  <div className="bg-gray-50 p-1.5 rounded text-right">
+                    <span className="text-gray-400 block mb-0.5 text-[9px] uppercase font-bold">Hours</span>
+                    <span className="font-black text-blue-600">{Number(rec.total_hours || 0).toFixed(2)}</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-xs text-gray-400 italic">No record</div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* ── DESKTOP PRINT VIEW ── */}
+      <div
+        id="dtr-print-root"
+        className="hidden md:block print:block"
+        style={{
+          fontFamily: 'Arial, sans-serif',
+          fontSize: '11px',
+          color: '#000',
+          backgroundColor: '#fff',
+          padding: '16px 20px',
+          maxWidth: '720px',
+          margin: '0 auto',
+          boxSizing: 'border-box',
+        }}
+      >
       {/* ── HEADER ── */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
         {/* PNP Logo — left */}
@@ -177,80 +243,83 @@ export default function DTRTable({ records, intern, month, year, onRowClick }) {
         </div>
       </div>
 
-      {/* ── INFO FIELDS ── */}
-      <div style={{ marginBottom: '6px' }}>
+      {/* ── INFO FIELDS (LEGACY FLOAT LAYOUT FOR HTML2CANVAS) ── */}
+      <div style={{ fontSize: '11px', marginBottom: '12px' }}>
+        
         {/* Month / Year */}
-        <div style={{ display: 'flex', gap: '24px', marginBottom: '3px' }}>
-          <div>
-            <span style={{ fontWeight: 'bold' }}>MONTH: </span>
-            <span style={{ borderBottom: '1px solid #000', minWidth: '90px', display: 'inline-block', paddingBottom: '1px' }}>
-              {month ? MONTH_NAMES[month - 1] : ''}
-            </span>
+        <div style={{ clear: 'both', marginBottom: '8px', height: '16px' }}>
+          <div style={{ float: 'left', fontWeight: 'bold', width: '50px' }}>MONTH:</div>
+          <div style={{ float: 'left', width: '120px', textAlign: 'center' }}>
+            <div style={{ height: '14px' }}>{month ? MONTH_NAMES[month - 1] : ''}</div>
+            <div style={{ borderTop: '1px solid #000' }}></div>
           </div>
-          <div>
-            <span style={{ fontWeight: 'bold' }}>YEAR: </span>
-            <span style={{ borderBottom: '1px solid #000', minWidth: '60px', display: 'inline-block', paddingBottom: '1px' }}>
-              {year || ''}
-            </span>
+          
+          <div style={{ float: 'left', width: '30px' }}>&nbsp;</div>
+          
+          <div style={{ float: 'left', fontWeight: 'bold', width: '40px' }}>YEAR:</div>
+          <div style={{ float: 'left', width: '80px', textAlign: 'center' }}>
+            <div style={{ height: '14px' }}>{year || ''}</div>
+            <div style={{ borderTop: '1px solid #000' }}></div>
           </div>
         </div>
 
         {/* Name */}
-        <div style={{ marginBottom: '3px' }}>
-          <span style={{ fontWeight: 'bold' }}>Name: </span>
-          <span style={{ 
-            borderBottom: '1px solid #000', 
-            display: 'inline-grid', 
-            gridTemplateColumns: '3fr 3fr 3fr 1fr', 
-            gap: '8px',
-            minWidth: '420px',
-            paddingBottom: '1px',
-          }}>
-            <span style={{ textAlign: 'center' }}>{intern ? lastName : ''}</span>
-            <span style={{ textAlign: 'center' }}>{intern ? firstName : ''}</span>
-            <span style={{ textAlign: 'center' }}>{intern ? middleName : ''}</span>
-            <span style={{ textAlign: 'center' }}>{intern ? nameSuffix.replace(', ', '') : ''}</span>
-          </span>
-        </div>
-        {/* Name sub-labels */}
-        <div style={{ display: 'inline-grid', gridTemplateColumns: '3fr 3fr 3fr 1fr', gap: '8px', marginLeft: '42px', minWidth: '420px', marginBottom: '3px' }}>
-          <span style={{ fontSize: '9px', textAlign: 'center', color: '#555' }}>Last Name</span>
-          <span style={{ fontSize: '9px', textAlign: 'center', color: '#555' }}>First Name</span>
-          <span style={{ fontSize: '9px', textAlign: 'center', color: '#555' }}>Middle Name</span>
-          <span style={{ fontSize: '9px', textAlign: 'center', color: '#555' }}>Suffix</span>
+        <div style={{ clear: 'both', marginBottom: '12px', height: '28px' }}>
+          <div style={{ float: 'left', fontWeight: 'bold', width: '45px' }}>Name:</div>
+          <div style={{ float: 'left', width: 'calc(100% - 45px)' }}>
+            <div style={{ height: '14px' }}>
+              <div style={{ float: 'left', width: '30%', textAlign: 'center' }}>{intern ? lastName : ''}</div>
+              <div style={{ float: 'left', width: '30%', textAlign: 'center' }}>{intern ? firstName : ''}</div>
+              <div style={{ float: 'left', width: '30%', textAlign: 'center' }}>{intern ? middleName : ''}</div>
+              <div style={{ float: 'left', width: '10%', textAlign: 'center' }}>{intern ? nameSuffix.replace(', ', '') : ''}</div>
+            </div>
+            <div style={{ borderTop: '1px solid #000', clear: 'both' }}></div>
+            <div style={{ marginTop: '2px' }}>
+              <div style={{ float: 'left', width: '30%', textAlign: 'center', fontSize: '9px', color: '#555' }}>Last Name</div>
+              <div style={{ float: 'left', width: '30%', textAlign: 'center', fontSize: '9px', color: '#555' }}>First Name</div>
+              <div style={{ float: 'left', width: '30%', textAlign: 'center', fontSize: '9px', color: '#555' }}>Middle Name</div>
+              <div style={{ float: 'left', width: '10%', textAlign: 'center', fontSize: '9px', color: '#555' }}>Suffix</div>
+            </div>
+          </div>
         </div>
 
         {/* Course */}
-        <div style={{ marginBottom: '3px' }}>
-          <span style={{ fontWeight: 'bold' }}>Course: </span>
-          <span style={{ borderBottom: '1px solid #000', minWidth: '340px', display: 'inline-block', paddingBottom: '1px' }}>
-            {intern?.course || ''}
-          </span>
+        <div style={{ clear: 'both', marginBottom: '8px', height: '16px' }}>
+          <div style={{ float: 'left', fontWeight: 'bold', width: '50px' }}>Course:</div>
+          <div style={{ float: 'left', width: 'calc(100% - 50px)' }}>
+            <div style={{ height: '14px', paddingLeft: '8px' }}>{intern?.course || ''}</div>
+            <div style={{ borderTop: '1px solid #000' }}></div>
+          </div>
         </div>
 
         {/* School */}
-        <div style={{ marginBottom: '3px' }}>
-          <span style={{ fontWeight: 'bold' }}>School: </span>
-          <span style={{ borderBottom: '1px solid #000', minWidth: '340px', display: 'inline-block', paddingBottom: '1px' }}>
-            {intern?.school || ''}
-          </span>
+        <div style={{ clear: 'both', marginBottom: '8px', height: '16px' }}>
+          <div style={{ float: 'left', fontWeight: 'bold', width: '50px' }}>School:</div>
+          <div style={{ float: 'left', width: 'calc(100% - 50px)' }}>
+            <div style={{ height: '14px', paddingLeft: '8px' }}>{intern?.school || ''}</div>
+            <div style={{ borderTop: '1px solid #000' }}></div>
+          </div>
         </div>
 
         {/* Training Hours */}
-        <div style={{ marginBottom: '3px' }}>
-          <span style={{ fontWeight: 'bold' }}>Training Hours: </span>
-          <span style={{ borderBottom: '1px solid #000', minWidth: '90px', display: 'inline-block', paddingBottom: '1px' }}>
-            {intern?.required_hours ? `${intern.required_hours} hrs` : ''}
-          </span>
+        <div style={{ clear: 'both', marginBottom: '8px', height: '16px' }}>
+          <div style={{ float: 'left', fontWeight: 'bold', width: '90px' }}>Training Hours:</div>
+          <div style={{ float: 'left', width: '100px', textAlign: 'center' }}>
+            <div style={{ height: '14px' }}>{intern?.required_hours ? `${intern.required_hours} hrs` : ''}</div>
+            <div style={{ borderTop: '1px solid #000' }}></div>
+          </div>
         </div>
 
         {/* Office */}
-        <div style={{ marginBottom: '6px' }}>
-          <span style={{ fontWeight: 'bold' }}>Office: </span>
-          <span style={{ borderBottom: '1px solid #000', minWidth: '340px', display: 'inline-block', paddingBottom: '1px' }}>
-            {intern?.department_name || ''}
-          </span>
+        <div style={{ clear: 'both', marginBottom: '8px', height: '16px' }}>
+          <div style={{ float: 'left', fontWeight: 'bold', width: '45px' }}>Office:</div>
+          <div style={{ float: 'left', width: 'calc(100% - 45px)' }}>
+            <div style={{ height: '14px', paddingLeft: '8px' }}>{intern?.department_name || ''}</div>
+            <div style={{ borderTop: '1px solid #000' }}></div>
+          </div>
         </div>
+
+        <div style={{ clear: 'both' }}></div>
       </div>
 
       {/* ── ATTENDANCE TABLE ── */}
@@ -258,21 +327,15 @@ export default function DTRTable({ records, intern, month, year, onRowClick }) {
         Columns: Date | AM Time In | AM Status | PM Time Out | PM Status | Total Hrs | Overall Status
         Removed: AM Time Out, AM Sig(2), PM Time In, PM Sig(1)
       */}
-      <table style={{
-        width: '100%',
-        borderCollapse: 'collapse',
-        fontSize: '10px',
-        tableLayout: 'fixed',
-      }}>
-        <colgroup>
-          <col style={{ width: '12%' }} /> {/* Date */}
-          <col style={{ width: '12%' }} /> {/* AM Time In */}
-          <col style={{ width: '13%' }} /> {/* AM Status */}
-          <col style={{ width: '12%' }} /> {/* PM Time Out */}
-          <col style={{ width: '13%' }} /> {/* PM Status */}
-          <col style={{ width: '11%' }} /> {/* Total Hrs */}
-          <col style={{ width: '27%' }} /> {/* Overall Status */}
-        </colgroup>
+      <div className="overflow-x-auto w-full">
+        <table style={{
+          width: '100%',
+          minWidth: '600px',
+          borderCollapse: 'collapse',
+          fontSize: '10px',
+          tableLayout: 'fixed',
+        }}>
+        <colgroup><col style={{ width: '12%' }} /><col style={{ width: '12%' }} /><col style={{ width: '13%' }} /><col style={{ width: '12%' }} /><col style={{ width: '13%' }} /><col style={{ width: '11%' }} /><col style={{ width: '27%' }} /></colgroup>
         <thead>
           {/* Group headers */}
           <tr>
@@ -493,6 +556,7 @@ export default function DTRTable({ records, intern, month, year, onRowClick }) {
           })}
         </tbody>
       </table>
+      </div>
 
       {/* ── TOTAL ROW ── */}
       <div style={{ textAlign: 'right', marginTop: '4px', fontSize: '11px', fontWeight: 'bold' }}>
@@ -537,7 +601,8 @@ export default function DTRTable({ records, intern, month, year, onRowClick }) {
           </div>
         </div>
       </div>
-    </div>
+      </div>
+    </>
   );
 }
 

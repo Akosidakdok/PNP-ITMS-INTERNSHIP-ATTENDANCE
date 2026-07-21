@@ -77,7 +77,7 @@ export default function DataTable({
                 data.map((row, i) => (
                   <tr key={row.id || i} className="animate-fade-in">
                     {columns.map(col => (
-                      <td key={col.key}>
+                      <td key={col.key} data-label={col.label}>
                         {col.render ? col.render(row[col.key], row) : row[col.key] ?? '—'}
                       </td>
                     ))}

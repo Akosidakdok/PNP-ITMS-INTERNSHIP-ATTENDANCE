@@ -309,7 +309,7 @@ export default function Departments() {
             </div>
           ) : (
             <div className="overflow-x-auto border border-gray-100 rounded-xl">
-              <table className="w-full text-left border-collapse text-xs">
+              <table className="w-full text-left border-collapse text-xs table-card-mobile">
                 <thead>
                   <tr className="bg-gray-50 text-gray-500 font-semibold border-b border-gray-100">
                     <th className="p-3">Name</th>
@@ -322,18 +322,18 @@ export default function Departments() {
                 <tbody className="divide-y divide-gray-100">
                   {interns.map(i => (
                     <tr key={i.id} className="hover:bg-gray-50/50">
-                      <td className="p-3 font-medium text-gray-800">{i.full_name}</td>
-                      <td className="p-3 text-gray-500">
+                      <td className="p-3 font-medium text-gray-800" data-label="Name">{i.full_name}</td>
+                      <td className="p-3 text-gray-500" data-label="School / Course">
                         <div>{i.school || '—'}</div>
                         <div className="text-[10px] text-gray-400">{i.course || '—'}</div>
                       </td>
-                      <td className="p-3 text-gray-600">{i.required_hours} hrs</td>
-                      <td className="p-3">
+                      <td className="p-3 text-gray-600" data-label="Required Hours">{i.required_hours} hrs</td>
+                      <td className="p-3" data-label="Status">
                         <span className={`badge ${i.status === 'active' ? 'badge-active' : 'badge-inactive'}`}>
                           {i.status}
                         </span>
                       </td>
-                      <td className="p-3 text-right">
+                      <td className="p-3 text-right" data-label="Actions">
                         <div className="flex justify-end gap-1" onClick={e => e.stopPropagation()}>
                           <button className="btn btn-ghost btn-icon btn-sm" onClick={() => openEditIntern(i)}>
                             <Edit2 className="w-3.5 h-3.5" />
