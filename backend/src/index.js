@@ -54,7 +54,16 @@ import {
   updateSchool,
   deleteSchool,
   setDtrOverride,
-  setBulkDtrOverride
+  setBulkDtrOverride,
+  getProjects,
+  getProjectById,
+  createProject,
+  updateProject,
+  deleteProject,
+  uploadProjectFile,
+  deleteProjectFile,
+  getProjectDirectoryStats,
+  getProjectMemberList
 } from './data.js';
 import { sendWelcomeEmail } from './mailer.js';
 import { supabase } from './supabaseClient.js';
@@ -791,6 +800,105 @@ app.post('/attendance/scan', authMiddleware, async (req, res) => {
   try {
     const scanResult = await scanAttendance({ qr_code, user: req.user, photo });
     return res.json(scanResult);
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+});
+
+/* ==========================================================================
+   INTERN PROJECT TRACKING & DIRECTORY ENDPOINTS
+   ========================================================================== */
+
+app.get('/projects/members', authMiddleware, async (req, res) => {
+  try {
+    const members = await getProjectMemberList();
+    return res.json(members);
+  } catch (error) {
+    console.error('Error in GET /projects/members:', error);
+    return res.json([]);
+  }
+});
+
+app.get('/projects/stats', authMiddleware, async (req, res) => {
+  try {
+    const stats = await getProjectDirectoryStats();
+    return res.json(stats);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/projects', authMiddleware, async (req, res) => {
+  try {
+    const { search, status, division_id, group_name } = req.query;
+    const projects = await getProjects({ search, status, division_id, group_name });
+    return res.json(projects);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/projects/:id', authMiddleware, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (isNaN(id)) {
+      return res.status(404).json({ error: 'Invalid project ID' });
+    }
+    const project = await getProjectById(id);
+    return res.json(project);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/projects', authMiddleware, async (req, res) => {
+  try {
+    const project = await createProject(req.body, req.user.id);
+    return res.status(201).json(project);
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+});
+
+app.put('/projects/:id', authMiddleware, async (req, res) => {
+  try {
+    const project = await updateProject(Number(req.params.id), req.body);
+    return res.json(project);
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+});
+
+app.delete('/projects/:id', authMiddleware, async (req, res) => {
+  try {
+    const isAdmin = req.user.role === 'admin' || req.user.role === 'supervisor';
+    const result = await deleteProject(Number(req.params.id), req.user.id, isAdmin);
+    return res.json(result);
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+});
+
+app.post('/projects/:id/files', authMiddleware, upload.single('file'), async (req, res) => {
+  try {
+    const file = await uploadProjectFile({
+      projectId: Number(req.params.id),
+      userId: req.user.id,
+      uploaderName: req.user.full_name,
+      file: req.file,
+      fileCategory: req.body.file_category
+    });
+    return res.status(201).json(file);
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+});
+
+app.delete('/projects/:id/files/:fileId', authMiddleware, async (req, res) => {
+  try {
+    const isAdmin = req.user.role === 'admin' || req.user.role === 'supervisor';
+    const result = await deleteProjectFile(Number(req.params.fileId), req.user.id, isAdmin);
+    return res.json(result);
   } catch (error) {
     return res.status(400).json({ error: error.message });
   }

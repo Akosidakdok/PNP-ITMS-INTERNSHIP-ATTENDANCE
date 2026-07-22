@@ -930,6 +930,47 @@ export async function getDtrRecords(userId, { month, year, limit = 31 } = {}) {
   }).sort((a, b) => b.date.localeCompare(a.date));
 }
 
+export async function setDtrOverride(internId, { date, type, hours = 0, remarks = '' }) {
+  if (!internId || !date || !type) {
+    throw new Error('Intern ID, date, and override type are required');
+  }
+  const formattedType = type.toUpperCase();
+  const overrideRemark = `OVERRIDE:${formattedType}:${hours}:${remarks}`;
+  const scanTime = new Date(`${date}T08:00:00+08:00`).toISOString();
+
+  const { data: intern } = await supabase.from('accounts').select('full_name').eq('id', internId).single();
+  const internName = intern?.full_name || 'Intern';
+
+  const { data, error } = await supabase
+    .from('attendance_logs')
+    .insert([{
+      intern_id: internId,
+      intern_name: internName,
+      scan_type: 'time_in',
+      scan_time: scanTime,
+      approval_status: 'approved',
+      remarks: overrideRemark
+    }])
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function setBulkDtrOverride({ internIds, date, type, hours = 0, remarks = '' }) {
+  if (!Array.isArray(internIds) || !internIds.length || !date || !type) {
+    throw new Error('Intern IDs list, date, and override type are required');
+  }
+
+  const results = [];
+  for (const internId of internIds) {
+    const res = await setDtrOverride(internId, { date, type, hours, remarks });
+    results.push(res);
+  }
+  return { success: true, count: results.length };
+}
+
 export async function getNotifications(userId, isAdmin) {
   let query = supabase
     .from('notifications')
@@ -1397,3 +1438,317 @@ export async function bulkMarkHoliday({ date, holiday_name }) {
   if (error) throw error;
   return { count: data.length };
 }
+
+/* ==========================================================================
+   INTERN PROJECT TRACKING & PROJECT DIRECTORY FUNCTIONS
+   ========================================================================== */
+
+export async function getProjects({ search, status, division_id, group_name } = {}) {
+  let query = supabase
+    .from('intern_projects')
+    .select('*')
+    .order('updated_at', { ascending: false });
+
+  if (status && status !== 'all') {
+    query = query.eq('status', status);
+  }
+
+  if (division_id) {
+    query = query.eq('division_id', division_id);
+  }
+
+  if (group_name) {
+    query = query.ilike('group_name', `%${group_name}%`);
+  }
+
+  if (search) {
+    query = query.or(`title.ilike.%${search}%,description.ilike.%${search}%,group_name.ilike.%${search}%`);
+  }
+
+  const { data: projects, error } = await query;
+  if (error) {
+    console.warn('Could not query intern_projects table:', error.message);
+    return [];
+  }
+
+  const projectList = projects || [];
+  if (projectList.length === 0) return [];
+
+  const leaderIds = Array.from(new Set(projectList.map(p => p.leader_id).filter(Boolean)));
+  let leadersMap = {};
+  if (leaderIds.length > 0) {
+    const { data: leaders } = await supabase
+      .from('accounts')
+      .select('id, full_name, email, division_name')
+      .in('id', leaderIds);
+    (leaders || []).forEach(l => {
+      leadersMap[l.id] = l;
+    });
+  }
+
+  const projectIds = projectList.map(p => p.id);
+  const { data: files } = await supabase
+    .from('project_files')
+    .select('*')
+    .in('project_id', projectIds)
+    .order('upload_date', { ascending: false });
+
+  const filesByProject = (files || []).reduce((acc, file) => {
+    const { data: publicUrlData } = supabase.storage.from('documents').getPublicUrl(file.file_path);
+    const enrichedFile = {
+      ...file,
+      public_url: publicUrlData?.publicUrl || ''
+    };
+    if (!acc[file.project_id]) acc[file.project_id] = [];
+    acc[file.project_id].push(enrichedFile);
+    return acc;
+  }, {});
+
+  return projectList.map(p => {
+    const leader = leadersMap[p.leader_id];
+    return {
+      ...p,
+      leader_name: leader?.full_name || 'Unassigned',
+      leader_email: leader?.email || '',
+      leader_division: leader?.division_name || '',
+      files: filesByProject[p.id] || []
+    };
+  });
+}
+
+export async function getProjectById(id) {
+  const { data: project, error } = await supabase
+    .from('intern_projects')
+    .select('*')
+    .eq('id', id)
+    .single();
+
+  if (error || !project) {
+    throw new Error(error?.message || 'Project not found');
+  }
+
+  let leader_name = 'Unassigned';
+  if (project.leader_id) {
+    const { data: leader } = await supabase
+      .from('accounts')
+      .select('full_name')
+      .eq('id', project.leader_id)
+      .single();
+    if (leader) leader_name = leader.full_name;
+  }
+
+  const { data: files } = await supabase
+    .from('project_files')
+    .select('*')
+    .eq('project_id', id)
+    .order('upload_date', { ascending: false });
+
+  const enrichedFiles = (files || []).map(file => {
+    const { data: publicUrlData } = supabase.storage.from('documents').getPublicUrl(file.file_path);
+    return {
+      ...file,
+      public_url: publicUrlData?.publicUrl || ''
+    };
+  });
+
+  return {
+    ...project,
+    leader_name,
+    files: enrichedFiles
+  };
+}
+
+export async function createProject(payload, userId) {
+  const { title, description, group_name, division_id, status, progress, members, github_repo, demo_url, leader_id } = payload;
+  if (!title || !group_name) {
+    throw new Error('Project title and group name are required');
+  }
+
+  const { data, error } = await supabase
+    .from('intern_projects')
+    .insert([{
+      title,
+      description: description || '',
+      group_name,
+      division_id: division_id ? Number(division_id) : null,
+      status: status || 'in_progress',
+      progress: progress !== undefined ? Math.min(100, Math.max(0, Number(progress))) : 0,
+      leader_id: leader_id ? Number(leader_id) : userId,
+      members: members || [],
+      github_repo: github_repo || null,
+      demo_url: demo_url || null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    }])
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function updateProject(id, payload) {
+  const updates = { ...payload, updated_at: new Date().toISOString() };
+  if (updates.progress !== undefined) {
+    updates.progress = Math.min(100, Math.max(0, Number(updates.progress)));
+  }
+
+  delete updates.id;
+  delete updates.leader;
+  delete updates.files;
+
+  const { data, error } = await supabase
+    .from('intern_projects')
+    .update(updates)
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteProject(id, userId, isAdmin) {
+  const { data: project, error: findErr } = await supabase
+    .from('intern_projects')
+    .select('leader_id')
+    .eq('id', id)
+    .single();
+
+  if (findErr) throw findErr;
+  if (!isAdmin && project.leader_id !== userId) {
+    throw new Error('Permission denied: Only project leader or admins can delete this project');
+  }
+
+  const { data: files } = await supabase.from('project_files').select('file_path').eq('project_id', id);
+  if (files && files.length > 0) {
+    const paths = files.map(f => f.file_path);
+    await supabase.storage.from('documents').remove(paths);
+  }
+
+  const { error } = await supabase.from('intern_projects').delete().eq('id', id);
+  if (error) throw error;
+
+  return { success: true };
+}
+
+export async function uploadProjectFile({ projectId, userId, uploaderName, file, fileCategory }) {
+  if (!file) throw new Error('File upload is required');
+  const { originalname, mimetype, size, buffer } = file;
+  const fileExtension = originalname.split('.').pop();
+  const newFileName = `${uuidv4()}.${fileExtension}`;
+  const filePath = `project-files/${projectId}/${newFileName}`;
+
+  const { error: uploadError } = await supabase
+    .storage
+    .from('documents')
+    .upload(filePath, buffer, {
+      contentType: mimetype,
+      upsert: false,
+    });
+
+  if (uploadError) {
+    console.error('Supabase Storage Upload Error:', uploadError);
+    throw new Error('Failed to upload file to storage.');
+  }
+
+  const { data, error } = await supabase
+    .from('project_files')
+    .insert([{
+      project_id: Number(projectId),
+      uploaded_by: userId,
+      uploader_name: uploaderName || 'Intern',
+      file_category: fileCategory || 'documentation',
+      original_name: originalname,
+      file_name: newFileName,
+      file_type: mimetype.split('/').pop(),
+      file_size: size,
+      file_path: filePath,
+      upload_date: new Date().toISOString()
+    }])
+    .select()
+    .single();
+
+  if (error) throw error;
+
+  const { data: publicUrlData } = supabase.storage.from('documents').getPublicUrl(filePath);
+
+  return {
+    ...data,
+    public_url: publicUrlData?.publicUrl || ''
+  };
+}
+
+export async function deleteProjectFile(fileId, userId, isAdmin) {
+  const { data: file, error: findError } = await supabase
+    .from('project_files')
+    .select('file_path, uploaded_by')
+    .eq('id', fileId)
+    .single();
+
+  if (findError) throw findError;
+  if (!isAdmin && file.uploaded_by !== userId) {
+    throw new Error('Permission denied to delete this file');
+  }
+
+  await supabase.storage.from('documents').remove([file.file_path]);
+
+  const { error } = await supabase.from('project_files').delete().eq('id', fileId);
+  if (error) throw error;
+
+  return { success: true };
+}
+
+export async function getProjectDirectoryStats() {
+  const { data: projects, error } = await supabase.from('intern_projects').select('status, progress, group_name');
+  if (error) {
+    console.warn('Could not fetch project directory stats:', error.message);
+    return {
+      total_projects: 0,
+      completed_projects: 0,
+      in_progress_projects: 0,
+      review_projects: 0,
+      total_files: 0,
+      total_groups: 0
+    };
+  }
+
+  const { count: totalFiles } = await supabase.from('project_files').select('*', { count: 'exact', head: true });
+
+  const list = projects || [];
+  const completed = list.filter(p => p.status === 'completed' || p.progress === 100).length;
+  const inProgress = list.filter(p => p.status === 'in_progress').length;
+  const inReview = list.filter(p => p.status === 'review').length;
+  const totalProjects = list.length;
+  const groups = Array.from(new Set(list.map(p => p.group_name).filter(Boolean)));
+
+  return {
+    total_projects: totalProjects,
+    completed_projects: completed,
+    in_progress_projects: inProgress,
+    review_projects: inReview,
+    total_files: totalFiles || 0,
+    total_groups: groups.length
+  };
+}
+
+export async function getProjectMemberList() {
+  try {
+    const { data, error } = await supabase
+      .from('accounts')
+      .select('id, full_name, email, division_name, division_id, role, status')
+      .eq('role', 'intern')
+      .order('full_name', { ascending: true });
+
+    if (error) {
+      console.warn('Could not fetch intern project member list:', error.message);
+      return [];
+    }
+
+    return (data || []).filter(u => !u.status || u.status.toLowerCase() !== 'inactive');
+  } catch (err) {
+    console.warn('Error in getProjectMemberList:', err.message);
+    return [];
+  }
+}
+

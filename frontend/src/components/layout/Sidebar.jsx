@@ -3,7 +3,8 @@ import { useAuth } from '../../context/AuthContext.jsx';
 import {
   LayoutDashboard, Users, CalendarCheck, FileText, Star,
   Building2, BarChart3, QrCode, Clock, Upload, Award, Calendar,
-  Shield, ChevronLeft, LogOut, X, User, Briefcase, GraduationCap
+  Shield, ChevronLeft, LogOut, X, User, Briefcase, GraduationCap,
+  FolderGit2, FolderKanban
 } from 'lucide-react';
 
 const adminNav = [
@@ -12,6 +13,7 @@ const adminNav = [
   { to: '/admin/supervisors', icon: Briefcase, label: 'Supervisors' },
   { to: '/admin/attendance', icon: CalendarCheck, label: 'Attendance' },
   { to: '/admin/dtr', icon: Clock, label: 'Intern DTRs' },
+  { to: '/admin/projects', icon: FolderGit2, label: 'Projects Directory' },
   { to: '/admin/documents', icon: FileText, label: 'Documents' },
   { to: '/admin/evaluations', icon: Star, label: 'Evaluations' },
   { to: '/admin/divisions', icon: Building2, label: 'Divisions' },
@@ -25,6 +27,7 @@ const internNav = [
   { to: '/intern', icon: LayoutDashboard, label: 'Dashboard', end: true },
   { to: '/intern/scan', icon: QrCode, label: 'Scan QR Attendance' },
   { to: '/intern/dtr', icon: Clock, label: 'My DTR' },
+  { to: '/intern/projects', icon: FolderKanban, label: 'My Projects' },
   { to: '/intern/documents', icon: Upload, label: 'Documents' },
   { to: '/intern/evaluation', icon: Award, label: 'Evaluation' },
   { to: '/intern/calendar', icon: Calendar, label: 'Calendar' },
@@ -35,6 +38,7 @@ const supervisorNav = [
   { to: '/admin', icon: LayoutDashboard, label: 'Dashboard', end: true },
   { to: '/admin/interns', icon: Users, label: 'Interns' },
   { to: '/admin/attendance', icon: CalendarCheck, label: 'Attendance' },
+  { to: '/admin/projects', icon: FolderGit2, label: 'Projects Directory' },
   { to: '/admin/calendar', icon: Calendar, label: 'Calendar' },
   { to: '/admin/documents', icon: FileText, label: 'Documents' },
   { to: '/admin/evaluations', icon: Star, label: 'Evaluations' },

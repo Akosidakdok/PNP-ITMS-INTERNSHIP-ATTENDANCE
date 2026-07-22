@@ -22,11 +22,13 @@ import Schools from './pages/admin/Schools.jsx';
 import Reports from './pages/admin/Reports.jsx';
 import AdminCalendar from './pages/admin/Calendar.jsx';
 import AdminDTRViewer from './pages/admin/AdminDTRViewer.jsx';
+import ProjectDirectory from './pages/admin/ProjectDirectory.jsx';
 
 // Intern pages
 import InternDashboard from './pages/intern/InternDashboard.jsx';
 import ScanAttendance from './pages/intern/ScanAttendance.jsx';
 import MyDTR from './pages/intern/MyDTR.jsx';
+import MyProjects from './pages/intern/MyProjects.jsx';
 import MyDocuments from './pages/intern/MyDocuments.jsx';
 import MyEvaluation from './pages/intern/MyEvaluation.jsx';
 import Profile from './pages/Profile.jsx';
@@ -124,6 +126,7 @@ function AppRoutes() {
         <Route path="schools" element={<ProtectedRoute roles={['admin']}><Schools /></ProtectedRoute>} />
         <Route path="reports" element={<Reports />} />
         <Route path="dtr" element={<AdminDTRViewer />} />
+        <Route path="projects" element={<ProjectDirectory />} />
         <Route path="profile" element={<Profile role="admin" />} />
       </Route>
 
@@ -132,6 +135,7 @@ function AppRoutes() {
         <Route index element={<InternDashboard />} />
         <Route path="scan" element={<ScanAttendance />} />
         <Route path="dtr" element={<MyDTR />} />
+        <Route path="projects" element={<MyProjects />} />
         <Route path="documents" element={<MyDocuments />} />
         <Route path="evaluation" element={<MyEvaluation />} />
         <Route path="calendar" element={<InternCalendar />} />
