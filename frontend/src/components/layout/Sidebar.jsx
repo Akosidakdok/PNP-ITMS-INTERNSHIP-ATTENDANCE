@@ -14,7 +14,7 @@ const adminNav = [
   { to: '/admin/dtr', icon: Clock, label: 'Intern DTRs' },
   { to: '/admin/documents', icon: FileText, label: 'Documents' },
   { to: '/admin/evaluations', icon: Star, label: 'Evaluations' },
-  { to: '/admin/departments', icon: Building2, label: 'Departments' },
+  { to: '/admin/divisions', icon: Building2, label: 'Divisions' },
   { to: '/admin/schools', icon: GraduationCap, label: 'Schools' },
   { to: '/admin/calendar', icon: Calendar, label: 'Calendar' },
   { to: '/admin/reports', icon: BarChart3, label: 'Reports' },

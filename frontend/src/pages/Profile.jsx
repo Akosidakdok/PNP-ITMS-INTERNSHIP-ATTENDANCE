@@ -350,10 +350,10 @@ export default function Profile({ role }) {
                 </div>
 
                 <div>
-                  <p className="text-[10px] text-blue-300 font-bold uppercase tracking-wider mb-1">Designated Department</p>
+                  <p className="text-[10px] text-blue-300 font-bold uppercase tracking-wider mb-1">Designated Division</p>
                   <div className="mt-1 px-3 py-2 bg-blue-900/40 border border-blue-800/60 rounded-lg">
                     <p className="font-bold text-gold-300 text-xs tracking-wide">
-                      {profile.department_name || '—'}
+                      {profile.division_name || profile.department_name || '—'}
                     </p>
                   </div>
                 </div>

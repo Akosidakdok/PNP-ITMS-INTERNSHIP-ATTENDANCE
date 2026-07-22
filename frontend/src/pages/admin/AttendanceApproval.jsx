@@ -53,7 +53,7 @@ export default function AttendanceApproval() {
       render: (v, row) => (
         <div>
           <p className="font-medium text-sm text-gray-800">{v}</p>
-          <p className="text-xs text-gray-400">{row.department_name || '—'}</p>
+          <p className="text-xs text-gray-400">{row.division_name || row.department_name || '—'}</p>
         </div>
       )
     },

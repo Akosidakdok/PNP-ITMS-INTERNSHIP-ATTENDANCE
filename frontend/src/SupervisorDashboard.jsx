@@ -62,7 +62,7 @@ export default function SupervisorDashboard() {
           Supervisor Dashboard
         </h1>
         <p className="text-gray-500 text-sm mt-1">
-          Welcome, {user?.full_name}. Overview for {stats?.department_name || 'your department'}.
+          Welcome, {user?.full_name}. Overview for {stats?.division_name || stats?.department_name || 'your division'}.
         </p>
       </div>
 
@@ -74,20 +74,23 @@ export default function SupervisorDashboard() {
         <StatCard icon={CheckCircle} label="Approved Today" value={loading ? '—' : stats.approved_today || 0} gradient="stat-gradient-teal" />
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        {/* Recent Attendance */}
-        <div className="xl:col-span-2 card p-5">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Recent Activity */}
+        <div className="lg:col-span-2 card p-5">
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-bold text-gray-800 flex items-center gap-2">
-              <Calendar className="w-4 h-4 text-blue-600" /> Recent Attendance
+              <Calendar className="w-4 h-4 text-blue-600" /> Recent Attendance Activity
             </h2>
+            <a href="/admin/attendance" className="text-xs text-blue-600 hover:underline">View all →</a>
           </div>
+
           {error && (
             <div className="flex flex-col items-center justify-center py-8 text-center text-red-500 bg-red-50 rounded-lg">
               <AlertCircle className="w-8 h-8 mx-auto mb-2 opacity-50" />
               <p className="font-semibold">{error}</p>
             </div>
           )}
+
           <div className="space-y-2">
             {loading ? (
               Array.from({ length: 5 }).map((_, i) => (
@@ -96,7 +99,7 @@ export default function SupervisorDashboard() {
             ) : data?.recentAttendance?.length === 0 ? (
               <div className="text-center py-8 text-gray-400">
                 <Calendar className="w-8 h-8 mx-auto mb-2 opacity-40" />
-                <p className="text-sm">No recent attendance records</p>
+                <p className="text-sm">No recent attendance activity in your division</p>
               </div>
             ) : !error && (
               data?.recentAttendance?.map(log => (
@@ -106,7 +109,7 @@ export default function SupervisorDashboard() {
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold text-gray-800 truncate">{log.full_name}</p>
-                    <p className="text-xs text-gray-500">{log.department_name || 'No department'}</p>
+                    <p className="text-xs text-gray-500">{log.division_name || log.department_name || 'No division'}</p>
                   </div>
                   <div className="text-right flex-shrink-0">
                     <span className={`badge ${log.scan_type === 'time_in' ? 'badge-time-in' : 'badge-time-out'}`}>

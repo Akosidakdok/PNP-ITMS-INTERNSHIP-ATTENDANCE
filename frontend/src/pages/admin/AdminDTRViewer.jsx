@@ -142,7 +142,7 @@ export default function AdminDTRViewer() {
 
   const filteredInterns = interns.filter(i => {
     const search = internSearch.toLowerCase();
-    return (i.full_name?.toLowerCase().includes(search) || false) || (i.department_name?.toLowerCase().includes(search) || false);
+    return (i.full_name?.toLowerCase().includes(search) || false) || ((i.division_name || i.department_name)?.toLowerCase().includes(search) || false);
   });
 
   return (
@@ -176,7 +176,7 @@ export default function AdminDTRViewer() {
             <input 
               type="text" 
               className="form-input text-sm"
-              placeholder="Type to filter by name or department..."
+              placeholder="Type to filter by name or division..."
               value={internSearch}
               onChange={e => setInternSearch(e.target.value)}
             />
@@ -188,7 +188,7 @@ export default function AdminDTRViewer() {
               <option value="">Select intern...</option>
               {filteredInterns.map(i => (
                 <option key={i.id} value={i.id}>
-                  {i.full_name} ({i.department_name || 'No Dept'})
+                  {i.full_name} ({i.division_name || i.department_name || 'No Division'})
                 </option>
               ))}
             </select>
@@ -255,7 +255,7 @@ export default function AdminDTRViewer() {
                 <div className="text-xs text-gray-600 space-y-1">
                   <p><span className="font-bold text-gray-800">School:</span> {selectedInternData.school || '—'}</p>
                   <p><span className="font-bold text-gray-800">Course:</span> {selectedInternData.course || '—'}</p>
-                  <p><span className="font-bold text-gray-800">Dept:</span> {selectedInternData.department_name || '—'}</p>
+                  <p><span className="font-bold text-gray-800">Division:</span> {selectedInternData.division_name || selectedInternData.department_name || '—'}</p>
                   <p><span className="font-bold text-gray-800">Required:</span> {selectedInternData.required_hours || 0} Hrs</p>
                 </div>
               </div>

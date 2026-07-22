@@ -102,9 +102,9 @@ export default function InternManagement() {
   }, [search, page, activeTab, sortBy, sortOrder]);
 
   useEffect(() => {
-    api.get('/departments')
-      .then(r => setDepartments(r.data.departments))
-      .catch(() => toast.error('Could not load department list.'));
+    api.get('/divisions').catch(() => api.get('/departments'))
+      .then(r => setDepartments(r.data.divisions || r.data.departments || []))
+      .catch(() => toast.error('Could not load division list.'));
     api.get('/schools')
       .then(r => setSchools(r.data.schools))
       .catch(() => toast.error('Could not load school list.'));
@@ -256,7 +256,7 @@ export default function InternManagement() {
         </div>
       )
     },
-    { key: 'department_name', label: 'Department', render: v => v || <span className="text-gray-400">—</span> },
+    { key: 'department_name', label: 'Division', render: (v, row) => row.division_name || v || <span className="text-gray-400">—</span> },
     { key: 'school', label: 'School', render: v => <span className="text-xs text-gray-600">{v || '—'}</span> },
     {
       key: 'rendered_hours', label: 'Progress',
@@ -534,22 +534,22 @@ export default function InternManagement() {
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="form-group">
-            <label className="form-label text-[11px] text-gray-500 uppercase font-bold tracking-wider">Department Assignment</label>
+            <label className="form-label text-[11px] text-gray-500 uppercase font-bold tracking-wider">Division Assignment</label>
             {useAuth().user?.role === 'supervisor' ? (
               <select
                 className="form-input form-select bg-gray-100 text-gray-500 cursor-not-allowed"
-                value={useAuth().user?.department_id || ''}
+                value={useAuth().user?.division_id || useAuth().user?.department_id || ''}
                 disabled
               >
-                <option value={useAuth().user?.department_id}>{useAuth().user?.department_name || 'Your Department'}</option>
+                <option value={useAuth().user?.division_id || useAuth().user?.department_id}>{useAuth().user?.division_name || useAuth().user?.department_name || 'Your Division'}</option>
               </select>
             ) : (
               <select
                 className="form-input form-select bg-gray-50/50"
-                value={form.department_id || ''}
-                onChange={e => setForm(f => ({ ...f, department_id: e.target.value }))}
+                value={form.division_id || form.department_id || ''}
+                onChange={e => setForm(f => ({ ...f, division_id: e.target.value, department_id: e.target.value }))}
               >
-                <option value="">Select department</option>
+                <option value="">Select division</option>
                 {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
               </select>
             )}
@@ -611,7 +611,7 @@ export default function InternManagement() {
         onChange={e => { setSortBy(e.target.value); setPage(1); }}
       >
         <option value="full_name">Name</option>
-        <option value="department">Department</option>
+        <option value="department">Division</option>
         <option value="school">School</option>
       </select>
       <button

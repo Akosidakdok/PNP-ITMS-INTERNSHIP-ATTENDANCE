@@ -17,7 +17,7 @@ import SupervisorManagement from './pages/admin/SupervisorManagement.jsx';
 import AttendanceApproval from './pages/admin/AttendanceApproval.jsx';
 import DocumentReview from './pages/admin/DocumentReview.jsx';
 import PerformanceEval from './pages/admin/PerformanceEval.jsx';
-import Departments from './pages/admin/Departments.jsx';
+import Divisions from './pages/admin/Divisions.jsx';
 import Schools from './pages/admin/Schools.jsx';
 import Reports from './pages/admin/Reports.jsx';
 import AdminCalendar from './pages/admin/Calendar.jsx';
@@ -119,7 +119,8 @@ function AppRoutes() {
         <Route path="documents" element={<DocumentReview />} />
         <Route path="evaluations" element={<PerformanceEvalWrapper />} />
         <Route path="calendar" element={<AdminCalendar />} />
-        <Route path="departments" element={<ProtectedRoute roles={['admin']}><Departments /></ProtectedRoute>} />
+        <Route path="divisions" element={<ProtectedRoute roles={['admin']}><Divisions /></ProtectedRoute>} />
+        <Route path="departments" element={<Navigate to="/admin/divisions" replace />} />
         <Route path="schools" element={<ProtectedRoute roles={['admin']}><Schools /></ProtectedRoute>} />
         <Route path="reports" element={<Reports />} />
         <Route path="dtr" element={<AdminDTRViewer />} />
