@@ -49,7 +49,7 @@ export default function SupervisorDashboard() {
           Supervisor Dashboard
         </h1>
         <p className="text-gray-500 text-sm">
-          Welcome, {user?.full_name}. Overview for {stats?.department_name || 'your department'}.
+          Welcome, {user?.full_name}. Overview for {stats?.division_name || stats?.department_name || 'your division'}.
         </p>
       </div>
 
@@ -61,7 +61,7 @@ export default function SupervisorDashboard() {
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <StatCard icon={Users} label="Interns in Department" value={loading ? '...' : stats?.total_interns ?? 0} color="text-blue-600" bg="bg-blue-100" />
+        <StatCard icon={Users} label="Interns in Division" value={loading ? '...' : stats?.total_interns ?? 0} color="text-blue-600" bg="bg-blue-100" />
         <StatCard icon={Clock} label="Pending Attendance" value={loading ? '...' : stats?.pending_attendance ?? 0} color="text-orange-600" bg="bg-orange-100" />
         <StatCard icon={FileText} label="Pending Documents" value={loading ? '...' : stats?.pending_documents ?? 0} color="text-green-600" bg="bg-green-100" />
       </div>

@@ -255,7 +255,7 @@ export default function AdminDTRViewer() {
                 <div className="text-xs text-gray-600 space-y-1">
                   <p><span className="font-bold text-gray-800">School:</span> {selectedInternData.school || '—'}</p>
                   <p><span className="font-bold text-gray-800">Course:</span> {selectedInternData.course || '—'}</p>
-                  <p><span className="font-bold text-gray-800">Dept:</span> {selectedInternData.department_name || '—'}</p>
+                  <p><span className="font-bold text-gray-800">Division:</span> {selectedInternData.division_name || selectedInternData.department_name || '—'}</p>
                   <p><span className="font-bold text-gray-800">Required:</span> {selectedInternData.required_hours || 0} Hrs</p>
                 </div>
               </div>

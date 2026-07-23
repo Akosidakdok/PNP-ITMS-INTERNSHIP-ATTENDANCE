@@ -70,7 +70,7 @@ export default function AdminDashboard() {
         <StatCard icon={UserCheck} label="Present Today" value={loading ? '—' : stats.present_today || 0} gradient="stat-gradient-green" />
         <StatCard icon={Clock} label="Pending Attendance" value={loading ? '—' : stats.pending_attendance || 0} gradient="stat-gradient-gold" />
         <StatCard icon={CheckCircle} label="Approved Today" value={loading ? '—' : stats.approved_today || 0} gradient="stat-gradient-teal" />
-        <StatCard icon={Building2} label="Departments" value={loading ? '—' : stats.total_departments || 0} gradient="stat-gradient-purple" />
+        <StatCard icon={Building2} label="Divisions" value={loading ? '—' : (stats.total_divisions ?? stats.total_departments ?? 0)} gradient="stat-gradient-purple" />
         <StatCard icon={FileText} label="Pending Docs" value={loading ? '—' : stats.pending_documents || 0} gradient="stat-gradient-red" />
       </div>
 
@@ -107,7 +107,7 @@ export default function AdminDashboard() {
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold text-gray-800 truncate">{log.full_name}</p>
-                    <p className="text-xs text-gray-500">{log.department_name || 'No department'}</p>
+                    <p className="text-xs text-gray-500">{log.division_name || log.department_name || 'No division'}</p>
                   </div>
                   <div className="text-right flex-shrink-0">
                     <span className={`badge ${log.scan_type === 'time_in' ? 'badge-time-in' : 'badge-time-out'}`}>
