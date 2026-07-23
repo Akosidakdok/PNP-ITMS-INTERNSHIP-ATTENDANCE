@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext.jsx';
-import { Clock, CheckCircle, FileText, Award, QrCode, TrendingUp, Calendar, Bell, AlertCircle } from 'lucide-react';
+import { Clock, CheckCircle, FileText, Award, QrCode, TrendingUp, Calendar, Bell, AlertCircle, ShieldCheck, UserCheck } from 'lucide-react';
 import api from '../../utils/api.js';
 import { formatDistanceToNow } from 'date-fns';
 import { useNotifications } from '../../context/NotificationContext.jsx';
+import FaceRegistrationModal from '../../components/face/FaceRegistrationModal.jsx';
 
 const safeFormatDistanceToNow = (dateStr) => {
   try {
@@ -27,6 +28,7 @@ export default function InternDashboard() {
   const [dtrRecords, setDtrRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [showFaceRegModal, setShowFaceRegModal] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -76,6 +78,31 @@ export default function InternDashboard() {
           <span className="badge bg-white/20 text-white">{intern?.course || '—'}</span>
         </div>
       </div>
+
+      {/* Face Registration Action Banner */}
+      {!loading && intern && !intern.face_registered && (
+        <div className="card p-5 bg-gradient-to-r from-amber-500/10 via-amber-50 to-orange-50 border border-amber-200 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm animate-pulse-subtle">
+          <div className="flex items-start gap-3">
+            <div className="p-3 bg-amber-500 text-white rounded-xl shadow-md">
+              <ShieldCheck className="w-6 h-6" />
+            </div>
+            <div>
+              <h3 className="font-bold text-gray-800 text-sm sm:text-base">
+                Biometric Face Verification Required
+              </h3>
+              <p className="text-xs text-amber-900 mt-0.5 max-w-lg">
+                Please register your facial profile once using your webcam. Face verification will be used to automatically verify your identity when scanning office attendance QR codes.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setShowFaceRegModal(true)}
+            className="btn btn-primary bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs py-2.5 px-5 rounded-xl whitespace-nowrap shadow-md"
+          >
+            Register Face Profile
+          </button>
+        </div>
+      )}
 
       {error && (
         <div className="card p-4 flex items-center gap-3 text-red-600 bg-red-50 border border-red-200">
@@ -198,6 +225,15 @@ export default function InternDashboard() {
           )}
         </div>
       </div>
+
+      <FaceRegistrationModal
+        isOpen={showFaceRegModal}
+        onClose={() => setShowFaceRegModal(false)}
+        onSuccess={(updatedUser) => {
+          setShowFaceRegModal(false);
+          setProfile(prev => prev ? ({ ...prev, face_registered: true }) : prev);
+        }}
+      />
     </div>
   );
 }

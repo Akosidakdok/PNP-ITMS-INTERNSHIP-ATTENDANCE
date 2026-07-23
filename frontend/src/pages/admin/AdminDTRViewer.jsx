@@ -142,7 +142,7 @@ export default function AdminDTRViewer() {
 
   const filteredInterns = interns.filter(i => {
     const search = internSearch.toLowerCase();
-    return (i.full_name?.toLowerCase().includes(search) || false) || ((i.division_name || i.department_name)?.toLowerCase().includes(search) || false);
+    return (i.full_name?.toLowerCase().includes(search) || false) || (i.department_name?.toLowerCase().includes(search) || false);
   });
 
   return (
@@ -176,7 +176,7 @@ export default function AdminDTRViewer() {
             <input 
               type="text" 
               className="form-input text-sm"
-              placeholder="Type to filter by name or division..."
+              placeholder="Type to filter by name or department..."
               value={internSearch}
               onChange={e => setInternSearch(e.target.value)}
             />
@@ -188,7 +188,7 @@ export default function AdminDTRViewer() {
               <option value="">Select intern...</option>
               {filteredInterns.map(i => (
                 <option key={i.id} value={i.id}>
-                  {i.full_name} ({i.division_name || i.department_name || 'No Division'})
+                  {i.full_name} ({i.department_name || 'No Dept'})
                 </option>
               ))}
             </select>

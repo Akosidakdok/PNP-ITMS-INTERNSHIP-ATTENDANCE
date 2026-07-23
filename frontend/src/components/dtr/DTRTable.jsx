@@ -314,7 +314,7 @@ export default function DTRTable({ records, intern, month, year, onRowClick }) {
         <div style={{ clear: 'both', marginBottom: '8px', height: '16px' }}>
           <div style={{ float: 'left', fontWeight: 'bold', width: '45px' }}>Office:</div>
           <div style={{ float: 'left', width: 'calc(100% - 45px)' }}>
-            <div style={{ height: '14px', paddingLeft: '8px' }}>{intern?.division_name || intern?.department_name || ''}</div>
+            <div style={{ height: '14px', paddingLeft: '8px' }}>{intern?.department_name || ''}</div>
             <div style={{ borderTop: '1px solid #000' }}></div>
           </div>
         </div>

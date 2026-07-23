@@ -17,6 +17,7 @@ export function AuthProvider({ children }) {
     backendApi.get('/auth/me')
       .then((res) => setUser(res.data.user))
       .catch(() => {
+        setUser(null);
         localStorage.removeItem('pnp_token');
       })
       .finally(() => setLoading(false));
