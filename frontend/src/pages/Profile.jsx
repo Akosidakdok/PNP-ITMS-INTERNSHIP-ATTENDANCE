@@ -375,7 +375,10 @@ export default function Profile({ role }) {
 
           {/* Institutional Deployment (only for Interns) */}
           {role === 'intern' && profile && (
-            <div className="card bg-pnp-950 text-white border border-transparent shadow-lg rounded-xl overflow-hidden">
+            <div
+              className="card text-white border border-transparent shadow-lg rounded-xl overflow-hidden"
+              style={{ background: 'linear-gradient(180deg, #001240 0%, #002060 100%)' }}
+            >
               <div className="p-5 border-b border-white/10 flex items-center gap-2">
                 <Building2 className="w-5 h-5 text-gold-400" />
                 <h3 className="font-bold text-xs uppercase tracking-wider text-gold-400">

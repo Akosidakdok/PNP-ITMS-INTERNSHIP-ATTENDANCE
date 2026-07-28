@@ -375,7 +375,8 @@ export async function resetInternPassword(id, newPassword) {
 
 export async function getCurrentUserProfile(userId) {
   if (!userId) return null;
-  const baseFields = 'id, username, full_name, first_name, middle_name, last_name, name_suffix, email, role, school, course, department_id, department_name, status, start_date, end_date, required_hours, rendered_hours, student_id, year_level, phone, home_address, emergency_name, emergency_relation, emergency_phone';
+  const baseFields = 'id, username, full_name, first_name, middle_name, last_name, name_suffix, email, role, school, school_id, course, division_id, division_name, status, start_date, end_date, required_hours, rendered_hours, student_id, year_level, phone, home_address, emergency_name, emergency_relation, emergency_phone';
+  const legacyFields = 'id, username, full_name, first_name, middle_name, last_name, name_suffix, email, role, school, course, department_id, department_name, status, start_date, end_date, required_hours, rendered_hours, student_id, year_level, phone, home_address, emergency_name, emergency_relation, emergency_phone';
   try {
     const { data, error } = await supabase
       .from('accounts')
@@ -391,7 +392,7 @@ export async function getCurrentUserProfile(userId) {
   } catch (err) {
     const { data, error } = await supabase
       .from('accounts')
-      .select(baseFields)
+      .select(legacyFields)
       .eq('id', userId)
       .single();
 
