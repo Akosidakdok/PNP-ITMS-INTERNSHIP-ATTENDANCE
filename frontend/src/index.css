@@ -81,8 +81,167 @@ body {
 
 /* === Dark Mode === */
 .dark body {
-  background-color: #0a0f1e;
+  background-color: #0b1220;
   color: #e2e8f0;
+}
+
+/* Shared dark theme. Light mode remains the default. */
+.dark .content-area,
+.dark .page-content {
+  background-color: #0b1220;
+}
+.dark .navbar {
+  background: #111827;
+  border-bottom-color: #263449;
+  box-shadow: 0 1px 10px rgba(0, 0, 0, 0.28);
+}
+.dark .card,
+.dark .bg-white {
+  background: #111827;
+  border-color: #263449;
+  box-shadow: 0 2px 16px rgba(0, 0, 0, 0.22);
+}
+.dark .bg-gray-50,
+.dark .bg-gray-50\/50,
+.dark .bg-gray-50\/80,
+.dark .bg-gray-100,
+.dark .bg-gray-100\/40,
+.dark .bg-slate-50,
+.dark .bg-slate-100 {
+  background-color: #182235;
+}
+.dark .bg-blue-50,
+.dark .bg-blue-50\/50,
+.dark .bg-blue-100 {
+  background-color: rgba(30, 64, 175, 0.22);
+}
+.dark .hover\:bg-gray-50:hover,
+.dark .hover\:bg-white:hover,
+.dark .hover\:bg-slate-50:hover,
+.dark .hover\:bg-slate-100:hover {
+  background-color: #1b273b;
+}
+
+.dark .text-gray-900,
+.dark .text-gray-800,
+.dark .text-slate-900,
+.dark .text-slate-800,
+.dark .text-slate-700 {
+  color: #f1f5f9;
+}
+.dark .text-gray-700,
+.dark .text-gray-600,
+.dark .text-slate-600 {
+  color: #cbd5e1;
+}
+.dark .text-gray-500,
+.dark .text-slate-500 {
+  color: #94a3b8;
+}
+.dark .text-gray-400,
+.dark .text-slate-400,
+.dark .text-slate-300 {
+  color: #7f8da3;
+}
+.dark .text-pnp-900,
+.dark .text-pnp-800 {
+  color: var(--color-pnp-300);
+}
+
+.dark .border-gray-50,
+.dark .border-gray-100,
+.dark .border-gray-200,
+.dark .border-gray-300,
+.dark .border-slate-100,
+.dark .border-slate-200,
+.dark .border-slate-300,
+.dark .divide-gray-50 > :not(:last-child),
+.dark .divide-slate-100 > :not(:last-child) {
+  border-color: #2b3a50;
+}
+.dark .border-gray-400 { border-color: #475569; }
+
+.dark .form-label { color: #cbd5e1; }
+.dark .form-input,
+.dark input:not([type="range"]):not([type="checkbox"]):not([type="radio"]),
+.dark select,
+.dark textarea {
+  background-color: #0f172a;
+  border-color: #3a4a62;
+  color: #e5edf8;
+  color-scheme: dark;
+}
+.dark .form-input::placeholder,
+.dark input::placeholder,
+.dark textarea::placeholder {
+  color: #738198;
+}
+.dark .form-input:focus,
+.dark input:focus,
+.dark select:focus,
+.dark textarea:focus {
+  border-color: var(--color-pnp-400);
+  box-shadow: 0 0 0 3px rgba(45, 128, 255, 0.18);
+}
+.dark .btn-secondary {
+  background: #172033;
+  color: var(--color-pnp-300);
+  border-color: #365078;
+}
+.dark .btn-secondary:hover:not(:disabled) { background: #1d2b43; }
+.dark .btn-ghost { color: #a8b5c7; }
+.dark .btn-ghost:hover {
+  background: #1b273b;
+  color: #f1f5f9;
+}
+.dark .progress-bar { background: #28364a; }
+.dark .divider { background: linear-gradient(90deg, transparent, #3a4a62, transparent); }
+
+.dark .data-table th {
+  background: #182235;
+  color: #a8b5c7;
+  border-bottom-color: #334155;
+}
+.dark .data-table td {
+  color: #d6deea;
+  border-bottom-color: #263449;
+}
+.dark .data-table tr:hover td { background: #172033; }
+
+/* FullCalendar inherits the same surface and contrast as the rest of the app. */
+.dark .fc {
+  --fc-page-bg-color: #111827;
+  --fc-neutral-bg-color: #182235;
+  --fc-neutral-text-color: #a8b5c7;
+  --fc-border-color: #334155;
+  --fc-button-bg-color: #24344a;
+  --fc-button-border-color: #334155;
+  --fc-button-hover-bg-color: #30435d;
+  --fc-button-hover-border-color: #456080;
+  --fc-button-active-bg-color: #1d4ed8;
+  --fc-button-active-border-color: #2563eb;
+  color: #dbe5f2;
+}
+.dark .fc .fc-toolbar-title,
+.dark .fc .fc-col-header-cell-cushion,
+.dark .fc .fc-daygrid-day-number {
+  color: #dbe5f2;
+}
+.dark .fc .fc-day-other .fc-daygrid-day-number { color: #64748b; }
+
+/* Modals and preview panels are rendered in a portal under the dark root. */
+.dark [role="dialog"] {
+  color: #e2e8f0;
+}
+
+@media print {
+  .dark body,
+  .dark .dtr-print-container,
+  .dark .dtr-print-container * {
+    background-color: white !important;
+    color: black !important;
+    box-shadow: none !important;
+  }
 }
 
 /* === Scrollbar === */
@@ -163,6 +322,39 @@ body {
 .card-elevated {
   box-shadow: var(--shadow-elevated);
 }
+
+/* === Institutional Deployment Card === */
+.deployment-card {
+  background: #ffffff;
+  border-color: #e8eef6;
+  color: #0f172a;
+}
+.deployment-card-header { border-color: #e8eef6; }
+.deployment-card-icon,
+.deployment-card-title { color: var(--color-gold-600); }
+.deployment-card-label { color: var(--color-pnp-400); }
+.deployment-card-value { color: #0f172a; }
+.deployment-card-division {
+  background: var(--color-pnp-50);
+  border-color: var(--color-pnp-200);
+}
+.deployment-card-division-value { color: var(--color-pnp-800); }
+
+.dark .deployment-card {
+  background: linear-gradient(180deg, var(--color-pnp-950) 0%, var(--color-pnp-900) 100%);
+  border-color: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+}
+.dark .deployment-card-header { border-color: rgba(255, 255, 255, 0.1); }
+.dark .deployment-card-icon,
+.dark .deployment-card-title { color: var(--color-gold-400); }
+.dark .deployment-card-label { color: var(--color-pnp-300); }
+.dark .deployment-card-value { color: #ffffff; }
+.dark .deployment-card-division {
+  background: rgba(0, 48, 135, 0.4);
+  border-color: rgba(45, 128, 255, 0.6);
+}
+.dark .deployment-card-division-value { color: var(--color-gold-300); }
 
 /* === Stat Card Gradient === */
 .stat-gradient-blue {

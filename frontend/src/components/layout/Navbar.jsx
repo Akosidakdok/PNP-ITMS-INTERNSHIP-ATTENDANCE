@@ -22,9 +22,14 @@ const safeFormatDistanceToNow = (dateStr) => {
 export default function Navbar({ onMenuClick }) {
   const { user } = useAuth();
   const { notifications, unreadCount, markAsRead, markAllRead } = useNotifications();
-  const [darkMode, setDarkMode] = useState(false);
+  const [darkMode, setDarkMode] = useState(() => localStorage.getItem('theme') === 'dark');
   const [notifOpen, setNotifOpen] = useState(false);
   const notifRef = useRef(null);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', darkMode);
+    localStorage.setItem('theme', darkMode ? 'dark' : 'light');
+  }, [darkMode]);
 
   useEffect(() => {
     const handler = (e) => {
@@ -38,7 +43,6 @@ export default function Navbar({ onMenuClick }) {
 
   const toggleDark = () => {
     setDarkMode(v => !v);
-    document.documentElement.classList.toggle('dark');
   };
 
   const initials = (user?.full_name || user?.username || 'U')
@@ -66,6 +70,9 @@ export default function Navbar({ onMenuClick }) {
           className="btn btn-ghost btn-icon"
           onClick={toggleDark}
           data-tooltip={darkMode ? 'Light mode' : 'Dark mode'}
+          title={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
+          aria-label={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
+          aria-pressed={darkMode}
         >
           {darkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
         </button>

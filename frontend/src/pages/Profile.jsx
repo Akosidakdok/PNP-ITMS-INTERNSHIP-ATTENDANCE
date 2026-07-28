@@ -375,32 +375,29 @@ export default function Profile({ role }) {
 
           {/* Institutional Deployment (only for Interns) */}
           {role === 'intern' && profile && (
-            <div
-              className="card text-white border border-transparent shadow-lg rounded-xl overflow-hidden"
-              style={{ background: 'linear-gradient(180deg, #001240 0%, #002060 100%)' }}
-            >
-              <div className="p-5 border-b border-white/10 flex items-center gap-2">
-                <Building2 className="w-5 h-5 text-gold-400" />
-                <h3 className="font-bold text-xs uppercase tracking-wider text-gold-400">
+            <div className="card deployment-card shadow-lg rounded-xl overflow-hidden">
+              <div className="deployment-card-header p-5 border-b flex items-center gap-2">
+                <Building2 className="deployment-card-icon w-5 h-5" />
+                <h3 className="deployment-card-title font-bold text-xs uppercase tracking-wider">
                   Institutional Deployment
                 </h3>
               </div>
 
               <div className="p-6 space-y-5 text-sm">
                 <div>
-                  <p className="text-[10px] text-blue-300 font-bold uppercase tracking-wider mb-1">Student ID</p>
-                  <p className="font-bold text-white tracking-wide">{profile.student_id || '—'}</p>
+                  <p className="deployment-card-label text-[10px] font-bold uppercase tracking-wider mb-1">Student ID</p>
+                  <p className="deployment-card-value font-bold tracking-wide">{profile.student_id || '—'}</p>
                 </div>
 
                 <div>
-                  <p className="text-[10px] text-blue-300 font-bold uppercase tracking-wider mb-1">University</p>
-                  <p className="font-medium text-white">{profile.school || '—'}</p>
+                  <p className="deployment-card-label text-[10px] font-bold uppercase tracking-wider mb-1">University</p>
+                  <p className="deployment-card-value font-medium">{profile.school || '—'}</p>
                 </div>
 
                 <div>
-                  <p className="text-[10px] text-blue-300 font-bold uppercase tracking-wider mb-1">Designated Division</p>
-                  <div className="mt-1 px-3 py-2 bg-blue-900/40 border border-blue-800/60 rounded-lg">
-                    <p className="font-bold text-gold-300 text-xs tracking-wide">
+                  <p className="deployment-card-label text-[10px] font-bold uppercase tracking-wider mb-1">Designated Division</p>
+                  <div className="deployment-card-division mt-1 px-3 py-2 border rounded-lg">
+                    <p className="deployment-card-division-value font-bold text-xs tracking-wide">
                       {profile.division_name || profile.department_name || '—'}
                     </p>
                   </div>
@@ -408,12 +405,12 @@ export default function Profile({ role }) {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
                   <div>
-                    <p className="text-[10px] text-blue-300 font-bold uppercase tracking-wider mb-1">Start Date</p>
-                    <p className="font-semibold text-white text-xs">{profile.start_date || '—'}</p>
+                    <p className="deployment-card-label text-[10px] font-bold uppercase tracking-wider mb-1">Start Date</p>
+                    <p className="deployment-card-value font-semibold text-xs">{profile.start_date || '—'}</p>
                   </div>
                   <div>
-                    <p className="text-[10px] text-blue-300 font-bold uppercase tracking-wider mb-1">End Date</p>
-                    <p className="font-semibold text-white text-xs">{profile.end_date || '—'}</p>
+                    <p className="deployment-card-label text-[10px] font-bold uppercase tracking-wider mb-1">End Date</p>
+                    <p className="deployment-card-value font-semibold text-xs">{profile.end_date || '—'}</p>
                   </div>
                 </div>
               </div>
