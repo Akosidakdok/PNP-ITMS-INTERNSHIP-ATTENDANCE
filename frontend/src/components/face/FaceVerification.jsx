@@ -1,20 +1,19 @@
 import { useState } from 'react';
 import FaceCamera from './FaceCamera.jsx';
 import VerificationResult from './VerificationResult.jsx';
-import { extractFaceEmbedding } from '../../utils/mediapipeService.js';
+import { extractSecureFacePackage } from '../../utils/faceIdentityService.js';
 import toast from 'react-hot-toast';
 
 export default function FaceVerification({ onVerified, title = "Face Verification" }) {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null); // { verified, message, similarity }
 
-  const handleCapture = async ({ dataUrl, canvas, quality }) => {
+  const handleCapture = async ({ dataUrl, canvases }) => {
     setLoading(true);
     setResult(null);
 
     try {
-      // Extract face embedding using MediaPipe Tasks Vision
-      const embedding = await extractFaceEmbedding(canvas);
+      const embedding = await extractSecureFacePackage(canvases);
 
       if (onVerified) {
         // Pass photo base64 & embedding vector to parent

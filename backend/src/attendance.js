@@ -71,12 +71,13 @@ export async function getTodayScanStatus(internId) {
   return { next_scan_label: nextScanLabel, scan_count: scanCount };
 }
 
-import { verifyUserFace } from './services/faceVerificationService.js';
+import { validateFacePhoto, verifyUserFace } from './services/faceVerificationService.js';
 
 export async function scanAttendance({ qr_code, user, photo, face_embedding } = {}) {
   if (!qr_code) {
     throw new Error('QR code is required');
   }
+  const validatedPhoto = validateFacePhoto(photo);
 
   const now = new Date().toISOString();
   const { data: qrData, error: qrError } = await supabase
@@ -103,8 +104,8 @@ export async function scanAttendance({ qr_code, user, photo, face_embedding } = 
   let verificationStatus = 'Unverified';
 
   if (internId) {
-    if (!face_embedding || !Array.isArray(face_embedding) || face_embedding.length === 0) {
-      const err = new Error('Face verification embedding is required. Please capture a clear selfie.');
+    if (!face_embedding || typeof face_embedding !== 'object' || Array.isArray(face_embedding)) {
+      const err = new Error('Secure Face ID capture is required. Please capture a clear live selfie.');
       err.code = 'MISSING_EMBEDDING';
       throw err;
     }
@@ -186,17 +187,14 @@ export async function scanAttendance({ qr_code, user, photo, face_embedding } = 
     throw new Error(`Failed to record attendance: ${insertError?.message || 'Unknown database error'}`);
   }
 
-  if (photo) {
-    const { error: photoError } = await supabase.from('attendance_photos').insert([
-      {
-        attendance_log_id: record.id,
-        photo: photo,
-      }
-    ]);
-    if (photoError) {
-      console.error('Photo database insert error:', photoError);
-      throw new Error(`Failed to save selfie verification: ${photoError?.message || 'Unknown database error'}`);
+  const { error: photoError } = await supabase.from('attendance_photos').insert([
+    {
+      attendance_log_id: record.id,
+      photo: validatedPhoto,
     }
+  ]);
+  if (photoError) {
+    console.error('Photo database insert error:', photoError);
   }
 
   const nextScanLabel = scanOrder >= 2
@@ -213,5 +211,6 @@ export async function scanAttendance({ qr_code, user, photo, face_embedding } = 
     next_scan_label: nextScanLabel,
     intern_name: internName,
     scan_time: scanTime,
+    photo_saved: !photoError,
   };
 }

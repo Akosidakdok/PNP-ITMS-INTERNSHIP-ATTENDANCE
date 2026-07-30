@@ -5,6 +5,14 @@ import multer from 'multer';
 import { loginUser } from './auth.js';
 import { getActiveQrCode, regenerateQrCode, scanAttendance, getTodayScanStatus } from './attendance.js';
 import { registerUserFace } from './services/faceVerificationService.js';
+import {
+  createRenewalRequest,
+  getInternFaceWorkflow,
+  getRenewalRequestsForStaff,
+  reviewRenewalRequest,
+  getEnrollmentHistoryForStaff,
+  validateEnrollmentReason
+} from './services/faceEnrollmentWorkflowService.js';
 import { authMiddleware, adminMiddleware, adminOnlyMiddleware } from './middleware.js';
 import {
   getAdminDashboardStats,
@@ -76,6 +84,14 @@ const host = process.env.HOST || '0.0.0.0';
 // Use memoryStorage for multer to pass file buffer to Supabase Storage
 const storage = multer.memoryStorage();
 const upload = multer({ storage: storage });
+const SELF_PROFILE_FIELDS = new Set([
+  'email',
+  'phone',
+  'home_address',
+  'emergency_name',
+  'emergency_relation',
+  'emergency_phone',
+]);
 
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
@@ -351,6 +367,9 @@ app.get('/interns/:id', authMiddleware, adminMiddleware, async (req, res) => {
 });
 
 app.get('/interns/me/profile', authMiddleware, async (req, res) => {
+  if (req.user.role !== 'intern') {
+    return res.status(403).json({ error: 'Intern access required' });
+  }
   try {
     const intern = await getCurrentUserProfile(req.user.id);
     return res.json({ intern });
@@ -360,6 +379,14 @@ app.get('/interns/me/profile', authMiddleware, async (req, res) => {
 });
 
 app.put('/interns/me/profile', authMiddleware, async (req, res) => {
+  if (req.user.role !== 'intern') {
+    return res.status(403).json({ error: 'Intern access required' });
+  }
+  const suppliedFields = Object.keys(req.body || {});
+  const forbiddenFields = suppliedFields.filter(field => !SELF_PROFILE_FIELDS.has(field));
+  if (forbiddenFields.length > 0) {
+    return res.status(400).json({ error: `Profile fields cannot be changed: ${forbiddenFields.join(', ')}` });
+  }
   try {
     const intern = await updateCurrentUserProfile(req.user.id, req.body);
     return res.json({ intern });
@@ -720,7 +747,7 @@ app.delete('/calendar-events/:id', authMiddleware, async (req, res) => {
   }
 });
 
-app.get('/attendance/qr-code', authMiddleware, async (req, res) => {
+app.get('/attendance/qr-code', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const qrCode = await getActiveQrCode();
     return res.json({ qr: qrCode });
@@ -790,21 +817,159 @@ app.post('/attendance/validate-qr', authMiddleware, async (req, res) => {
 });
 
 app.post('/interns/register-face', authMiddleware, async (req, res) => {
-  const { face_embedding, photo } = req.body;
-  if (!face_embedding || !Array.isArray(face_embedding) || face_embedding.length === 0) {
-    return res.status(400).json({ error: 'Valid facial embedding array is required for registration' });
+  return res.status(403).json({
+    error: 'Initial biometric enrollment must be completed by an authorized administrator or supervisor'
+  });
+});
+
+app.get('/interns/me/face-enrollment', authMiddleware, async (req, res) => {
+  if (req.user.role !== 'intern') {
+    return res.status(403).json({ error: 'Intern access required' });
+  }
+  try {
+    const workflow = await getInternFaceWorkflow(req.user.id);
+    return res.json(workflow);
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message });
+  }
+});
+
+app.post('/interns/me/face-renewal-requests', authMiddleware, async (req, res) => {
+  if (req.user.role !== 'intern') {
+    return res.status(403).json({ error: 'Intern access required' });
+  }
+  try {
+    const request = await createRenewalRequest(req.user.id, req.body.reason);
+    return res.status(201).json({
+      success: true,
+      message: 'Face ID renewal request submitted for review',
+      request
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 400).json({ error: error.message });
+  }
+});
+
+app.post('/interns/me/renew-face', authMiddleware, async (req, res) => {
+  if (req.user.role !== 'intern') {
+    return res.status(403).json({ error: 'Intern access required' });
+  }
+
+  const requestId = Number(req.body.request_id);
+  if (!Number.isInteger(requestId) || requestId <= 0) {
+    return res.status(400).json({ error: 'A valid approved renewal request is required' });
   }
 
   try {
-    const data = await registerUserFace(req.user.id, face_embedding, photo);
+    const { data: request, error: requestError } = await supabase
+      .from('face_renewal_requests')
+      .select('id, intern_id, reason, status')
+      .eq('id', requestId)
+      .eq('intern_id', req.user.id)
+      .eq('status', 'approved')
+      .single();
+
+    if (requestError || !request) {
+      return res.status(403).json({ error: 'This renewal approval is invalid or has already been used' });
+    }
+
+    const data = await registerUserFace(req.user.id, req.body.face_embedding, req.body.photo, {
+      actorId: req.user.id,
+      reason: request.reason,
+      requestId: request.id,
+    });
     return res.json({
       success: true,
-      message: 'Face registered successfully! You can now use face verification for attendance.',
+      message: 'Face ID renewed successfully',
       user: data
     });
   } catch (error) {
-    console.error('Error in POST /interns/register-face:', error);
-    return res.status(500).json({ error: error.message });
+    console.error('Error in approved face renewal:', error);
+    return res.status(error.statusCode || 400).json({ error: error.message });
+  }
+});
+
+app.get('/face-renewal-requests', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const requests = await getRenewalRequestsForStaff(req.user, {
+      status: req.query.status || 'all',
+    });
+    return res.json({ requests });
+  } catch (error) {
+    return res.status(error.statusCode || 400).json({ error: error.message });
+  }
+});
+
+app.patch('/face-renewal-requests/:id/review', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const request = await reviewRenewalRequest(
+      req.params.id,
+      req.body.action,
+      req.body.remarks,
+      req.user
+    );
+    return res.json({
+      success: true,
+      message: `Renewal request ${request.status}`,
+      request
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 400).json({ error: error.message });
+  }
+});
+
+app.get('/face-enrollment-history', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const history = await getEnrollmentHistoryForStaff(req.user, req.query.intern_id || null);
+    return res.json({ history });
+  } catch (error) {
+    return res.status(error.statusCode || 400).json({ error: error.message });
+  }
+});
+
+app.post('/interns/:id/register-face', authMiddleware, adminMiddleware, async (req, res) => {
+  const { face_embedding, photo } = req.body;
+
+  try {
+    const internId = Number(req.params.id);
+    if (!Number.isInteger(internId) || internId <= 0) {
+      return res.status(400).json({ error: 'Valid intern ID is required' });
+    }
+
+    const { data: intern, error: internError } = await supabase
+      .from('accounts')
+      .select('id, division_id, face_registered')
+      .eq('id', internId)
+      .eq('role', 'intern')
+      .single();
+    if (internError || !intern) {
+      return res.status(404).json({ error: 'Intern account not found' });
+    }
+
+    if (req.user.role === 'supervisor') {
+      const userDivId = Number(req.user.division_id || req.user.department_id);
+      if (!userDivId || Number(intern.division_id) !== userDivId) {
+        return res.status(403).json({ error: 'Cannot enroll an intern from another division' });
+      }
+    }
+
+    const reason = intern.face_registered
+      ? validateEnrollmentReason(req.body.renewal_reason)
+      : String(req.body.renewal_reason || 'Initial biometric face enrollment').trim();
+    const data = await registerUserFace(internId, face_embedding, photo, {
+      actorId: req.user.id,
+      reason,
+    });
+    return res.json({
+      success: true,
+      message: intern.face_registered
+        ? 'Intern face profile renewed successfully'
+        : 'Intern face profile registered successfully',
+      user: data
+    });
+  } catch (error) {
+    console.error('Error in authorized face enrollment:', error);
+    return res.status(400).json({ error: error.message });
   }
 });
 
@@ -821,8 +986,7 @@ app.post('/attendance/scan', authMiddleware, async (req, res) => {
     return res.status(400).json({
       verified: false,
       error: error.message,
-      code: error.code || 'SCAN_FAILED',
-      similarity: error.similarity ?? 0
+      code: error.code || 'SCAN_FAILED'
     });
   }
 });

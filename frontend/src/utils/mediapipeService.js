@@ -3,8 +3,12 @@ import { FaceDetector, FaceLandmarker, FilesetResolver } from '@mediapipe/tasks-
 let detectorInstance = null;
 let landmarkerInstance = null;
 let visionResolver = null;
+let detectorPromise = null;
+let landmarkerPromise = null;
 
-const WASM_URL = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm';
+// Keep the browser WASM runtime aligned with the installed JS package.
+const TASKS_VISION_VERSION = '0.10.35';
+const WASM_URL = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${TASKS_VISION_VERSION}/wasm`;
 const DETECTOR_MODEL_URL = 'https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite';
 const LANDMARKER_MODEL_URL = 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task';
 
@@ -20,30 +24,37 @@ async function getVisionResolver() {
  */
 export async function getFaceDetector() {
   if (detectorInstance) return detectorInstance;
+  if (detectorPromise) return detectorPromise;
 
-  const vision = await getVisionResolver();
-  try {
-    detectorInstance = await FaceDetector.createFromOptions(vision, {
-      baseOptions: {
-        modelAssetPath: DETECTOR_MODEL_URL,
-        delegate: 'GPU',
-      },
-      runningMode: 'IMAGE',
-      minDetectionConfidence: 0.5,
-    });
-  } catch (err) {
-    console.warn('GPU delegate failed for FaceDetector, falling back to CPU:', err);
-    detectorInstance = await FaceDetector.createFromOptions(vision, {
-      baseOptions: {
-        modelAssetPath: DETECTOR_MODEL_URL,
-        delegate: 'CPU',
-      },
-      runningMode: 'IMAGE',
-      minDetectionConfidence: 0.5,
-    });
-  }
+  detectorPromise = (async () => {
+    const vision = await getVisionResolver();
+    try {
+      detectorInstance = await FaceDetector.createFromOptions(vision, {
+        baseOptions: {
+          modelAssetPath: DETECTOR_MODEL_URL,
+          delegate: 'GPU',
+        },
+        runningMode: 'IMAGE',
+        minDetectionConfidence: 0.5,
+      });
+    } catch (err) {
+      console.warn('GPU delegate failed for FaceDetector, falling back to CPU:', err);
+      detectorInstance = await FaceDetector.createFromOptions(vision, {
+        baseOptions: {
+          modelAssetPath: DETECTOR_MODEL_URL,
+          delegate: 'CPU',
+        },
+        runningMode: 'IMAGE',
+        minDetectionConfidence: 0.5,
+      });
+    }
+    return detectorInstance;
+  })().catch(error => {
+    detectorPromise = null;
+    throw error;
+  });
 
-  return detectorInstance;
+  return detectorPromise;
 }
 
 /**
@@ -51,34 +62,103 @@ export async function getFaceDetector() {
  */
 export async function getFaceLandmarker() {
   if (landmarkerInstance) return landmarkerInstance;
+  if (landmarkerPromise) return landmarkerPromise;
 
-  const vision = await getVisionResolver();
-  try {
-    landmarkerInstance = await FaceLandmarker.createFromOptions(vision, {
+  landmarkerPromise = (async () => {
+    const vision = await getVisionResolver();
+    const options = delegate => ({
       baseOptions: {
         modelAssetPath: LANDMARKER_MODEL_URL,
-        delegate: 'GPU',
+        delegate,
       },
       runningMode: 'IMAGE',
       numFaces: 2,
-      minFaceDetectionConfidence: 0.5,
-      minFacePresenceConfidence: 0.5,
+      minFaceDetectionConfidence: 0.55,
+      minFacePresenceConfidence: 0.55,
     });
-  } catch (err) {
-    console.warn('GPU delegate failed for FaceLandmarker, falling back to CPU:', err);
-    landmarkerInstance = await FaceLandmarker.createFromOptions(vision, {
-      baseOptions: {
-        modelAssetPath: LANDMARKER_MODEL_URL,
-        delegate: 'CPU',
-      },
-      runningMode: 'IMAGE',
-      numFaces: 2,
-      minFaceDetectionConfidence: 0.5,
-      minFacePresenceConfidence: 0.5,
-    });
+
+    try {
+      landmarkerInstance = await FaceLandmarker.createFromOptions(vision, options('GPU'));
+    } catch (err) {
+      console.warn('GPU delegate failed for FaceLandmarker, falling back to CPU:', err);
+      landmarkerInstance = await FaceLandmarker.createFromOptions(vision, options('CPU'));
+    }
+    return landmarkerInstance;
+  })().catch(error => {
+    landmarkerPromise = null;
+    throw new Error(`Face ID engine failed to load: ${error?.message || 'unknown MediaPipe error'}`);
+  });
+
+  return landmarkerPromise;
+}
+
+export async function initializeFaceModels() {
+  await getFaceLandmarker();
+  return true;
+}
+
+function assessSingleFace(landmarks) {
+  if (!Array.isArray(landmarks) || landmarks.length < 474) {
+    return {
+      valid: false,
+      faceCount: 1,
+      error: 'Face landmarks were incomplete. Hold still and try again.'
+    };
   }
 
-  return landmarkerInstance;
+  let minX = 1;
+  let maxX = 0;
+  let minY = 1;
+  let maxY = 0;
+  for (const point of landmarks) {
+    if (point.x < minX) minX = point.x;
+    if (point.x > maxX) maxX = point.x;
+    if (point.y < minY) minY = point.y;
+    if (point.y > maxY) maxY = point.y;
+  }
+
+  const faceWidth = maxX - minX;
+  const faceHeight = maxY - minY;
+  const centerX = (minX + maxX) / 2;
+  const centerY = (minY + maxY) / 2;
+
+  if (faceWidth < 0.12 || faceHeight < 0.12) {
+    return { valid: false, faceCount: 1, error: 'Face too far. Move closer to the camera.' };
+  }
+  if (faceWidth > 0.85 || faceHeight > 0.85) {
+    return { valid: false, faceCount: 1, error: 'Face too close. Move slightly back.' };
+  }
+  if (centerX < 0.28 || centerX > 0.72 || centerY < 0.25 || centerY > 0.72) {
+    return { valid: false, faceCount: 1, error: 'Center your full face inside the oval.' };
+  }
+
+  const leftEye = landmarks[33];
+  const rightEye = landmarks[263];
+  const nose = landmarks[1];
+  const leftCheek = landmarks[234];
+  const rightCheek = landmarks[454];
+
+  const rawRoll = Math.abs(
+    Math.atan2(rightEye.y - leftEye.y, rightEye.x - leftEye.x) * (180 / Math.PI)
+  );
+  const rollDegrees = Math.min(rawRoll, Math.abs(180 - rawRoll));
+  if (rollDegrees > 14) {
+    return { valid: false, faceCount: 1, error: 'Keep your head upright and level.' };
+  }
+
+  const leftNoseSpan = Math.abs(nose.x - leftCheek.x);
+  const rightNoseSpan = Math.abs(rightCheek.x - nose.x);
+  const yawBalance = Math.min(leftNoseSpan, rightNoseSpan)
+    / Math.max(leftNoseSpan, rightNoseSpan, 0.0001);
+  if (yawBalance < 0.5) {
+    return { valid: false, faceCount: 1, error: 'Face the camera directly—do not turn sideways.' };
+  }
+
+  return {
+    valid: true,
+    faceCount: 1,
+    detection: { faceWidth, faceHeight, centerX, centerY, rollDegrees, yawBalance }
+  };
 }
 
 /**
@@ -124,38 +204,7 @@ export async function analyzeFaceQuality(imageElement) {
       };
     }
 
-    const landmarks = faceLandmarks[0];
-    let minX = 1, maxX = 0, minY = 1, maxY = 0;
-    for (const p of landmarks) {
-      if (p.x < minX) minX = p.x;
-      if (p.x > maxX) maxX = p.x;
-      if (p.y < minY) minY = p.y;
-      if (p.y > maxY) maxY = p.y;
-    }
-
-    const faceWidth = maxX - minX;
-    const faceHeight = maxY - minY;
-
-    if (faceWidth < 0.12 || faceHeight < 0.12) {
-      return {
-        valid: false,
-        faceCount: 1,
-        error: 'Face too far. Move closer to the camera.'
-      };
-    }
-
-    if (faceWidth > 0.85 || faceHeight > 0.85) {
-      return {
-        valid: false,
-        faceCount: 1,
-        error: 'Face too close. Move slightly back.'
-      };
-    }
-
-    return {
-      valid: true,
-      faceCount: 1
-    };
+    return assessSingleFace(faceLandmarks[0]);
   } catch (err) {
     console.error('Error analyzing face quality:', err);
     return {
@@ -197,10 +246,17 @@ export async function extractFaceEmbedding(imageElement) {
   if (!result.faceLandmarks || result.faceLandmarks.length === 0) {
     throw new Error('No face detected to extract facial embedding.');
   }
+  if (result.faceLandmarks.length > 1) {
+    throw new Error('Multiple faces detected. Only one person may be in the frame.');
+  }
 
   const landmarks = result.faceLandmarks[0];
   if (!landmarks || landmarks.length === 0) {
     throw new Error('Facial landmarks array is empty.');
+  }
+  const quality = assessSingleFace(landmarks);
+  if (!quality.valid) {
+    throw new Error(quality.error || 'Face position is not suitable for Face ID.');
   }
 
   // 1. Calculate centroid (center of mass) to center the face landmarks

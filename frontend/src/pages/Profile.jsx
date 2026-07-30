@@ -2,11 +2,12 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext.jsx';
 import api from '../utils/api.js';
 import toast from 'react-hot-toast';
-import { User, Mail, Phone, MapPin, ShieldAlert, Award, School, Building2, Calendar, Lock, ShieldCheck, UserCheck } from 'lucide-react';
+import { User, Mail, Phone, MapPin, ShieldAlert, Award, School, Building2, Calendar, Lock, ShieldCheck, UserCheck, History, RefreshCw } from 'lucide-react';
+import Modal from '../components/common/Modal.jsx';
 import FaceRegistrationModal from '../components/face/FaceRegistrationModal.jsx';
 
 export default function Profile({ role }) {
-  const { user, refreshUser } = useAuth();
+  const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState(null);
   
@@ -28,7 +29,11 @@ export default function Profile({ role }) {
 
   const [savingPersonal, setSavingPersonal] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
-  const [showFaceModal, setShowFaceModal] = useState(false);
+  const [faceWorkflow, setFaceWorkflow] = useState({ active_request: null, requests: [], history: [] });
+  const [renewalRequestOpen, setRenewalRequestOpen] = useState(false);
+  const [renewalReason, setRenewalReason] = useState('');
+  const [submittingRenewal, setSubmittingRenewal] = useState(false);
+  const [selfRenewalOpen, setSelfRenewalOpen] = useState(false);
 
   const fetchProfile = async () => {
     setLoading(true);
@@ -45,6 +50,13 @@ export default function Profile({ role }) {
           emergency_relation: intern.emergency_relation || '',
           emergency_phone: intern.emergency_phone || ''
         });
+        try {
+          const workflowRes = await api.get('/interns/me/face-enrollment');
+          setFaceWorkflow(workflowRes.data);
+        } catch (workflowError) {
+          console.error('Could not load face enrollment workflow:', workflowError);
+          setFaceWorkflow({ active_request: null, requests: [], history: [] });
+        }
       } else {
         // Admin profile
         setProfile({
@@ -114,6 +126,26 @@ export default function Profile({ role }) {
       toast.error(err?.response?.data?.error || 'Failed to change password. Make sure current password is correct.');
     } finally {
       setSavingPassword(false);
+    }
+  };
+
+  const handleRenewalRequest = async () => {
+    const reason = renewalReason.trim();
+    if (reason.length < 10) {
+      toast.error('Please provide a reason of at least 10 characters');
+      return;
+    }
+    setSubmittingRenewal(true);
+    try {
+      await api.post('/interns/me/face-renewal-requests', { reason });
+      toast.success('Face ID renewal request submitted');
+      setRenewalRequestOpen(false);
+      setRenewalReason('');
+      await fetchProfile();
+    } catch (error) {
+      toast.error(error?.response?.data?.error || 'Could not submit renewal request');
+    } finally {
+      setSubmittingRenewal(false);
     }
   };
 
@@ -354,21 +386,63 @@ export default function Profile({ role }) {
                 <p className="text-xs text-gray-600">
                   {profile.face_registered
                     ? 'Your face profile is registered and active for 1:1 attendance verification.'
-                    : 'Register your face once using your webcam. Face verification will be required when marking attendance.'}
+                    : 'Your biometric profile has not been enrolled. Contact your administrator or assigned supervisor to complete enrollment in person.'}
                 </p>
 
-                <button
-                  type="button"
-                  onClick={() => setShowFaceModal(true)}
-                  className={`btn w-full flex items-center justify-center gap-2 font-bold py-2.5 text-xs transition-all ${
-                    profile.face_registered
-                      ? 'btn-secondary text-blue-700 bg-blue-50 hover:bg-blue-100'
-                      : 'btn-primary bg-blue-600 hover:bg-blue-700 text-white shadow-md'
-                  }`}
-                >
-                  <ShieldCheck className="w-4 h-4" />
-                  {profile.face_registered ? 'Update Registered Face' : 'Register Face Now'}
-                </button>
+                {!profile.face_registered ? (
+                  <div className="w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg bg-blue-50 border border-blue-100 text-blue-700 text-xs font-semibold">
+                    <ShieldCheck className="w-4 h-4" />
+                    Initial enrollment is managed by authorized staff
+                  </div>
+                ) : faceWorkflow.active_request?.status === 'approved' ? (
+                  <button
+                    type="button"
+                    className="btn btn-primary w-full"
+                    onClick={() => setSelfRenewalOpen(true)}
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                    Update Approved Face ID
+                  </button>
+                ) : faceWorkflow.active_request?.status === 'pending' ? (
+                  <div className="w-full rounded-lg bg-amber-50 border border-amber-200 px-3 py-3">
+                    <p className="text-xs font-bold text-amber-800">Renewal request pending review</p>
+                    <p className="text-[11px] text-amber-700 mt-1">{faceWorkflow.active_request.reason}</p>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn btn-secondary w-full"
+                    onClick={() => setRenewalRequestOpen(true)}
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                    Request Face ID Renewal
+                  </button>
+                )}
+
+                {faceWorkflow.history.length > 0 && (
+                  <div className="pt-3 border-t border-gray-100">
+                    <div className="flex items-center gap-2 mb-2">
+                      <History className="w-4 h-4 text-blue-600" />
+                      <p className="text-xs font-bold text-gray-700">Enrollment history</p>
+                    </div>
+                    <div className="space-y-2">
+                      {faceWorkflow.history.slice(0, 4).map(item => (
+                        <div key={item.id} className="rounded-lg border border-gray-100 bg-gray-50/50 px-3 py-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-[11px] font-bold text-gray-700 capitalize">{item.enrollment_type}</span>
+                            <span className="text-[10px] text-gray-500">
+                              {new Date(item.created_at).toLocaleString()}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-gray-600 mt-1">{item.renewal_reason}</p>
+                          <p className="text-[10px] text-gray-500 mt-1">
+                            Completed by {item.enrolled_by_name}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -419,13 +493,48 @@ export default function Profile({ role }) {
         </div>
       </div>
 
+      <Modal
+        isOpen={renewalRequestOpen}
+        onClose={() => setRenewalRequestOpen(false)}
+        title="Request Face ID Renewal"
+        size="sm"
+        footer={
+          <>
+            <button className="btn btn-secondary" onClick={() => setRenewalRequestOpen(false)}>Cancel</button>
+            <button className="btn btn-primary" onClick={handleRenewalRequest} disabled={submittingRenewal}>
+              {submittingRenewal ? 'Submitting...' : 'Submit Request'}
+            </button>
+          </>
+        }
+      >
+        <p className="text-sm text-gray-600 mb-4">
+          Explain why your current Face ID needs to be replaced. An administrator or your assigned supervisor must approve it first.
+        </p>
+        <div className="form-group">
+          <label className="form-label">Renewal reason</label>
+          <textarea
+            className="form-input min-h-28 resize-y"
+            maxLength={500}
+            value={renewalReason}
+            onChange={event => setRenewalReason(event.target.value)}
+            placeholder="Example: My appearance changed significantly and attendance verification no longer recognizes me."
+          />
+          <p className="text-[11px] text-gray-500 mt-1">
+            {renewalReason.trim().length}/500 characters · minimum 10
+          </p>
+        </div>
+      </Modal>
+
       <FaceRegistrationModal
-        isOpen={showFaceModal}
-        onClose={() => setShowFaceModal(false)}
-        onSuccess={() => {
-          fetchProfile();
-          refreshUser();
+        isOpen={selfRenewalOpen}
+        onClose={() => setSelfRenewalOpen(false)}
+        onSuccess={async () => {
+          setSelfRenewalOpen(false);
+          await fetchProfile();
         }}
+        intern={profile}
+        approvedRequest={faceWorkflow.active_request}
+        selfRenewal
       />
     </div>
   );

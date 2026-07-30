@@ -5,7 +5,6 @@ import { Clock, CheckCircle, FileText, Award, QrCode, TrendingUp, Calendar, Bell
 import api from '../../utils/api.js';
 import { formatDistanceToNow } from 'date-fns';
 import { useNotifications } from '../../context/NotificationContext.jsx';
-import FaceRegistrationModal from '../../components/face/FaceRegistrationModal.jsx';
 
 const safeFormatDistanceToNow = (dateStr) => {
   try {
@@ -28,7 +27,6 @@ export default function InternDashboard() {
   const [dtrRecords, setDtrRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [showFaceRegModal, setShowFaceRegModal] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -91,16 +89,13 @@ export default function InternDashboard() {
                 Biometric Face Verification Required
               </h3>
               <p className="text-xs text-amber-900 mt-0.5 max-w-lg">
-                Please register your facial profile once using your webcam. Face verification will be used to automatically verify your identity when scanning office attendance QR codes.
+                Contact your administrator or assigned supervisor to complete biometric enrollment in person before using QR attendance.
               </p>
             </div>
           </div>
-          <button
-            onClick={() => setShowFaceRegModal(true)}
-            className="btn btn-primary bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs py-2.5 px-5 rounded-xl whitespace-nowrap shadow-md"
-          >
-            Register Face Profile
-          </button>
+          <div className="text-xs font-bold text-amber-800 bg-amber-100 border border-amber-200 rounded-xl px-4 py-2.5 whitespace-nowrap">
+            Staff enrollment required
+          </div>
         </div>
       )}
 
@@ -186,8 +181,8 @@ export default function InternDashboard() {
             </div>
           ) : (
             <div className="space-y-3">
-              {recentNotifs.map(n => (
-                <div key={n.id} className="p-3 bg-blue-50 rounded-xl">
+              {recentNotifs.map((n, index) => (
+                <div key={n.id || `${n.created_at || 'notification'}-${index}`} className="p-3 bg-blue-50 rounded-xl">
                   <p className="text-sm font-medium text-blue-800">{n.title}</p>
                   <p className="text-xs text-blue-600 mt-0.5">{n.message}</p>
                   <p className="text-xs text-blue-400 mt-1">{safeFormatDistanceToNow(n.created_at)}</p>
@@ -209,8 +204,8 @@ export default function InternDashboard() {
             </div>
           ) : (
             <div className="space-y-2">
-              {dtrRecords.slice(0, 5).map(r => (
-                <div key={r.id} className="flex items-center justify-between p-2 rounded-lg hover:bg-gray-50">
+              {dtrRecords.slice(0, 5).map((r, index) => (
+                <div key={r.id || `${r.date || 'dtr'}-${r.time_in || index}`} className="flex items-center justify-between p-2 rounded-lg hover:bg-gray-50">
                   <div>
                     <p className="text-sm font-medium text-gray-800">{r.date}</p>
                     <p className="text-xs text-gray-400">{r.time_in ? `In: ${r.time_in}` : '—'} {r.time_out ? `| Out: ${r.time_out}` : ''}</p>
@@ -226,14 +221,6 @@ export default function InternDashboard() {
         </div>
       </div>
 
-      <FaceRegistrationModal
-        isOpen={showFaceRegModal}
-        onClose={() => setShowFaceRegModal(false)}
-        onSuccess={(updatedUser) => {
-          setShowFaceRegModal(false);
-          setProfile(prev => prev ? ({ ...prev, face_registered: true }) : prev);
-        }}
-      />
     </div>
   );
 }

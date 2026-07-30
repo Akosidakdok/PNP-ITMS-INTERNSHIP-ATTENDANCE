@@ -4,8 +4,12 @@ import QRScanner from '../../components/qr/QRScanner.jsx';
 import backendApi from '../../utils/backendApi.js';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
-import { extractFaceEmbedding, analyzeFaceQuality } from '../../utils/mediapipeService.js';
-import FaceRegistrationModal from '../../components/face/FaceRegistrationModal.jsx';
+import { analyzeFaceQuality, initializeFaceModels } from '../../utils/mediapipeService.js';
+import {
+  captureVideoFrames,
+  extractSecureFacePackage,
+  initializeFaceIdentity,
+} from '../../utils/faceIdentityService.js';
 
 const COOLDOWN_SECONDS = 10;
 
@@ -34,7 +38,6 @@ export default function ScanAttendance() {
   const [videoReady, setVideoReady] = useState(false);
   const [faceStatus, setFaceStatus] = useState({ type: 'info', message: 'Initializing camera...' });
   const [isProcessing, setIsProcessing] = useState(false);
-  const [showRegModal, setShowRegModal] = useState(false);
 
   const videoRef = useRef(null);
   const streamRef = useRef(null);
@@ -43,6 +46,7 @@ export default function ScanAttendance() {
   const captureLockRef = useRef(false);
   const intervalRef = useRef(null);
   const retryTimeoutRef = useRef(null);
+  const detectionBusyRef = useRef(false);
 
   // ─── Load next scan hint ──────────────────────────────────────────────────
   useEffect(() => {
@@ -70,8 +74,26 @@ export default function ScanAttendance() {
     setVideoReady(false);
     setFaceStatus({ type: 'info', message: 'Initializing camera...' });
 
-    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 640 } })
-      .then(stream => {
+    let active = true;
+    const initializeCamera = async () => {
+      try {
+        setFaceStatus({ type: 'info', message: 'Loading Face ID engine...' });
+        const modelPromise = Promise.all([
+          initializeFaceModels(),
+          initializeFaceIdentity(),
+        ]);
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: 'user',
+            width: { ideal: 640 },
+            height: { ideal: 480 }
+          }
+        });
+        await modelPromise;
+        if (!active) {
+          stream.getTracks().forEach(track => track.stop());
+          return;
+        }
         streamRef.current = stream;
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
@@ -83,15 +105,24 @@ export default function ScanAttendance() {
             setFaceStatus({ type: 'info', message: 'Position your face inside the circle' });
           };
         }
-      })
-      .catch(() => {
-        toast.error('Camera access denied. Please allow camera permissions.');
+      } catch (cameraError) {
+        console.error('Face camera initialization failed:', cameraError);
+        const message = cameraError?.name === 'NotAllowedError'
+          ? 'Camera access denied. Please allow camera permissions.'
+          : cameraError?.message || 'Face ID engine could not start.';
+        setFaceStatus({ type: 'rejected', message });
+        toast.error(message);
         setIsCameraOpen(false);
         setTempQrCode(null);
         setScannerActive(true);
-      });
+      }
+    };
+    initializeCamera();
 
-    return () => stopStream();
+    return () => {
+      active = false;
+      stopStream();
+    };
   }, [isCameraOpen]);
 
   // ─── Auto face-detection polling loop ────────────────────────────────────
@@ -106,13 +137,14 @@ export default function ScanAttendance() {
     validFramesRef.current = 0;
 
     intervalRef.current = setInterval(async () => {
-      if (captureLockRef.current || !videoRef.current) return;
+      if (captureLockRef.current || detectionBusyRef.current || !videoRef.current) return;
 
       const vid = videoRef.current;
       // Skip frame if video not fully ready (prevents MediaPipe zero-size error)
       if (!vid.videoWidth || !vid.videoHeight || vid.readyState < 2) return;
 
       try {
+        detectionBusyRef.current = true;
         const quality = await analyzeFaceQuality(videoRef.current);
 
         if (quality.valid) {
@@ -135,16 +167,22 @@ export default function ScanAttendance() {
             message: quality.error || 'Position your face inside the circle'
           });
         }
-      } catch {
-        // silently ignore transient detection frames
+      } catch (detectionError) {
+        setFaceStatus({
+          type: 'warning',
+          message: detectionError?.message || 'Face analysis failed. Hold still and try again.'
+        });
+      } finally {
+        detectionBusyRef.current = false;
       }
-    }, 300);
+    }, 500);
 
     return () => {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
         intervalRef.current = null;
       }
+      detectionBusyRef.current = false;
     };
   }, [isCameraOpen, videoReady, isProcessing]);
 
@@ -168,20 +206,15 @@ export default function ScanAttendance() {
 
     try {
       const video = videoRef.current;
-      const w = video.videoWidth || 640;
-      const h = video.videoHeight || 480;
-
-      const canvas = document.createElement('canvas');
-      canvas.width = w;
-      canvas.height = h;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(video, 0, 0, w, h);
-
-      // Stop camera feed now
+      setFaceStatus({ type: 'success', message: 'Capturing a short live sequence—blink once...' });
+      const canvases = await captureVideoFrames(video);
       stopStream();
 
-      // Extract face embedding
-      const embedding = await extractFaceEmbedding(canvas);
+      setFaceStatus({ type: 'success', message: 'Checking identity and liveness...' });
+      const embedding = await extractSecureFacePackage(canvases);
+      const canvas = canvases[canvases.length - 1];
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('Canvas 2D context is unavailable.');
 
       // Timestamp overlay
       const formatter = new Intl.DateTimeFormat('en-US', {
@@ -235,9 +268,13 @@ export default function ScanAttendance() {
         toast.error(msg);
         captureLockRef.current = false;
         setFaceStatus({ type: 'rejected', message: 'Face not registered' });
-      } else {
+      } else if (
+        code === 'FACE_MISMATCH'
+        || code === 'INVALID_FACE_CAPTURE'
+        || !err?.response
+      ) {
         // Wrong face — 2 second cooldown then retry automatically
-        toast.error('Face not recognized. Retrying in 2 seconds...');
+        toast.error(`${msg} Retrying in 2 seconds...`);
         retryTimeoutRef.current = setTimeout(() => {
           setError('');
           setErrorCode('');
@@ -256,8 +293,17 @@ export default function ScanAttendance() {
                   }, 300);
                 };
               }
-            }).catch(() => {});
+            }).catch(cameraError => {
+              setFaceStatus({
+                type: 'rejected',
+                message: cameraError?.message || 'Could not restart the camera.'
+              });
+            });
         }, 2000);
+      } else {
+        toast.error(msg);
+        setFaceStatus({ type: 'rejected', message: msg });
+        captureLockRef.current = false;
       }
     } finally {
       setIsProcessing(false);
@@ -406,13 +452,10 @@ export default function ScanAttendance() {
                 <span className="font-semibold">{error}</span>
               </div>
               {errorCode === 'FACE_NOT_REGISTERED' && (
-                <button
-                  onClick={() => setShowRegModal(true)}
-                  className="btn btn-sm btn-primary w-full flex items-center justify-center gap-2 mt-2"
-                >
+                <div className="w-full flex items-center justify-center gap-2 mt-2 p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs font-semibold">
                   <UserCheck className="w-4 h-4" />
-                  Register Your Face Now
-                </button>
+                  Contact your administrator or supervisor for in-person biometric enrollment
+                </div>
               )}
             </div>
           )}
@@ -514,17 +557,6 @@ export default function ScanAttendance() {
         </div>
       )}
 
-      {/* Face Registration Modal */}
-      <FaceRegistrationModal
-        isOpen={showRegModal}
-        onClose={() => setShowRegModal(false)}
-        onSuccess={() => {
-          setShowRegModal(false);
-          setError('');
-          setErrorCode('');
-          toast.success('Face registered! Please look at the camera to verify.');
-        }}
-      />
     </div>
   );
 }

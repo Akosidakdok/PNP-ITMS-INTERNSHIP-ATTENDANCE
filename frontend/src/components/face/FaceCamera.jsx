@@ -1,11 +1,24 @@
 import { useEffect, useRef, useState } from 'react';
 import { Camera, RefreshCw, AlertCircle, CheckCircle2, ShieldAlert } from 'lucide-react';
-import { analyzeFaceQuality } from '../../utils/mediapipeService.js';
+import { analyzeFaceQuality, initializeFaceModels } from '../../utils/mediapipeService.js';
+import {
+  captureVideoFrames,
+  initializeFaceIdentity,
+} from '../../utils/faceIdentityService.js';
 
-export default function FaceCamera({ onCapture, disabled = false, title = "Face Scanner" }) {
+export default function FaceCamera({
+  onCapture,
+  disabled = false,
+  disabledMessage = '',
+  title = 'Face Scanner',
+  actionLabel = 'Capture & Save Face ID'
+}) {
   const videoRef = useRef(null);
   const streamRef = useRef(null);
+  const analysisBusyRef = useRef(false);
   const [videoReady, setVideoReady] = useState(false);
+  const [modelReady, setModelReady] = useState(false);
+  const [faceReady, setFaceReady] = useState(false);
   const [cameraError, setCameraError] = useState('');
   const [statusMessage, setStatusMessage] = useState('Initializing camera...');
   const [statusType, setStatusType] = useState('info'); // 'info', 'warning', 'success', 'error'
@@ -17,9 +30,16 @@ export default function FaceCamera({ onCapture, disabled = false, title = "Face 
     async function startCamera() {
       try {
         setCameraError('');
-        setStatusMessage('Requesting camera access...');
+        setVideoReady(false);
+        setModelReady(false);
+        setFaceReady(false);
+        setStatusMessage('Loading Face ID engine and requesting camera access...');
         setStatusType('info');
 
+        const modelPromise = Promise.all([
+          initializeFaceModels(),
+          initializeFaceIdentity(),
+        ]);
         const stream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: 'user',
@@ -39,20 +59,26 @@ export default function FaceCamera({ onCapture, disabled = false, title = "Face 
           videoRef.current.onloadedmetadata = () => {
             if (active) {
               setVideoReady(true);
-              setStatusMessage('Position your face inside the circle');
-              setStatusType('info');
             }
           };
         }
+
+        await modelPromise;
+        if (active) {
+          setModelReady(true);
+          setStatusMessage('Position your face inside the oval');
+          setStatusType('info');
+        }
       } catch (err) {
-        console.error('Camera access error:', err);
+        console.error('Face camera initialization error:', err);
         if (!active) return;
-        let errMsg = 'Failed to access camera.';
+        let errMsg = err?.message || 'Failed to initialize Face ID.';
         if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
           errMsg = 'Camera permission denied. Please enable camera access in your browser settings.';
         } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
           errMsg = 'No camera device found on your device.';
         }
+        stopCamera();
         setCameraError(errMsg);
         setStatusMessage(errMsg);
         setStatusType('error');
@@ -67,6 +93,51 @@ export default function FaceCamera({ onCapture, disabled = false, title = "Face 
     };
   }, []);
 
+  useEffect(() => {
+    if (disabled && !isProcessing) {
+      setFaceReady(false);
+      setStatusMessage(disabledMessage || 'Complete the required information before capturing.');
+      setStatusType('warning');
+      return undefined;
+    }
+    if (!videoReady || !modelReady || isProcessing || cameraError) return undefined;
+
+    let active = true;
+    const inspectFrame = async () => {
+      if (!active || analysisBusyRef.current || !videoRef.current) return;
+      const video = videoRef.current;
+      if (!video.videoWidth || !video.videoHeight || video.readyState < 2) return;
+
+      analysisBusyRef.current = true;
+      try {
+        const quality = await analyzeFaceQuality(video);
+        if (!active) return;
+        setFaceReady(quality.valid);
+        setStatusMessage(
+          quality.valid
+            ? 'Face ready—hold still and capture'
+            : quality.error || 'Position your face inside the oval'
+        );
+        setStatusType(quality.valid ? 'success' : 'warning');
+      } catch (error) {
+        if (!active) return;
+        setFaceReady(false);
+        setStatusMessage(error?.message || 'Could not analyze the camera frame.');
+        setStatusType('error');
+      } finally {
+        analysisBusyRef.current = false;
+      }
+    };
+
+    inspectFrame();
+    const interval = window.setInterval(inspectFrame, 500);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+      analysisBusyRef.current = false;
+    };
+  }, [videoReady, modelReady, isProcessing, cameraError, disabled, disabledMessage]);
+
   const stopCamera = () => {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
@@ -75,36 +146,36 @@ export default function FaceCamera({ onCapture, disabled = false, title = "Face 
   };
 
   const handleCapture = async () => {
-    if (!videoRef.current || !videoReady || isProcessing || disabled) return;
+    if (!videoRef.current || !videoReady || !modelReady || !faceReady || isProcessing || disabled) return;
     setIsProcessing(true);
+    setFaceReady(false);
     setStatusMessage('Detecting face quality...');
     setStatusType('info');
 
     try {
       const video = videoRef.current;
-      const rawW = video.videoWidth || 640;
-      const rawH = video.videoHeight || 480;
-
-      const canvas = document.createElement('canvas');
-      canvas.width = rawW;
-      canvas.height = rawH;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) throw new Error('Canvas 2D context unavailable');
-
-      // Un-mirror canvas so face embedding is geometrically standard
-      ctx.drawImage(video, 0, 0, rawW, rawH);
-
-      // Perform face quality check with MediaPipe
-      const quality = await analyzeFaceQuality(canvas);
-      if (!quality.valid) {
-        setStatusMessage(quality.error || 'Face check failed');
-        setStatusType('warning');
-        setIsProcessing(false);
-        return;
+      setStatusMessage('Capturing a short live sequence—blink once and move naturally...');
+      const canvases = await captureVideoFrames(video);
+      let quality = null;
+      for (const sampleCanvas of canvases) {
+        quality = await analyzeFaceQuality(sampleCanvas);
+        if (!quality.valid) {
+          setStatusMessage(quality.error || 'Face check failed');
+          setStatusType('warning');
+          return;
+        }
       }
 
-      setStatusMessage('Face detected! Processing...');
+      setStatusMessage('Running identity and liveness checks...');
       setStatusType('success');
+
+      const cleanCanvas = canvases[canvases.length - 1];
+      const canvas = document.createElement('canvas');
+      canvas.width = cleanCanvas.width;
+      canvas.height = cleanCanvas.height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('Canvas 2D context unavailable');
+      ctx.drawImage(cleanCanvas, 0, 0);
 
       // Date/time stamp strictly in Asia/Manila (Philippines)
       const options = {
@@ -129,8 +200,15 @@ export default function FaceCamera({ onCapture, disabled = false, title = "Face 
       const dataUrl = canvas.toDataURL('image/jpeg', 0.75);
 
       if (onCapture) {
-        await onCapture({ dataUrl, canvas, quality });
+        await onCapture({
+          dataUrl,
+          canvas: cleanCanvas,
+          canvases,
+          quality,
+        });
       }
+      setStatusMessage('Face ID saved successfully.');
+      setStatusType('success');
     } catch (err) {
       console.error('Error during capture:', err);
       setStatusMessage(err.message || 'Error capturing face.');
@@ -188,7 +266,7 @@ export default function FaceCamera({ onCapture, disabled = false, title = "Face 
 
             <div className="absolute top-3 left-3 bg-black/70 backdrop-blur-sm text-white text-[10px] px-2.5 py-1 rounded-full font-bold tracking-wide uppercase flex items-center gap-1">
               <span className="w-1.5 h-1.5 rounded-full bg-blue-400"></span>
-              MediaPipe Vision
+              Secure Face ID
             </div>
           </>
         )}
@@ -211,7 +289,7 @@ export default function FaceCamera({ onCapture, disabled = false, title = "Face 
       {/* Action Button */}
       <button
         onClick={handleCapture}
-        disabled={!videoReady || isProcessing || disabled || !!cameraError}
+        disabled={!videoReady || !modelReady || !faceReady || isProcessing || disabled || !!cameraError}
         className="btn btn-primary w-full flex items-center justify-center gap-2 text-sm font-semibold py-2.5 disabled:opacity-50 disabled:cursor-not-allowed shadow-md"
       >
         {isProcessing ? (
@@ -222,7 +300,7 @@ export default function FaceCamera({ onCapture, disabled = false, title = "Face 
         ) : (
           <>
             <Camera className="w-4 h-4" />
-            Capture Face & Verify
+            {actionLabel}
           </>
         )}
       </button>

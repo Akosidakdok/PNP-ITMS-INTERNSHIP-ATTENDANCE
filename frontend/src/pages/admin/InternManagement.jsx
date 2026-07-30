@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
-import { UserPlus, Edit2, Trash2, Key, Archive } from 'lucide-react';
+import { UserPlus, Edit2, Trash2, Key, Archive, ShieldCheck, ClipboardList, Check, XCircle, History, RefreshCw } from 'lucide-react';
 import api from '../../utils/api.js';
 import DataTable from '../../components/common/DataTable.jsx';
 import Modal from '../../components/common/Modal.jsx';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { AVAILABLE_COURSES } from '../../utils/constants.js';
+import FaceRegistrationModal from '../../components/face/FaceRegistrationModal.jsx';
 
 const INIT_FORM = {
   username: '', password: '', first_name: '', middle_name: '', last_name: '', name_suffix: '', email: '', phone: '', 
@@ -81,6 +82,17 @@ export default function InternManagement() {
   const [activeTab, setActiveTab] = useState('active'); // 'active' | 'archived'
   const [sortBy, setSortBy] = useState('full_name'); // 'full_name' | 'department' | 'school'
   const [sortOrder, setSortOrder] = useState('asc'); // 'asc' | 'desc'
+  const [faceEnrollmentTarget, setFaceEnrollmentTarget] = useState(null);
+  const [renewalRequests, setRenewalRequests] = useState([]);
+  const [renewalLoading, setRenewalLoading] = useState(true);
+  const [renewalError, setRenewalError] = useState('');
+  const [reviewTarget, setReviewTarget] = useState(null);
+  const [reviewAction, setReviewAction] = useState('approve');
+  const [reviewRemarks, setReviewRemarks] = useState('');
+  const [reviewSaving, setReviewSaving] = useState(false);
+  const [historyTarget, setHistoryTarget] = useState(null);
+  const [enrollmentHistory, setEnrollmentHistory] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
 
   const fetchInterns = useCallback(async () => {
     setLoading(true);
@@ -101,6 +113,25 @@ export default function InternManagement() {
     finally { setLoading(false); }
   }, [search, page, activeTab, sortBy, sortOrder]);
 
+  const fetchRenewalRequests = useCallback(async () => {
+    setRenewalLoading(true);
+    setRenewalError('');
+    try {
+      const res = await api.get('/face-renewal-requests', { params: { status: 'all' } });
+      setRenewalRequests(res.data.requests || []);
+    } catch (error) {
+      const isMissingRoute = error?.response?.status === 404;
+      setRenewalError(
+        isMissingRoute
+          ? 'The Face ID renewal service is not loaded by the running backend. Restart the backend and try again.'
+          : error?.response?.data?.error || 'Face ID renewal requests are temporarily unavailable.'
+      );
+      setRenewalRequests([]);
+    } finally {
+      setRenewalLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     api.get('/divisions').catch(() => api.get('/departments'))
       .then(r => setDepartments(r.data.divisions || r.data.departments || []))
@@ -111,6 +142,7 @@ export default function InternManagement() {
   }, []);
 
   useEffect(() => { fetchInterns(); }, [fetchInterns]);
+  useEffect(() => { fetchRenewalRequests(); }, [fetchRenewalRequests]);
 
   useEffect(() => {
     if (form.start_date && form.required_hours) {
@@ -139,6 +171,47 @@ export default function InternManagement() {
   const openDelete = (i) => { setSelected(i); setModal('delete'); };
   const openReset = (i) => { setSelected(i); setResetPwd(''); setModal('reset'); };
   const openArchive = (i) => { setSelected(i); setModal('archive'); };
+
+  const openReview = (request, action) => {
+    setReviewTarget(request);
+    setReviewAction(action);
+    setReviewRemarks('');
+  };
+
+  const handleReviewRequest = async () => {
+    if (reviewAction === 'reject' && reviewRemarks.trim().length < 3) {
+      toast.error('Enter a short explanation for rejecting the request');
+      return;
+    }
+    setReviewSaving(true);
+    try {
+      const res = await api.patch(`/face-renewal-requests/${reviewTarget.id}/review`, {
+        action: reviewAction,
+        remarks: reviewRemarks.trim(),
+      });
+      toast.success(res.data.message || `Request ${reviewAction}d`);
+      setReviewTarget(null);
+      await fetchRenewalRequests();
+    } catch (error) {
+      toast.error(error?.response?.data?.error || 'Could not review renewal request');
+    } finally {
+      setReviewSaving(false);
+    }
+  };
+
+  const openEnrollmentHistory = async intern => {
+    setHistoryTarget(intern);
+    setEnrollmentHistory([]);
+    setHistoryLoading(true);
+    try {
+      const res = await api.get('/face-enrollment-history', { params: { intern_id: intern.id } });
+      setEnrollmentHistory(res.data.history || []);
+    } catch (error) {
+      toast.error(error?.response?.data?.error || 'Could not load enrollment history');
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
 
   const handleSave = async () => {
     if (!form.first_name || !form.first_name.trim() || !form.last_name || !form.last_name.trim()) {
@@ -279,10 +352,32 @@ export default function InternManagement() {
     },
     {
       key: 'id', label: 'Actions',
-      render: (_, row) => (
-        <div className="flex gap-1">
+      render: (_, row) => {
+        const activeRenewalRequest = renewalRequests.find(request =>
+          Number(request.intern_id) === Number(row.id)
+          && ['pending', 'approved'].includes(request.status)
+        );
+        return (
+          <div className="flex gap-1">
           <button className="btn btn-ghost btn-icon btn-sm" data-tooltip="Edit" onClick={() => openEdit(row)}><Edit2 className="w-3.5 h-3.5" /></button>
           <button className="btn btn-ghost btn-icon btn-sm" data-tooltip="Reset Password" onClick={() => openReset(row)}><Key className="w-3.5 h-3.5" /></button>
+          <button
+            className={`btn btn-ghost btn-icon btn-sm ${row.face_registered ? 'text-emerald-600' : 'text-blue-600'} disabled:opacity-40`}
+            data-tooltip={activeRenewalRequest
+              ? 'Resolve the active renewal request first'
+              : row.face_registered ? 'Replace Face Enrollment' : 'Enroll Face'}
+            onClick={() => setFaceEnrollmentTarget(row)}
+            disabled={!!activeRenewalRequest}
+          >
+            <ShieldCheck className="w-3.5 h-3.5" />
+          </button>
+          <button
+            className="btn btn-ghost btn-icon btn-sm text-indigo-600"
+            data-tooltip="Face Enrollment History"
+            onClick={() => openEnrollmentHistory(row)}
+          >
+            <History className="w-3.5 h-3.5" />
+          </button>
           <button 
             className={`btn btn-ghost btn-icon btn-sm ${row.status === 'archived' ? 'text-amber-600' : 'text-gray-500'}`} 
             data-tooltip={row.status === 'archived' ? 'Unarchive' : 'Archive'} 
@@ -291,8 +386,9 @@ export default function InternManagement() {
             <Archive className="w-3.5 h-3.5" />
           </button>
           <button className="btn btn-ghost btn-icon btn-sm text-red-500" data-tooltip="Delete" onClick={() => openDelete(row)}><Trash2 className="w-3.5 h-3.5" /></button>
-        </div>
-      )
+          </div>
+        );
+      }
     },
   ];
 
@@ -636,6 +732,91 @@ export default function InternManagement() {
         </button>
       </div>
 
+      <div className="card border border-gray-100 rounded-xl overflow-hidden">
+        <div className="p-4 sm:p-5 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-blue-50 text-blue-600">
+              <ClipboardList className="w-5 h-5" />
+            </div>
+            <div>
+              <h2 className="font-bold text-sm text-gray-800">Face ID Renewal Requests</h2>
+              <p className="text-xs text-gray-500">
+                {renewalRequests.filter(request => request.status === 'pending').length} pending review
+              </p>
+            </div>
+          </div>
+          <button className="btn btn-secondary btn-sm" onClick={fetchRenewalRequests} disabled={renewalLoading}>
+            <RefreshCw className={`w-4 h-4 ${renewalLoading ? 'animate-spin' : ''}`} />
+            Refresh
+          </button>
+        </div>
+
+        <div className="divide-y divide-gray-100">
+          {renewalLoading ? (
+            <div className="p-8 text-center text-sm text-gray-500">Loading renewal requests...</div>
+          ) : renewalError ? (
+            <div className="p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-amber-50">
+              <div>
+                <p className="text-sm font-semibold text-amber-800">Renewal requests could not be loaded</p>
+                <p className="text-xs text-amber-700 mt-1">{renewalError}</p>
+              </div>
+              <button className="btn btn-secondary btn-sm flex-shrink-0" onClick={fetchRenewalRequests}>
+                Try Again
+              </button>
+            </div>
+          ) : renewalRequests.length === 0 ? (
+            <div className="p-8 text-center">
+              <ShieldCheck className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+              <p className="text-sm font-semibold text-gray-600">No Face ID renewal requests</p>
+            </div>
+          ) : renewalRequests.slice(0, 10).map(request => (
+            <div key={request.id} className="p-4 sm:px-5 flex flex-col lg:flex-row lg:items-center gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="font-semibold text-sm text-gray-800">
+                    {request.intern?.full_name || request.intern_name}
+                  </p>
+                  <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${
+                    request.status === 'pending'
+                      ? 'bg-amber-50 text-amber-700 border-amber-200'
+                      : request.status === 'approved'
+                        ? 'bg-blue-50 text-blue-700 border-blue-200'
+                        : request.status === 'completed'
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                          : 'bg-red-50 text-red-700 border-red-200'
+                  }`}>
+                    {request.status}
+                  </span>
+                </div>
+                <p className="text-xs text-gray-600 mt-1">{request.reason}</p>
+                <p className="text-[10px] text-gray-400 mt-1">
+                  {request.intern?.division_name || 'No division'} · {new Date(request.created_at).toLocaleString()}
+                  {request.reviewer_name ? ` · Reviewed by ${request.reviewer_name}` : ''}
+                </p>
+                {request.review_remarks && (
+                  <p className="text-[11px] text-gray-500 mt-1">Review note: {request.review_remarks}</p>
+                )}
+              </div>
+              {request.status === 'pending' && (
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <button className="btn btn-primary btn-sm" onClick={() => openReview(request, 'approve')}>
+                    <Check className="w-4 h-4" />
+                    Approve
+                  </button>
+                  <button className="btn btn-secondary btn-sm text-red-600" onClick={() => openReview(request, 'reject')}>
+                    <XCircle className="w-4 h-4" />
+                    Reject
+                  </button>
+                </div>
+              )}
+              {request.status === 'approved' && (
+                <p className="text-[11px] font-semibold text-blue-600 flex-shrink-0">Waiting for intern update</p>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
       {/* Archive Tabs */}
       <div className="flex flex-wrap border-b border-gray-200 mb-2 gap-1">
         <button
@@ -742,6 +923,97 @@ export default function InternManagement() {
           {selected?.status !== 'archived' && " Archiving will keep their account and profile history in the database but change their status to Archived."}
         </p>
       </Modal>
+
+      <Modal
+        isOpen={!!reviewTarget}
+        onClose={() => setReviewTarget(null)}
+        title={reviewAction === 'approve' ? 'Approve Face ID Renewal' : 'Reject Face ID Renewal'}
+        size="sm"
+        footer={
+          <>
+            <button className="btn btn-secondary" onClick={() => setReviewTarget(null)}>Cancel</button>
+            <button
+              className={reviewAction === 'approve' ? 'btn btn-primary' : 'btn btn-danger'}
+              onClick={handleReviewRequest}
+              disabled={reviewSaving}
+            >
+              {reviewSaving ? 'Saving...' : reviewAction === 'approve' ? 'Approve Request' : 'Reject Request'}
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <div className="rounded-lg bg-gray-50 border border-gray-100 p-3">
+            <p className="text-xs font-bold text-gray-700">{reviewTarget?.intern?.full_name || reviewTarget?.intern_name}</p>
+            <p className="text-xs text-gray-600 mt-1">{reviewTarget?.reason}</p>
+          </div>
+          <div className="form-group">
+            <label className="form-label">
+              {reviewAction === 'approve' ? 'Approval note (optional)' : 'Rejection explanation'}
+            </label>
+            <textarea
+              className="form-input min-h-24 resize-y"
+              maxLength={500}
+              value={reviewRemarks}
+              onChange={event => setReviewRemarks(event.target.value)}
+              placeholder={reviewAction === 'approve'
+                ? 'Optional instructions for the intern'
+                : 'Explain why the request cannot be approved'}
+            />
+          </div>
+          {reviewAction === 'approve' && (
+            <p className="text-xs text-blue-700 bg-blue-50 border border-blue-100 rounded-lg p-3">
+              Approval gives this intern one Face ID update. It is automatically consumed after a successful capture.
+            </p>
+          )}
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={!!historyTarget}
+        onClose={() => setHistoryTarget(null)}
+        title={`Face Enrollment History${historyTarget ? ` · ${historyTarget.full_name}` : ''}`}
+        size="lg"
+      >
+        {historyLoading ? (
+          <p className="text-sm text-gray-500 py-8 text-center">Loading enrollment history...</p>
+        ) : enrollmentHistory.length === 0 ? (
+          <div className="py-8 text-center">
+            <History className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+            <p className="text-sm text-gray-500">No audited enrollment events yet.</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {enrollmentHistory.map(item => (
+              <div key={item.id} className="border border-gray-100 rounded-xl p-4 bg-gray-50/50">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className={`text-[10px] font-bold uppercase px-2 py-1 rounded-full ${
+                    item.enrollment_type === 'initial'
+                      ? 'bg-blue-100 text-blue-700'
+                      : 'bg-emerald-100 text-emerald-700'
+                  }`}>
+                    {item.enrollment_type} enrollment
+                  </span>
+                  <span className="text-[11px] text-gray-500">{new Date(item.created_at).toLocaleString()}</span>
+                </div>
+                <p className="text-sm text-gray-700 mt-3">{item.renewal_reason}</p>
+                <p className="text-[11px] text-gray-500 mt-2">
+                  Completed by {item.enrolled_by_name} ({item.enrolled_by_role})
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
+      </Modal>
+
+      <FaceRegistrationModal
+        isOpen={!!faceEnrollmentTarget}
+        intern={faceEnrollmentTarget}
+        onClose={() => setFaceEnrollmentTarget(null)}
+        onSuccess={async () => {
+          await Promise.all([fetchInterns(), fetchRenewalRequests()]);
+        }}
+      />
     </div>
   );
 }

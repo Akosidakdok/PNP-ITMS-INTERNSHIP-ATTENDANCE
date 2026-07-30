@@ -5,6 +5,16 @@ import { supabase } from './supabaseClient.js';
 
 const INTERN_ROLE = 'intern';
 const ADMIN_ROLE = 'admin';
+const INTERN_LIST_FIELDS = 'id, username, full_name, first_name, middle_name, last_name, name_suffix, email, role, school, school_id, course, division_id, division_name, status, start_date, end_date, required_hours, rendered_hours, student_id, year_level, phone, home_address, emergency_name, emergency_relation, emergency_phone, face_registered, face_registered_at';
+const INTERN_MUTATION_FIELDS = 'id, username, full_name, first_name, middle_name, last_name, name_suffix, email, role, school, school_id, course, division_id, division_name, status, start_date, end_date, required_hours, rendered_hours, student_id, year_level, phone, home_address, emergency_name, emergency_relation, emergency_phone';
+const SELF_PROFILE_EDITABLE_FIELDS = new Set([
+  'email',
+  'phone',
+  'home_address',
+  'emergency_name',
+  'emergency_relation',
+  'emergency_phone',
+]);
 
 export async function getDivisions() {
   let { data: divisions, error } = await supabase
@@ -210,7 +220,7 @@ export async function findSchoolById(id) {
 export async function getInterns({ search, page = 1, limit = 10, division_id, department_id, school_id, status, sortBy = 'full_name', sortOrder = 'asc' } = {}) {
   let query = supabase
     .from('accounts')
-    .select('*', { count: 'exact' })
+    .select(INTERN_LIST_FIELDS, { count: 'exact' })
     .eq('role', INTERN_ROLE);
 
   if (search) {
@@ -278,7 +288,21 @@ export async function getInternById(id) {
 }
 
 export async function createIntern(payload) {
-  const { password, division_id, department_id, school_id, ...rest } = payload;
+  const {
+    password,
+    division_id,
+    department_id,
+    school_id,
+    role: _role,
+    password_hash: _passwordHash,
+    face_embedding: _faceEmbedding,
+    face_photo: _facePhoto,
+    face_registered: _faceRegistered,
+    face_registered_at: _faceRegisteredAt,
+    id: _id,
+    created_at: _createdAt,
+    ...rest
+  } = payload;
   if (rest.first_name || rest.last_name) {
     rest.full_name = [rest.first_name, rest.middle_name, rest.last_name, rest.name_suffix].filter(Boolean).join(' ');
   }
@@ -297,7 +321,7 @@ export async function createIntern(payload) {
   const { data, error } = await supabase
     .from('accounts')
     .insert([{ ...rest, password_hash, role: INTERN_ROLE, division_id: divId, division_name: divName, school_id: schId, school: schoolName }])
-    .select('*')
+    .select(INTERN_MUTATION_FIELDS)
     .single();
 
   if (error) throw error;
@@ -305,7 +329,21 @@ export async function createIntern(payload) {
 }
 
 export async function updateIntern(id, payload) {
-  const { password, division_id, department_id, school_id, ...rest } = payload;
+  const {
+    password,
+    division_id,
+    department_id,
+    school_id,
+    role: _role,
+    password_hash: _passwordHash,
+    face_embedding: _faceEmbedding,
+    face_photo: _facePhoto,
+    face_registered: _faceRegistered,
+    face_registered_at: _faceRegisteredAt,
+    id: _id,
+    created_at: _createdAt,
+    ...rest
+  } = payload;
   if (rest.first_name || rest.last_name) {
     rest.full_name = [rest.first_name, rest.middle_name, rest.last_name, rest.name_suffix].filter(Boolean).join(' ');
   }
@@ -405,23 +443,21 @@ export async function getCurrentUserProfile(userId) {
 }
 
 export async function updateCurrentUserProfile(userId, updates) {
-  const payload = { ...updates };
-  const rawDivId = payload.division_id !== undefined ? payload.division_id : payload.department_id;
-  if (rawDivId !== undefined) {
-    const division = await findDivisionById(rawDivId);
-    payload.division_id = rawDivId;
-    payload.division_name = division?.name || payload.division_name || null;
-    delete payload.department_id;
-    delete payload.department_name;
+  const payload = Object.fromEntries(
+    Object.entries(updates || {}).filter(([key]) => SELF_PROFILE_EDITABLE_FIELDS.has(key))
+  );
+  if (Object.keys(payload).length === 0) {
+    throw new Error('No editable profile fields were provided');
   }
 
-  const baseFields = 'id, username, full_name, first_name, middle_name, last_name, name_suffix, email, role, school, course, department_id, department_name, status, start_date, end_date, required_hours, rendered_hours, student_id, year_level, phone, home_address, emergency_name, emergency_relation, emergency_phone';
+  const baseFields = INTERN_LIST_FIELDS;
   try {
     const { data, error } = await supabase
       .from('accounts')
       .update(payload)
       .eq('id', userId)
-      .select(`${baseFields}, face_registered, face_registered_at`)
+      .eq('role', INTERN_ROLE)
+      .select(baseFields)
       .single();
 
     if (error) throw error;
@@ -431,7 +467,8 @@ export async function updateCurrentUserProfile(userId, updates) {
       .from('accounts')
       .update(payload)
       .eq('id', userId)
-      .select(baseFields)
+      .eq('role', INTERN_ROLE)
+      .select(INTERN_MUTATION_FIELDS)
       .single();
 
     if (error) throw error;
