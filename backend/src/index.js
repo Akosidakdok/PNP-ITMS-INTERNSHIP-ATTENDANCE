@@ -76,6 +76,12 @@ import {
 } from './data.js';
 import { sendWelcomeEmail } from './mailer.js';
 import { supabase } from './supabaseClient.js';
+import {
+  assertSupervisorCanAccessIntern,
+  assertSupervisorCanAccessInterns,
+  assertSupervisorCanAccessResource,
+  getCurrentSupervisorDivisionId
+} from './authorization.js';
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -144,7 +150,7 @@ app.get('/auth/me', authMiddleware, async (req, res) => {
   }
 });
 
-app.get('/admin/dashboard-stats', authMiddleware, adminMiddleware, async (req, res) => {
+app.get('/admin/dashboard-stats', authMiddleware, adminOnlyMiddleware, async (req, res) => {
   try {
     const stats = await getAdminDashboardStats();
     return res.json(stats);
@@ -168,16 +174,12 @@ app.get('/attendance/logs', authMiddleware, adminMiddleware, async (req, res) =>
   try {
     let divId = req.query.division_id || req.query.department_id ? Number(req.query.division_id || req.query.department_id) : undefined;
     if (req.user.role === 'supervisor') {
-      const userDivId = req.user.division_id || req.user.department_id;
-      if (!userDivId) {
-        return res.status(403).json({ error: 'Supervisor has no assigned division' });
-      }
-      divId = userDivId;
+      divId = await getCurrentSupervisorDivisionId(req.user);
     }
     const logs = await getAttendanceLogs({ status: req.query.status, date: req.query.date, page: Number(req.query.page) || 1, limit: Number(req.query.limit) || 15, division_id: divId });
     return res.json(logs);
   } catch (error) {
-    return res.status(500).json({ error: error.message });
+    return res.status(error.statusCode || 500).json({ error: error.message });
   }
 });
 
@@ -191,20 +193,16 @@ app.patch('/attendance/:id/:action', authMiddleware, adminMiddleware, async (req
   }
 
   try {
-    if (req.user.role === 'supervisor') {
-      const { data: log } = await supabase.from('attendance_logs').select('intern_id').eq('id', Number(id)).single();
-      if (log) {
-        const userDivId = req.user.division_id || req.user.department_id;
-        const { data: intern } = await supabase.from('accounts').select('division_id').eq('id', log.intern_id).single();
-        if (intern && intern.division_id !== userDivId) {
-          return res.status(403).json({ error: 'Cannot modify attendance for intern from another division' });
-        }
-      }
-    }
+    await assertSupervisorCanAccessResource(
+      req.user,
+      'attendance_logs',
+      id,
+      'attendance records'
+    );
     const attendance = await setAttendanceApproval(Number(id), status, remarks);
     return res.json({ success: true, attendance });
   } catch (error) {
-    return res.status(500).json({ error: error.message });
+    return res.status(error.statusCode || 500).json({ error: error.message });
   }
 });
 
@@ -217,7 +215,7 @@ app.get('/divisions', authMiddleware, async (req, res) => {
   }
 });
 
-app.post('/divisions', authMiddleware, adminMiddleware, async (req, res) => {
+app.post('/divisions', authMiddleware, adminOnlyMiddleware, async (req, res) => {
   try {
     const division = await createDivision(req.body);
     return res.json({ division, department: division });
@@ -226,7 +224,7 @@ app.post('/divisions', authMiddleware, adminMiddleware, async (req, res) => {
   }
 });
 
-app.put('/divisions/:id', authMiddleware, adminMiddleware, async (req, res) => {
+app.put('/divisions/:id', authMiddleware, adminOnlyMiddleware, async (req, res) => {
   try {
     const division = await updateDivision(Number(req.params.id), req.body);
     return res.json({ division, department: division });
@@ -235,7 +233,7 @@ app.put('/divisions/:id', authMiddleware, adminMiddleware, async (req, res) => {
   }
 });
 
-app.delete('/divisions/:id', authMiddleware, adminMiddleware, async (req, res) => {
+app.delete('/divisions/:id', authMiddleware, adminOnlyMiddleware, async (req, res) => {
   try {
     const result = await deleteDivision(Number(req.params.id));
     return res.json(result);
@@ -253,7 +251,7 @@ app.get('/departments', authMiddleware, async (req, res) => {
   }
 });
 
-app.post('/departments', authMiddleware, adminMiddleware, async (req, res) => {
+app.post('/departments', authMiddleware, adminOnlyMiddleware, async (req, res) => {
   try {
     const department = await createDepartment(req.body);
     return res.json({ department, division: department });
@@ -262,7 +260,7 @@ app.post('/departments', authMiddleware, adminMiddleware, async (req, res) => {
   }
 });
 
-app.put('/departments/:id', authMiddleware, adminMiddleware, async (req, res) => {
+app.put('/departments/:id', authMiddleware, adminOnlyMiddleware, async (req, res) => {
   try {
     const department = await updateDepartment(Number(req.params.id), req.body);
     return res.json({ department, division: department });
@@ -271,7 +269,7 @@ app.put('/departments/:id', authMiddleware, adminMiddleware, async (req, res) =>
   }
 });
 
-app.delete('/departments/:id', authMiddleware, adminMiddleware, async (req, res) => {
+app.delete('/departments/:id', authMiddleware, adminOnlyMiddleware, async (req, res) => {
   try {
     const result = await deleteDepartment(Number(req.params.id));
     return res.json(result);
@@ -289,7 +287,7 @@ app.get('/schools', authMiddleware, async (req, res) => {
   }
 });
 
-app.post('/schools', authMiddleware, adminMiddleware, async (req, res) => {
+app.post('/schools', authMiddleware, adminOnlyMiddleware, async (req, res) => {
   try {
     const school = await createSchool(req.body);
     return res.json({ school });
@@ -298,7 +296,7 @@ app.post('/schools', authMiddleware, adminMiddleware, async (req, res) => {
   }
 });
 
-app.put('/schools/:id', authMiddleware, adminMiddleware, async (req, res) => {
+app.put('/schools/:id', authMiddleware, adminOnlyMiddleware, async (req, res) => {
   try {
     const school = await updateSchool(Number(req.params.id), req.body);
     return res.json({ school });
@@ -307,7 +305,7 @@ app.put('/schools/:id', authMiddleware, adminMiddleware, async (req, res) => {
   }
 });
 
-app.delete('/schools/:id', authMiddleware, adminMiddleware, async (req, res) => {
+app.delete('/schools/:id', authMiddleware, adminOnlyMiddleware, async (req, res) => {
   try {
     const result = await deleteSchool(Number(req.params.id));
     return res.json(result);
@@ -320,12 +318,12 @@ app.get('/admin/reports/attendance', authMiddleware, adminMiddleware, async (req
   try {
     let divId = req.query.division_id || req.query.department_id ? Number(req.query.division_id || req.query.department_id) : undefined;
     if (req.user.role === 'supervisor') {
-      divId = req.user.division_id || req.user.department_id;
+      divId = await getCurrentSupervisorDivisionId(req.user);
     }
     const report = await getAttendanceReport({ month: Number(req.query.month), year: Number(req.query.year), division_id: divId });
     return res.json({ report });
   } catch (error) {
-    return res.status(500).json({ error: error.message });
+    return res.status(error.statusCode || 500).json({ error: error.message });
   }
 });
 
@@ -335,11 +333,7 @@ app.get('/interns', authMiddleware, adminMiddleware, async (req, res) => {
     
     // Enforce division exclusivity for supervisors
     if (req.user.role === 'supervisor') {
-      const userDivId = req.user.division_id || req.user.department_id;
-      if (!userDivId) {
-        return res.status(403).json({ error: 'Supervisor has no assigned division' });
-      }
-      divId = userDivId;
+      divId = await getCurrentSupervisorDivisionId(req.user);
     }
 
     const result = await getInterns({
@@ -353,16 +347,18 @@ app.get('/interns', authMiddleware, adminMiddleware, async (req, res) => {
     return res.json(result);
   } catch (error) {
     console.error('Error in GET /interns:', error);
-    return res.status(500).json({ error: error.message });
+    return res.status(error.statusCode || 500).json({ error: error.message });
   }
 });
 
 app.get('/interns/:id', authMiddleware, adminMiddleware, async (req, res) => {
   try {
-    const intern = await getInternById(Number(req.params.id));
+    const internId = Number(req.params.id);
+    await assertSupervisorCanAccessIntern(req.user, internId, 'intern profiles');
+    const intern = await getInternById(internId);
     return res.json({ intern });
   } catch (error) {
-    return res.status(500).json({ error: error.message });
+    return res.status(error.statusCode || 500).json({ error: error.message });
   }
 });
 
@@ -397,55 +393,58 @@ app.put('/interns/me/profile', authMiddleware, async (req, res) => {
 
 app.post('/interns', authMiddleware, adminMiddleware, async (req, res) => {
   try {
+    let internPayload = req.body;
     if (req.user.role === 'supervisor') {
-      const userDivId = req.user.division_id || req.user.department_id;
-      req.body.division_id = userDivId;
+      const supervisorDivisionId = await getCurrentSupervisorDivisionId(req.user);
+      internPayload = {
+        ...req.body,
+        division_id: supervisorDivisionId,
+      };
+      delete internPayload.division_name;
+      delete internPayload.department_id;
+      delete internPayload.department_name;
     }
-    const intern = await createIntern(req.body);
+    const intern = await createIntern(internPayload);
     
     // Send welcome email asynchronously
     if (intern.email) {
       const name = intern.first_name ? `${intern.first_name} ${intern.last_name}` : intern.full_name;
-      sendWelcomeEmail(intern.email, name, intern.username, req.body.password);
+      sendWelcomeEmail(intern.email, name, intern.username, internPayload.password);
     }
     
     return res.json({ intern });
   } catch (error) {
     console.error('Error creating intern:', error);
-    return res.status(500).json({ error: error.message });
+    return res.status(error.statusCode || 500).json({ error: error.message });
   }
 });
 
 app.put('/interns/:id', authMiddleware, adminMiddleware, async (req, res) => {
   try {
+    const internId = Number(req.params.id);
     if (req.user.role === 'supervisor') {
-      const userDivId = req.user.division_id || req.user.department_id;
-      const existing = await getInterns({ limit: 1000 }).then(r => r.interns.find(i => i.id === Number(req.params.id)));
-      if (existing && (existing.division_id || existing.department_id) !== userDivId) {
-        return res.status(403).json({ error: 'Cannot update intern from another division' });
-      }
-      req.body.division_id = userDivId;
+      await assertSupervisorCanAccessIntern(req.user, internId, 'intern records');
+      req.body = { ...req.body };
+      delete req.body.division_id;
+      delete req.body.division_name;
+      delete req.body.department_id;
+      delete req.body.department_name;
     }
-    const intern = await updateIntern(Number(req.params.id), req.body);
+    const intern = await updateIntern(internId, req.body);
     return res.json({ intern });
   } catch (error) {
-    return res.status(500).json({ error: error.message });
+    return res.status(error.statusCode || 500).json({ error: error.message });
   }
 });
 
 app.delete('/interns/:id', authMiddleware, adminMiddleware, async (req, res) => {
   try {
-    if (req.user.role === 'supervisor') {
-      const userDivId = req.user.division_id || req.user.department_id;
-      const existing = await getInterns({ limit: 1000 }).then(r => r.interns.find(i => i.id === Number(req.params.id)));
-      if (existing && (existing.division_id || existing.department_id) !== userDivId) {
-        return res.status(403).json({ error: 'Cannot delete intern from another division' });
-      }
-    }
-    const result = await deleteIntern(Number(req.params.id));
+    const internId = Number(req.params.id);
+    await assertSupervisorCanAccessIntern(req.user, internId, 'intern records');
+    const result = await deleteIntern(internId);
     return res.json(result);
   } catch (error) {
-    return res.status(500).json({ error: error.message });
+    return res.status(error.statusCode || 500).json({ error: error.message });
   }
 });
 
@@ -456,17 +455,12 @@ app.post('/interns/:id/reset-password', authMiddleware, adminMiddleware, async (
   }
 
   try {
-    if (req.user.role === 'supervisor') {
-      const userDivId = req.user.division_id || req.user.department_id;
-      const existing = await getInterns({ limit: 1000 }).then(r => r.interns.find(i => i.id === Number(req.params.id)));
-      if (existing && (existing.division_id || existing.department_id) !== userDivId) {
-        return res.status(403).json({ error: 'Cannot reset password of intern from another division' });
-      }
-    }
-    const result = await resetInternPassword(Number(req.params.id), new_password);
+    const internId = Number(req.params.id);
+    await assertSupervisorCanAccessIntern(req.user, internId, 'intern passwords');
+    const result = await resetInternPassword(internId, new_password);
     return res.json(result);
   } catch (error) {
-    return res.status(500).json({ error: error.message });
+    return res.status(error.statusCode || 500).json({ error: error.message });
   }
 });
 
@@ -552,13 +546,7 @@ app.get('/dtr', authMiddleware, async (req, res) => {
 app.get('/admin/dtr/:internId', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const internId = Number(req.params.internId);
-    if (req.user.role === 'supervisor') {
-      const userDivId = req.user.division_id || req.user.department_id;
-      const { data: intern } = await supabase.from('accounts').select('division_id').eq('id', internId).single();
-      if (intern && intern.division_id !== userDivId) {
-        return res.status(403).json({ error: 'Cannot view DTR for intern from another division' });
-      }
-    }
+    await assertSupervisorCanAccessIntern(req.user, internId, 'DTR records');
     const { month, year } = req.query;
     const mNum = month ? Number(month) : undefined;
     const yNum = year ? Number(year) : undefined;
@@ -566,25 +554,28 @@ app.get('/admin/dtr/:internId', authMiddleware, adminMiddleware, async (req, res
     const dtr = await getDtrRecords(internId, { month: mNum, year: yNum });
     return res.json({ records: dtr });
   } catch (error) {
-    return res.status(500).json({ error: error.message });
+    return res.status(error.statusCode || 500).json({ error: error.message });
   }
 });
 
 app.post('/admin/dtr/:internId/override', authMiddleware, adminMiddleware, async (req, res) => {
   try {
-    const result = await setDtrOverride(Number(req.params.internId), req.body);
+    const internId = Number(req.params.internId);
+    await assertSupervisorCanAccessIntern(req.user, internId, 'DTR records');
+    const result = await setDtrOverride(internId, req.body);
     return res.json(result);
   } catch (error) {
-    return res.status(500).json({ error: error.message });
+    return res.status(error.statusCode || 500).json({ error: error.message });
   }
 });
 
 app.post('/admin/dtr/bulk-override', authMiddleware, adminMiddleware, async (req, res) => {
   try {
+    await assertSupervisorCanAccessInterns(req.user, req.body?.internIds, 'DTR records');
     const result = await setBulkDtrOverride(req.body);
     return res.json(result);
   } catch (error) {
-    return res.status(500).json({ error: error.message });
+    return res.status(error.statusCode || 500).json({ error: error.message });
   }
 });
 
@@ -619,31 +610,42 @@ app.get('/evaluations', authMiddleware, async (req, res) => {
   try {
     let divId = undefined;
     if (req.user.role === 'supervisor') {
-      divId = req.user.division_id || req.user.department_id;
+      divId = await getCurrentSupervisorDivisionId(req.user);
     }
     const evaluations = await getEvaluations(req.user.id, req.user.role === 'admin' || req.user.role === 'supervisor', divId);
     return res.json({ evaluations });
   } catch (error) {
     console.error('Error in GET /evaluations:', error);
-    return res.status(500).json({ error: error.message });
+    return res.status(error.statusCode || 500).json({ error: error.message });
   }
 });
 
 app.post('/evaluations', authMiddleware, adminMiddleware, async (req, res) => {
   try {
+    await assertSupervisorCanAccessIntern(req.user, req.body?.intern_id, 'intern evaluations');
     const evaluation = await createEvaluation(req.body, req.user.id, req.user.full_name || req.user.username);
     return res.json({ evaluation });
   } catch (error) {
-    return res.status(500).json({ error: error.message });
+    return res.status(error.statusCode || 500).json({ error: error.message });
   }
 });
 
 app.put('/evaluations/:id', authMiddleware, adminMiddleware, async (req, res) => {
   try {
-    const evaluation = await updateEvaluation(Number(req.params.id), req.body);
+    const evaluationId = Number(req.params.id);
+    await assertSupervisorCanAccessResource(
+      req.user,
+      'evaluations',
+      evaluationId,
+      'intern evaluations'
+    );
+    if (req.body?.intern_id !== undefined) {
+      await assertSupervisorCanAccessIntern(req.user, req.body.intern_id, 'intern evaluations');
+    }
+    const evaluation = await updateEvaluation(evaluationId, req.body);
     return res.json({ evaluation });
   } catch (error) {
-    return res.status(500).json({ error: error.message });
+    return res.status(error.statusCode || 500).json({ error: error.message });
   }
 });
 
@@ -652,7 +654,7 @@ app.get('/documents', authMiddleware, async (req, res) => {
     const isAdmin = req.user.role === 'admin' || req.user.role === 'supervisor';
     let divId = undefined;
     if (req.user.role === 'supervisor') {
-      divId = req.user.division_id || req.user.department_id;
+      divId = await getCurrentSupervisorDivisionId(req.user);
     }
     const options = {
       status: req.query.status,
@@ -662,7 +664,7 @@ app.get('/documents', authMiddleware, async (req, res) => {
     const documents = await getDocuments(req.user.id, isAdmin, options);
     return res.json({ documents });
   } catch (error) {
-    return res.status(500).json({ error: error.message });
+    return res.status(error.statusCode || 500).json({ error: error.message });
   }
 });
 
@@ -682,19 +684,33 @@ app.patch('/documents/:id/status', authMiddleware, adminMiddleware, async (req, 
   }
 
   try {
-    const document = await updateDocumentStatus(Number(req.params.id), status, admin_remarks || '');
+    const documentId = Number(req.params.id);
+    await assertSupervisorCanAccessResource(
+      req.user,
+      'documents',
+      documentId,
+      'intern documents'
+    );
+    const document = await updateDocumentStatus(documentId, status, admin_remarks || '');
     return res.json({ document });
   } catch (error) {
-    return res.status(500).json({ error: error.message });
+    return res.status(error.statusCode || 500).json({ error: error.message });
   }
 });
 
 app.delete('/documents/:id', authMiddleware, async (req, res) => {
   try {
-    const result = await deleteDocument(Number(req.params.id), req.user.id, req.user.role === 'admin' || req.user.role === 'supervisor');
+    const documentId = Number(req.params.id);
+    await assertSupervisorCanAccessResource(
+      req.user,
+      'documents',
+      documentId,
+      'intern documents'
+    );
+    const result = await deleteDocument(documentId, req.user.id, req.user.role === 'admin' || req.user.role === 'supervisor');
     return res.json(result);
   } catch (error) {
-    return res.status(500).json({ error: error.message });
+    return res.status(error.statusCode || 500).json({ error: error.message });
   }
 });
 
@@ -936,6 +952,8 @@ app.post('/interns/:id/register-face', authMiddleware, adminMiddleware, async (r
       return res.status(400).json({ error: 'Valid intern ID is required' });
     }
 
+    await assertSupervisorCanAccessIntern(req.user, internId, 'face enrollment');
+
     const { data: intern, error: internError } = await supabase
       .from('accounts')
       .select('id, division_id, face_registered')
@@ -944,13 +962,6 @@ app.post('/interns/:id/register-face', authMiddleware, adminMiddleware, async (r
       .single();
     if (internError || !intern) {
       return res.status(404).json({ error: 'Intern account not found' });
-    }
-
-    if (req.user.role === 'supervisor') {
-      const userDivId = Number(req.user.division_id || req.user.department_id);
-      if (!userDivId || Number(intern.division_id) !== userDivId) {
-        return res.status(403).json({ error: 'Cannot enroll an intern from another division' });
-      }
     }
 
     const reason = intern.face_registered
@@ -969,7 +980,7 @@ app.post('/interns/:id/register-face', authMiddleware, adminMiddleware, async (r
     });
   } catch (error) {
     console.error('Error in authorized face enrollment:', error);
-    return res.status(400).json({ error: error.message });
+    return res.status(error.statusCode || 400).json({ error: error.message });
   }
 });
 
