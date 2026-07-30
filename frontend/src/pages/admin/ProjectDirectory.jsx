@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   FolderGit2, Search, Filter, Download, FileText, Users, Code,
   Presentation, CheckCircle2, Clock, AlertCircle, Layers, ExternalLink,
-  Github, BarChart3, FolderKanban, ShieldCheck, Loader2
+  Github, BarChart3, FolderKanban, ShieldCheck, Loader2, Eye
 } from 'lucide-react';
 import api from '../../utils/api.js';
 import Modal from '../../components/common/Modal.jsx';
@@ -25,6 +25,12 @@ const STATUS_CONFIG = {
   on_hold: { label: 'On Hold', bg: 'bg-slate-100 text-slate-700 border-slate-200', icon: Clock }
 };
 
+const formatProjectDate = value => {
+  if (!value) return 'Not available';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? 'Not available' : format(date, 'MMM d, yyyy');
+};
+
 export default function ProjectDirectory() {
   const [projects, setProjects] = useState([]);
   const [divisions, setDivisions] = useState([]);
@@ -38,6 +44,7 @@ export default function ProjectDirectory() {
 
   // Selected project for detailed deliverables view
   const [selectedProject, setSelectedProject] = useState(null);
+  const [quickViewProject, setQuickViewProject] = useState(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -67,6 +74,10 @@ export default function ProjectDirectory() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  const quickViewStatus = STATUS_CONFIG[quickViewProject?.status] || STATUS_CONFIG.in_progress;
+  const QuickViewStatusIcon = quickViewStatus.icon;
+  const quickViewMembers = Array.isArray(quickViewProject?.members) ? quickViewProject.members : [];
 
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto">
@@ -170,70 +181,89 @@ export default function ProjectDirectory() {
 
             return (
               <div key={proj.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-all flex flex-col justify-between overflow-hidden">
-                <div className="p-5 space-y-4">
-                  {/* Group & Status */}
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <span className="inline-block text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-100 px-2.5 py-0.5 rounded-full mb-1.5">
-                        Group: {proj.group_name}
-                      </span>
-                      <h3 className="font-bold text-slate-900 text-lg leading-snug">{proj.title}</h3>
-                    </div>
-                    <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full border shrink-0 ${statusStyle.bg}`}>
-                      <StatusIcon className="w-3.5 h-3.5" />
-                      {statusStyle.label}
-                    </span>
-                  </div>
-
-                  {/* Description */}
-                  <p className="text-slate-600 text-sm line-clamp-2 leading-relaxed">
-                    {proj.description || 'No detailed description provided.'}
-                  </p>
-
-                  {/* Progress Bar */}
-                  <div className="space-y-1.5 pt-1">
-                    <div className="flex justify-between text-xs font-medium">
-                      <span className="text-slate-600">Development Progress</span>
-                      <span className="text-blue-700 font-bold">{proj.progress}%</span>
-                    </div>
-                    <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
-                      <div
-                        className={`h-2.5 rounded-full transition-all duration-500 ${
-                          proj.progress === 100 ? 'bg-emerald-500' : proj.progress > 50 ? 'bg-blue-600' : 'bg-amber-500'
-                        }`}
-                        style={{ width: `${proj.progress}%` }}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Leader & Assigned Members */}
-                  <div className="pt-2 border-t border-slate-100 space-y-2">
-                    <div className="flex items-center justify-between text-xs text-slate-600">
-                      <div className="flex items-center gap-1.5">
-                        <Users className="w-3.5 h-3.5 text-blue-600" />
-                        <span className="font-medium">Leader:</span>
-                        <span className="font-semibold text-slate-800">{proj.leader_name}</span>
+                <div className="p-5">
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Open quick information for ${proj.title}`}
+                    onClick={() => setQuickViewProject(proj)}
+                    onKeyDown={event => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        setQuickViewProject(proj);
+                      }
+                    }}
+                    className="-m-2 p-2 rounded-xl space-y-4 cursor-pointer transition-colors hover:bg-blue-50/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+                  >
+                    {/* Group & Status */}
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <span className="inline-block text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-100 px-2.5 py-0.5 rounded-full mb-1.5">
+                          Group: {proj.group_name}
+                        </span>
+                        <h3 className="font-bold text-slate-900 text-lg leading-snug">{proj.title}</h3>
                       </div>
-                      {proj.leader_division && (
-                        <span className="text-[10px] bg-slate-100 px-2 py-0.5 rounded text-slate-500">{proj.leader_division}</span>
+                      <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full border shrink-0 ${statusStyle.bg}`}>
+                        <StatusIcon className="w-3.5 h-3.5" />
+                        {statusStyle.label}
+                      </span>
+                    </div>
+
+                    {/* Description */}
+                    <p className="text-slate-600 text-sm line-clamp-2 leading-relaxed">
+                      {proj.description || 'No detailed description provided.'}
+                    </p>
+
+                    {/* Progress Bar */}
+                    <div className="space-y-1.5 pt-1">
+                      <div className="flex justify-between text-xs font-medium">
+                        <span className="text-slate-600">Development Progress</span>
+                        <span className="text-blue-700 font-bold">{proj.progress}%</span>
+                      </div>
+                      <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
+                        <div
+                          className={`h-2.5 rounded-full transition-all duration-500 ${
+                            proj.progress === 100 ? 'bg-emerald-500' : proj.progress > 50 ? 'bg-blue-600' : 'bg-amber-500'
+                          }`}
+                          style={{ width: `${proj.progress}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Leader & Assigned Members */}
+                    <div className="pt-2 border-t border-slate-100 space-y-2">
+                      <div className="flex items-center justify-between text-xs text-slate-600">
+                        <div className="flex items-center gap-1.5">
+                          <Users className="w-3.5 h-3.5 text-blue-600" />
+                          <span className="font-medium">Leader:</span>
+                          <span className="font-semibold text-slate-800">{proj.leader_name}</span>
+                        </div>
+                        {proj.leader_division && (
+                          <span className="text-[10px] bg-slate-100 px-2 py-0.5 rounded text-slate-500">{proj.leader_division}</span>
+                        )}
+                      </div>
+
+                      {members.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 pt-1">
+                          {members.map((m, idx) => (
+                            <span key={idx} className="bg-slate-50 border border-slate-200 text-slate-700 text-[11px] px-2 py-0.5 rounded-md font-medium flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
+                              {m.full_name || m.name}
+                            </span>
+                          ))}
+                        </div>
                       )}
                     </div>
 
-                    {members.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5 pt-1">
-                        {members.map((m, idx) => (
-                          <span key={idx} className="bg-slate-50 border border-slate-200 text-slate-700 text-[11px] px-2 py-0.5 rounded-md font-medium flex items-center gap-1">
-                            <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
-                            {m.full_name || m.name}
-                          </span>
-                        ))}
-                      </div>
-                    )}
+                    <div className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-blue-600">
+                      <Eye className="w-3.5 h-3.5" />
+                      Click for quick project information
+                    </div>
                   </div>
 
                   {/* Repository Links */}
                   {(proj.github_repo || proj.demo_url) && (
-                    <div className="flex items-center gap-3 text-xs pt-1 border-t border-slate-100">
+                    <div className="flex items-center gap-3 text-xs mt-4 pt-3 border-t border-slate-100">
                       {proj.github_repo && (
                         <a href={proj.github_repo} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-slate-700 hover:text-blue-600">
                           <Github className="w-3.5 h-3.5" /> Repository
@@ -266,6 +296,154 @@ export default function ProjectDirectory() {
           })}
         </div>
       )}
+
+      {/* PROJECT QUICK VIEW MODAL */}
+      <Modal
+        isOpen={Boolean(quickViewProject)}
+        onClose={() => setQuickViewProject(null)}
+        title="Project Quick View"
+        size="lg"
+        footer={(
+          <>
+            <button
+              type="button"
+              onClick={() => setQuickViewProject(null)}
+              className="px-4 py-2 rounded-lg border border-slate-200 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+            >
+              Close
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedProject(quickViewProject);
+                setQuickViewProject(null);
+              }}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-sm font-semibold text-white hover:bg-blue-700 transition-colors"
+            >
+              <FileText className="w-4 h-4" />
+              View Directory Files
+            </button>
+          </>
+        )}
+      >
+        {quickViewProject && (
+          <div className="space-y-5">
+            <div className="rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-50 to-white p-5">
+              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                <div>
+                  <span className="inline-block text-xs font-semibold text-blue-700 bg-white border border-blue-100 px-2.5 py-1 rounded-full mb-2">
+                    {quickViewProject.group_name || 'Unnamed group'}
+                  </span>
+                  <h3 className="text-xl font-bold text-slate-900">{quickViewProject.title}</h3>
+                </div>
+                <span className={`inline-flex self-start items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full border ${quickViewStatus.bg}`}>
+                  <QuickViewStatusIcon className="w-4 h-4" />
+                  {quickViewStatus.label}
+                </span>
+              </div>
+              <p className="mt-4 text-sm leading-relaxed text-slate-600">
+                {quickViewProject.description || 'No detailed description provided.'}
+              </p>
+            </div>
+
+            <div>
+              <div className="mb-2 flex items-center justify-between text-sm">
+                <span className="font-semibold text-slate-700">Development Progress</span>
+                <span className="font-bold text-blue-700">{quickViewProject.progress}%</span>
+              </div>
+              <div className="h-3 overflow-hidden rounded-full bg-slate-100">
+                <div
+                  className={`h-full rounded-full ${
+                    quickViewProject.progress === 100
+                      ? 'bg-emerald-500'
+                      : quickViewProject.progress > 50
+                        ? 'bg-blue-600'
+                        : 'bg-amber-500'
+                  }`}
+                  style={{ width: `${quickViewProject.progress}%` }}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                  <Users className="w-4 h-4 text-blue-600" />
+                  Project Leader
+                </div>
+                <p className="mt-2 font-bold text-slate-900">{quickViewProject.leader_name || 'Unassigned'}</p>
+                <p className="mt-0.5 text-xs text-slate-500">{quickViewProject.leader_division || 'No division assigned'}</p>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                  <FolderKanban className="w-4 h-4 text-purple-600" />
+                  Directory Summary
+                </div>
+                <p className="mt-2 font-bold text-slate-900">
+                  {quickViewMembers.length} Team Member{quickViewMembers.length === 1 ? '' : 's'}
+                </p>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  {quickViewProject.files?.length || 0} File Deliverable(s)
+                </p>
+              </div>
+            </div>
+
+            <div>
+              <h4 className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-500">Team Members</h4>
+              {quickViewMembers.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {quickViewMembers.map((member, index) => (
+                    <span key={member.id || index} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700">
+                      <span className="h-1.5 w-1.5 rounded-full bg-blue-500" />
+                      {member.full_name || member.name}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-slate-500">No additional team members listed.</p>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+              <div className="rounded-xl border border-slate-200 p-3">
+                <span className="text-xs text-slate-500">Created</span>
+                <p className="mt-0.5 font-semibold text-slate-800">{formatProjectDate(quickViewProject.created_at)}</p>
+              </div>
+              <div className="rounded-xl border border-slate-200 p-3">
+                <span className="text-xs text-slate-500">Last Updated</span>
+                <p className="mt-0.5 font-semibold text-slate-800">{formatProjectDate(quickViewProject.updated_at)}</p>
+              </div>
+            </div>
+
+            {(quickViewProject.github_repo || quickViewProject.demo_url) && (
+              <div className="flex flex-wrap gap-3 border-t border-slate-100 pt-4">
+                {quickViewProject.github_repo && (
+                  <a
+                    href={quickViewProject.github_repo}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:border-blue-200 hover:text-blue-600"
+                  >
+                    <Github className="w-4 h-4" />
+                    Repository
+                  </a>
+                )}
+                {quickViewProject.demo_url && (
+                  <a
+                    href={quickViewProject.demo_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-2 rounded-lg border border-blue-200 px-3 py-2 text-sm font-semibold text-blue-600 hover:bg-blue-50"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                    Live Demo
+                  </a>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </Modal>
 
       {/* DELIVERABLES MODAL */}
       <Modal
