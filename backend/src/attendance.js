@@ -104,16 +104,12 @@ export async function scanAttendance({ qr_code, user, photo, face_embedding } = 
   let verificationStatus = 'Unverified';
 
   if (internId) {
-    if (!face_embedding || typeof face_embedding !== 'object' || Array.isArray(face_embedding)) {
-      const err = new Error('Secure Face ID capture is required. Please capture a clear live selfie.');
-      err.code = 'MISSING_EMBEDDING';
-      throw err;
-    }
-
     const faceCheck = await verifyUserFace(internId, face_embedding);
     if (!faceCheck.verified) {
       const err = new Error(faceCheck.message || 'Face verification failed. Please try again.');
       err.code = faceCheck.code || 'FACE_VERIFICATION_FAILED';
+      err.statusCode = faceCheck.statusCode || 400;
+      err.retryAfterSeconds = faceCheck.retry_after_seconds;
       err.similarity = faceCheck.similarity;
       err.verified = false;
       throw err;

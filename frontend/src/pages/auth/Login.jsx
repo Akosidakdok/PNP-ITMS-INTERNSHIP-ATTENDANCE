@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext.jsx';
 import toast from 'react-hot-toast';
@@ -8,13 +8,24 @@ export default function Login() {
   const [form, setForm] = useState({ username: '', password: '' });
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [retryAfter, setRetryAfter] = useState(0);
   const { login } = useAuth();
   const navigate = useNavigate();
 
   const [error, setError] = useState('');
 
+  useEffect(() => {
+    if (retryAfter <= 0) return;
+    const timer = window.setTimeout(
+      () => setRetryAfter(seconds => Math.max(0, seconds - 1)),
+      1000
+    );
+    return () => window.clearTimeout(timer);
+  }, [retryAfter]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (retryAfter > 0) return;
     if (!form.username || !form.password) {
       setError('Please fill in all fields');
       toast.error('Please fill in all fields');
@@ -30,6 +41,10 @@ export default function Login() {
       navigate(user.role === 'admin' ? '/admin' : '/intern', { replace: true });
     } catch (err) {
       const message = err?.response?.data?.error || 'Login failed. Please check your credentials.';
+      const serverRetryAfter = Number(err?.response?.data?.retry_after_seconds || 0);
+      if (serverRetryAfter > 0) {
+        setRetryAfter(Math.ceil(serverRetryAfter));
+      }
       setError(message);
       toast.error(message);
     } finally {
@@ -135,7 +150,7 @@ export default function Login() {
                 id="login-submit"
                 type="submit"
                 className="btn btn-primary w-full btn-lg"
-                disabled={loading}
+                disabled={loading || retryAfter > 0}
               >
                 {loading ? (
                   <span className="flex items-center gap-2">
@@ -145,7 +160,9 @@ export default function Login() {
                     </svg>
                     Signing in...
                   </span>
-                ) : 'Sign In'}
+                ) : retryAfter > 0
+                  ? `Try again in ${retryAfter}s`
+                  : 'Sign In'}
               </button>
               {error && (
                 <p className="mt-3 text-sm text-red-600">{error}</p>

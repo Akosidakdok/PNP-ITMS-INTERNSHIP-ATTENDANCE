@@ -30,6 +30,7 @@ export default function ScanAttendance() {
   const [error, setError] = useState('');
   const [errorCode, setErrorCode] = useState('');
   const [cooldown, setCooldown] = useState(0);
+  const [faceCooldown, setFaceCooldown] = useState(0);
   const [nextScanHint, setNextScanHint] = useState('Loading next scan...');
 
   // Face capture state
@@ -61,6 +62,25 @@ export default function ScanAttendance() {
     const t = setTimeout(() => setCooldown(c => c - 1), 1000);
     return () => clearTimeout(t);
   }, [cooldown]);
+
+  useEffect(() => {
+    if (faceCooldown <= 0) return;
+    const timer = window.setTimeout(
+      () => setFaceCooldown(seconds => Math.max(0, seconds - 1)),
+      1000
+    );
+    return () => window.clearTimeout(timer);
+  }, [faceCooldown]);
+
+  useEffect(() => {
+    if (
+      faceCooldown === 0
+      && ['FACE_COOLDOWN', 'FACE_TEMPORARILY_LOCKED'].includes(errorCode)
+    ) {
+      captureLockRef.current = false;
+      setScannerActive(true);
+    }
+  }, [faceCooldown, errorCode]);
 
   // ─── Camera open / close ──────────────────────────────────────────────────
   useEffect(() => {
@@ -253,6 +273,10 @@ export default function ScanAttendance() {
       console.error('Capture/submit error:', err);
       const msg = err?.response?.data?.error || err?.message || 'Face verification failed. Please try again.';
       const code = err?.response?.data?.code || '';
+      const retryAfter = Math.max(
+        0,
+        Math.ceil(Number(err?.response?.data?.retry_after_seconds || 0))
+      );
       setError(msg);
       setErrorCode(code);
 
@@ -263,7 +287,13 @@ export default function ScanAttendance() {
 
       if (retryTimeoutRef.current) clearTimeout(retryTimeoutRef.current);
 
-      if (code === 'FACE_NOT_REGISTERED') {
+      if (code === 'FACE_COOLDOWN' || code === 'FACE_TEMPORARILY_LOCKED') {
+        setFaceCooldown(retryAfter);
+        setIsCameraOpen(false);
+        setTempQrCode(null);
+        setScannerActive(false);
+        toast.error(msg);
+      } else if (code === 'FACE_NOT_REGISTERED') {
         // Registration issue — show error, don't auto-retry
         toast.error(msg);
         captureLockRef.current = false;
@@ -312,7 +342,7 @@ export default function ScanAttendance() {
 
   // ─── QR scan handler ──────────────────────────────────────────────────────
   const handleScan = async (qrCode) => {
-    if (scanLockRef.current || scanning || cooldown > 0 || scanResult) return;
+    if (scanLockRef.current || scanning || cooldown > 0 || faceCooldown > 0 || scanResult) return;
     scanLockRef.current = true;
     setScanning(true);
     setError('');
@@ -336,7 +366,7 @@ export default function ScanAttendance() {
 
   // ─── Reset / scan again ───────────────────────────────────────────────────
   const handleReset = () => {
-    if (cooldown > 0) return;
+    if (cooldown > 0 || faceCooldown > 0) return;
     setScanResult(null);
     setError('');
     setErrorCode('');
@@ -549,7 +579,10 @@ export default function ScanAttendance() {
             {error && (
               <div className="mb-3 p-3 bg-red-50 border border-red-200 rounded-xl flex items-center gap-2 text-sm text-red-700">
                 <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                {error}
+                <span>
+                  {error}
+                  {faceCooldown > 0 ? ` (${faceCooldown}s remaining)` : ''}
+                </span>
               </div>
             )}
             <QRScanner onScan={handleScan} isActive={scannerActive} />

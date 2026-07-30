@@ -120,7 +120,16 @@ app.post('/auth/login', async (req, res) => {
     const result = await loginUser(username, password);
     return res.json(result);
   } catch (error) {
-    return res.status(401).json({ error: error.message });
+    if (error.retryAfterSeconds) {
+      res.set('Retry-After', String(error.retryAfterSeconds));
+    }
+    return res.status(error.statusCode || 401).json({
+      error: error.message,
+      code: error.code || 'LOGIN_FAILED',
+      ...(error.retryAfterSeconds
+        ? { retry_after_seconds: error.retryAfterSeconds }
+        : {})
+    });
   }
 });
 
@@ -994,10 +1003,16 @@ app.post('/attendance/scan', authMiddleware, async (req, res) => {
     const scanResult = await scanAttendance({ qr_code, user: req.user, photo, face_embedding });
     return res.json(scanResult);
   } catch (error) {
-    return res.status(400).json({
+    if (error.retryAfterSeconds) {
+      res.set('Retry-After', String(error.retryAfterSeconds));
+    }
+    return res.status(error.statusCode || 400).json({
       verified: false,
       error: error.message,
-      code: error.code || 'SCAN_FAILED'
+      code: error.code || 'SCAN_FAILED',
+      ...(error.retryAfterSeconds
+        ? { retry_after_seconds: error.retryAfterSeconds }
+        : {})
     });
   }
 });

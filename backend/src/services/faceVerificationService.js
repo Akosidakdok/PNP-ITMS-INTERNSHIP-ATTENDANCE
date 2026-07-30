@@ -3,6 +3,12 @@ import {
   compareFacePackages,
   validateFacePackage,
 } from '../utils/compareFaces.js';
+import {
+  completeFaceSuccess,
+  getFaceBlockState,
+  lockoutResult,
+  recordFaceFailure,
+} from '../security/attemptLockoutService.js';
 
 const MAX_FACE_PHOTO_BYTES = 2 * 1024 * 1024;
 const DEFAULT_IDENTITY_MARGIN = 0.08;
@@ -146,27 +152,51 @@ export async function verifyUserFace(userId, livePackage) {
     throw new Error('User ID is required for face verification');
   }
 
+  const { data: user, error } = await supabase
+    .from('accounts')
+    .select(`
+      id,
+      face_embedding,
+      face_registered,
+      face_failed_attempts,
+      face_failure_window_started_at,
+      face_cooldown_until,
+      face_locked_until
+    `)
+    .eq('id', userId)
+    .single();
+
+  if (error || !user) {
+    if (error) {
+      console.error('Face lockout state lookup failed:', {
+        code: error.code,
+        message: error.message,
+      });
+      const serviceError = new Error('Face security service is temporarily unavailable.');
+      serviceError.code = 'LOCKOUT_SERVICE_UNAVAILABLE';
+      serviceError.statusCode = 503;
+      throw serviceError;
+    }
+    throw new Error('User account not found');
+  }
+
+  const existingBlock = getFaceBlockState(user);
+  if (existingBlock.blocked) {
+    return lockoutResult(existingBlock);
+  }
+
   let validatedLivePackage;
   try {
     validatedLivePackage = validateFacePackage(livePackage);
   } catch (error) {
-    return {
+    const failure = {
       verified: false,
       similarity: 0,
       distance: 999,
       code: 'INVALID_FACE_CAPTURE',
       message: error.message || 'Secure face capture is invalid. Please try again.',
     };
-  }
-
-  const { data: user, error } = await supabase
-    .from('accounts')
-    .select('id, face_embedding, face_registered')
-    .eq('id', userId)
-    .single();
-
-  if (error || !user) {
-    throw new Error('User account not found');
+    return lockoutResult(await recordFaceFailure(userId), failure);
   }
 
   if (!user.face_registered || !user.face_embedding) {
@@ -186,13 +216,14 @@ export async function verifyUserFace(userId, livePackage) {
 
   const claimedResult = compareFacePackages(validatedLivePackage, storedPackage);
   if (!claimedResult.isMatch) {
-    return {
+    const failure = {
       verified: false,
       similarity: claimedResult.similarity,
       distance: claimedResult.distance,
       code: 'FACE_MISMATCH',
       message: 'This face does not match the signed-in user. Attendance was not recorded.',
     };
+    return lockoutResult(await recordFaceFailure(userId), failure);
   }
 
   const competingIdentity = await findCompetingIdentity(validatedLivePackage, userId);
@@ -203,13 +234,22 @@ export async function verifyUserFace(userId, livePackage) {
     && competingIdentity.similarity + identityMargin >= claimedResult.similarity;
 
   if (identityConflict) {
-    return {
+    const failure = {
       verified: false,
       similarity: claimedResult.similarity,
       distance: claimedResult.distance,
       code: 'FACE_IDENTITY_CONFLICT',
       message: 'Face identity is ambiguous or belongs to another account. Attendance was not recorded.',
     };
+    return lockoutResult(await recordFaceFailure(userId), failure);
+  }
+
+  const completionBlock = await completeFaceSuccess(userId);
+  if (completionBlock.blocked) {
+    return lockoutResult(completionBlock, {
+      similarity: claimedResult.similarity,
+      distance: claimedResult.distance,
+    });
   }
 
   return {
