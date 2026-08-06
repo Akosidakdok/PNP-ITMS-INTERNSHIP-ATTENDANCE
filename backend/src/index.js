@@ -10,6 +10,8 @@ import {
   getInternFaceWorkflow,
   getRenewalRequestsForStaff,
   reviewRenewalRequest,
+  setRenewalRequestDismissed,
+  dismissResolvedRenewalRequests,
   getEnrollmentHistoryForStaff,
   validateEnrollmentReason
 } from './services/faceEnrollmentWorkflowService.js';
@@ -918,8 +920,38 @@ app.get('/face-renewal-requests', authMiddleware, adminMiddleware, async (req, r
   try {
     const requests = await getRenewalRequestsForStaff(req.user, {
       status: req.query.status || 'all',
+      includeDismissed: req.query.include_dismissed === 'true',
     });
     return res.json({ requests });
+  } catch (error) {
+    return res.status(error.statusCode || 400).json({ error: error.message });
+  }
+});
+
+app.patch('/face-renewal-requests/clear-resolved', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const cleared = await dismissResolvedRenewalRequests(req.user);
+    return res.json({
+      success: true,
+      message: cleared === 1 ? '1 resolved request cleared' : `${cleared} resolved requests cleared`,
+      cleared,
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 400).json({ error: error.message });
+  }
+});
+
+app.patch('/face-renewal-requests/:id/visibility', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    if (typeof req.body.dismissed !== 'boolean') {
+      return res.status(400).json({ error: 'dismissed must be true or false' });
+    }
+    const request = await setRenewalRequestDismissed(req.params.id, req.body.dismissed, req.user);
+    return res.json({
+      success: true,
+      message: req.body.dismissed ? 'Renewal request cleared' : 'Renewal request restored',
+      request,
+    });
   } catch (error) {
     return res.status(error.statusCode || 400).json({ error: error.message });
   }

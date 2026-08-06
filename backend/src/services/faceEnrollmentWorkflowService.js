@@ -1,8 +1,9 @@
 import { supabase } from '../supabaseClient.js';
 
 const OPEN_REQUEST_STATUSES = ['pending', 'approved'];
+const RESOLVED_REQUEST_STATUSES = ['rejected', 'completed'];
 const VALID_REVIEW_ACTIONS = new Set(['approve', 'reject']);
-const REQUEST_FIELDS = 'id, intern_id, intern_name, reason, status, reviewed_by, reviewer_name, review_remarks, reviewed_at, completed_at, created_at, updated_at';
+const REQUEST_FIELDS = 'id, intern_id, intern_name, reason, status, reviewed_by, reviewer_name, review_remarks, reviewed_at, completed_at, dismissed_at, dismissed_by, dismissed_by_name, created_at, updated_at';
 const HISTORY_FIELDS = 'id, intern_id, intern_name, enrollment_type, renewal_reason, request_id, enrolled_by, enrolled_by_name, enrolled_by_role, created_at';
 
 function cleanReason(reason, label = 'Renewal reason') {
@@ -147,7 +148,7 @@ export async function getInternFaceWorkflow(internId) {
   };
 }
 
-export async function getRenewalRequestsForStaff(staffUser, { status = 'all' } = {}) {
+export async function getRenewalRequestsForStaff(staffUser, { status = 'all', includeDismissed = false } = {}) {
   const currentStaff = await getCurrentStaff(staffUser);
   let internQuery = supabase
     .from('accounts')
@@ -176,6 +177,9 @@ export async function getRenewalRequestsForStaff(staffUser, { status = 'all' } =
     }
     requestQuery = requestQuery.eq('status', status);
   }
+  if (!includeDismissed) {
+    requestQuery = requestQuery.is('dismissed_at', null);
+  }
 
   const { data: requests, error: requestError } = await requestQuery;
   if (requestError) throw requestError;
@@ -185,6 +189,79 @@ export async function getRenewalRequestsForStaff(staffUser, { status = 'all' } =
     ...request,
     intern: internById.get(Number(request.intern_id)) || null,
   }));
+}
+
+export async function setRenewalRequestDismissed(requestId, dismissed, staffUser) {
+  const currentStaff = await getCurrentStaff(staffUser);
+  const id = validId(requestId, 'request ID');
+  const { data: request, error: requestError } = await supabase
+    .from('face_renewal_requests')
+    .select(REQUEST_FIELDS)
+    .eq('id', id)
+    .single();
+
+  if (requestError || !request || !request.intern_id) {
+    throw new Error('Renewal request not found');
+  }
+  if (!RESOLVED_REQUEST_STATUSES.includes(request.status)) {
+    const stateError = new Error('Only rejected or completed requests can be cleared');
+    stateError.statusCode = 409;
+    throw stateError;
+  }
+
+  await getInternForStaff(request.intern_id, currentStaff);
+  const now = new Date().toISOString();
+  const { data, error } = await supabase
+    .from('face_renewal_requests')
+    .update({
+      dismissed_at: dismissed ? now : null,
+      dismissed_by: dismissed ? currentStaff.id : null,
+      dismissed_by_name: dismissed ? currentStaff.full_name : null,
+      updated_at: now,
+    })
+    .eq('id', id)
+    .in('status', RESOLVED_REQUEST_STATUSES)
+    .select(REQUEST_FIELDS)
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function dismissResolvedRenewalRequests(staffUser) {
+  const currentStaff = await getCurrentStaff(staffUser);
+  let internQuery = supabase
+    .from('accounts')
+    .select('id')
+    .eq('role', 'intern');
+
+  if (currentStaff.role === 'supervisor') {
+    const divisionId = Number(currentStaff.division_id);
+    if (!divisionId) return 0;
+    internQuery = internQuery.eq('division_id', divisionId);
+  }
+
+  const { data: interns, error: internError } = await internQuery;
+  if (internError) throw internError;
+  const internIds = (interns || []).map(intern => intern.id);
+  if (!internIds.length) return 0;
+
+  const now = new Date().toISOString();
+  const { data, error } = await supabase
+    .from('face_renewal_requests')
+    .update({
+      dismissed_at: now,
+      dismissed_by: currentStaff.id,
+      dismissed_by_name: currentStaff.full_name,
+      updated_at: now,
+    })
+    .in('intern_id', internIds)
+    .in('status', RESOLVED_REQUEST_STATUSES)
+    .is('dismissed_at', null)
+    .select('id');
+
+  if (error) throw error;
+  return data?.length || 0;
 }
 
 export async function reviewRenewalRequest(requestId, action, remarks, staffUser) {

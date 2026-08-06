@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { UserPlus, Edit2, Trash2, Key, Archive, ShieldCheck, ClipboardList, Check, XCircle, History, RefreshCw } from 'lucide-react';
+import { UserPlus, Edit2, Trash2, Key, Archive, ShieldCheck, ClipboardList, Check, XCircle, History, RefreshCw, Eraser, Undo2 } from 'lucide-react';
 import api from '../../utils/api.js';
 import DataTable from '../../components/common/DataTable.jsx';
 import Modal from '../../components/common/Modal.jsx';
@@ -86,6 +86,10 @@ export default function InternManagement() {
   const [renewalRequests, setRenewalRequests] = useState([]);
   const [renewalLoading, setRenewalLoading] = useState(true);
   const [renewalError, setRenewalError] = useState('');
+  const [renewalView, setRenewalView] = useState('active');
+  const [renewalActionId, setRenewalActionId] = useState(null);
+  const [clearingResolved, setClearingResolved] = useState(false);
+  const [renewalConfirm, setRenewalConfirm] = useState(null);
   const [reviewTarget, setReviewTarget] = useState(null);
   const [reviewAction, setReviewAction] = useState('approve');
   const [reviewRemarks, setReviewRemarks] = useState('');
@@ -117,7 +121,9 @@ export default function InternManagement() {
     setRenewalLoading(true);
     setRenewalError('');
     try {
-      const res = await api.get('/face-renewal-requests', { params: { status: 'all' } });
+      const res = await api.get('/face-renewal-requests', {
+        params: { status: 'all', include_dismissed: true },
+      });
       setRenewalRequests(res.data.requests || []);
     } catch (error) {
       const isMissingRoute = error?.response?.status === 404;
@@ -196,6 +202,40 @@ export default function InternManagement() {
       toast.error(error?.response?.data?.error || 'Could not review renewal request');
     } finally {
       setReviewSaving(false);
+    }
+  };
+
+  const handleRequestVisibility = async (request, dismissed) => {
+    const verb = dismissed ? 'clear' : 'restore';
+    setRenewalActionId(request.id);
+    try {
+      const res = await api.patch(`/face-renewal-requests/${request.id}/visibility`, { dismissed });
+      toast.success(res.data.message || `Renewal request ${dismissed ? 'cleared' : 'restored'}`);
+      setRenewalConfirm(null);
+      await fetchRenewalRequests();
+    } catch (error) {
+      toast.error(error?.response?.data?.error || `Could not ${verb} renewal request`);
+    } finally {
+      setRenewalActionId(null);
+    }
+  };
+
+  const handleClearResolved = async () => {
+    const count = renewalRequests.filter(request =>
+      !request.dismissed_at && ['rejected', 'completed'].includes(request.status)
+    ).length;
+    if (!count) return;
+    setClearingResolved(true);
+    try {
+      const res = await api.patch('/face-renewal-requests/clear-resolved');
+      toast.success(res.data.message || 'Resolved requests cleared');
+      setRenewalView('active');
+      setRenewalConfirm(null);
+      await fetchRenewalRequests();
+    } catch (error) {
+      toast.error(error?.response?.data?.error || 'Could not clear resolved requests');
+    } finally {
+      setClearingResolved(false);
     }
   };
 
@@ -720,6 +760,21 @@ export default function InternManagement() {
     </div>
   );
 
+  const visibleRenewalRequests = renewalRequests.filter(request => {
+    const isResolved = ['rejected', 'completed'].includes(request.status);
+    if (renewalView === 'active') return !request.dismissed_at && !isResolved;
+    if (renewalView === 'resolved') return !request.dismissed_at && isResolved;
+    if (renewalView === 'cleared') return Boolean(request.dismissed_at);
+    return !request.dismissed_at;
+  });
+  const unresolvedRenewalCount = renewalRequests.filter(request =>
+    !request.dismissed_at && ['pending', 'approved'].includes(request.status)
+  ).length;
+  const resolvedRenewalCount = renewalRequests.filter(request =>
+    !request.dismissed_at && ['rejected', 'completed'].includes(request.status)
+  ).length;
+  const clearedRenewalCount = renewalRequests.filter(request => request.dismissed_at).length;
+
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -741,14 +796,47 @@ export default function InternManagement() {
             <div>
               <h2 className="font-bold text-sm text-gray-800">Face ID Renewal Requests</h2>
               <p className="text-xs text-gray-500">
-                {renewalRequests.filter(request => request.status === 'pending').length} pending review
+                {unresolvedRenewalCount} active · {resolvedRenewalCount} resolved
               </p>
             </div>
           </div>
-          <button className="btn btn-secondary btn-sm" onClick={fetchRenewalRequests} disabled={renewalLoading}>
-            <RefreshCw className={`w-4 h-4 ${renewalLoading ? 'animate-spin' : ''}`} />
-            Refresh
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            {resolvedRenewalCount > 0 && (
+              <button
+                className="btn btn-secondary btn-sm text-red-600"
+                onClick={() => setRenewalConfirm({ type: 'clear-resolved', count: resolvedRenewalCount })}
+                disabled={clearingResolved}
+              >
+                <Eraser className="w-4 h-4" />
+                {clearingResolved ? 'Clearing...' : 'Clear resolved'}
+              </button>
+            )}
+            <button className="btn btn-secondary btn-sm" onClick={fetchRenewalRequests} disabled={renewalLoading}>
+              <RefreshCw className={`w-4 h-4 ${renewalLoading ? 'animate-spin' : ''}`} />
+              Refresh
+            </button>
+          </div>
+        </div>
+
+        <div className="px-4 sm:px-5 py-3 border-b border-gray-100 bg-gray-50/60 flex flex-wrap gap-2">
+          {[
+            ['active', 'Active', unresolvedRenewalCount],
+            ['resolved', 'Resolved', resolvedRenewalCount],
+            ['cleared', 'Cleared', clearedRenewalCount],
+            ['all', 'All visible', unresolvedRenewalCount + resolvedRenewalCount],
+          ].map(([value, label, count]) => (
+            <button
+              key={value}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
+                renewalView === value
+                  ? 'bg-blue-600 text-white border-blue-600'
+                  : 'bg-white text-gray-600 border-gray-200 hover:border-blue-300 hover:text-blue-600'
+              }`}
+              onClick={() => setRenewalView(value)}
+            >
+              {label} ({count})
+            </button>
+          ))}
         </div>
 
         <div className="divide-y divide-gray-100">
@@ -764,12 +852,12 @@ export default function InternManagement() {
                 Try Again
               </button>
             </div>
-          ) : renewalRequests.length === 0 ? (
+          ) : visibleRenewalRequests.length === 0 ? (
             <div className="p-8 text-center">
               <ShieldCheck className="w-8 h-8 text-gray-300 mx-auto mb-2" />
-              <p className="text-sm font-semibold text-gray-600">No Face ID renewal requests</p>
+              <p className="text-sm font-semibold text-gray-600">No {renewalView} Face ID renewal requests</p>
             </div>
-          ) : renewalRequests.slice(0, 10).map(request => (
+          ) : visibleRenewalRequests.map(request => (
             <div key={request.id} className="p-4 sm:px-5 flex flex-col lg:flex-row lg:items-center gap-3">
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
@@ -811,6 +899,32 @@ export default function InternManagement() {
               )}
               {request.status === 'approved' && (
                 <p className="text-[11px] font-semibold text-blue-600 flex-shrink-0">Waiting for intern update</p>
+              )}
+              {['rejected', 'completed'].includes(request.status) && !request.dismissed_at && (
+                <button
+                  className="btn btn-secondary btn-sm text-red-600 flex-shrink-0"
+                  onClick={() => setRenewalConfirm({ type: 'visibility', request, dismissed: true })}
+                  disabled={renewalActionId === request.id}
+                  title="Remove from the active admin queue without deleting its audit record"
+                >
+                  <Eraser className="w-4 h-4" />
+                  {renewalActionId === request.id ? 'Clearing...' : 'Clear'}
+                </button>
+              )}
+              {request.dismissed_at && (
+                <div className="flex flex-col items-start lg:items-end gap-1 flex-shrink-0">
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => setRenewalConfirm({ type: 'visibility', request, dismissed: false })}
+                    disabled={renewalActionId === request.id}
+                  >
+                    <Undo2 className="w-4 h-4" />
+                    {renewalActionId === request.id ? 'Restoring...' : 'Restore'}
+                  </button>
+                  <span className="text-[10px] text-gray-400">
+                    Cleared by {request.dismissed_by_name || 'staff'}
+                  </span>
+                </div>
               )}
             </div>
           ))}
@@ -922,6 +1036,65 @@ export default function InternManagement() {
           Are you sure you want to {selected?.status === 'archived' ? 'unarchive' : 'archive'} <strong>{selected?.full_name}</strong>?
           {selected?.status !== 'archived' && " Archiving will keep their account and profile history in the database but change their status to Archived."}
         </p>
+      </Modal>
+
+      <Modal
+        isOpen={!!renewalConfirm}
+        onClose={() => {
+          if (!clearingResolved && !renewalActionId) setRenewalConfirm(null);
+        }}
+        title={renewalConfirm?.type === 'clear-resolved'
+          ? 'Clear Resolved Requests'
+          : renewalConfirm?.dismissed
+            ? 'Clear Renewal Request'
+            : 'Restore Renewal Request'}
+        size="sm"
+        footer={
+          <>
+            <button
+              className="btn btn-secondary"
+              onClick={() => setRenewalConfirm(null)}
+              disabled={clearingResolved || !!renewalActionId}
+            >
+              Cancel
+            </button>
+            <button
+              className={renewalConfirm?.dismissed === false ? 'btn btn-primary' : 'btn btn-danger'}
+              onClick={() => {
+                if (renewalConfirm?.type === 'clear-resolved') {
+                  handleClearResolved();
+                } else if (renewalConfirm?.request) {
+                  handleRequestVisibility(renewalConfirm.request, renewalConfirm.dismissed);
+                }
+              }}
+              disabled={clearingResolved || !!renewalActionId}
+            >
+              {clearingResolved || renewalActionId
+                ? 'Processing...'
+                : renewalConfirm?.dismissed === false
+                  ? 'Restore Request'
+                  : renewalConfirm?.type === 'clear-resolved'
+                    ? 'Clear Resolved'
+                    : 'Clear Request'}
+            </button>
+          </>
+        }
+      >
+        {renewalConfirm?.type === 'clear-resolved' ? (
+          <p className="text-gray-600">
+            Clear <strong>{renewalConfirm.count}</strong> resolved renewal request{renewalConfirm.count === 1 ? '' : 's'} from the admin queue?
+            The audit records will be retained in the Cleared view and can be restored later.
+          </p>
+        ) : renewalConfirm?.dismissed ? (
+          <p className="text-gray-600">
+            Clear the resolved renewal request for <strong>{renewalConfirm.request?.intern?.full_name || renewalConfirm.request?.intern_name}</strong>?
+            Its audit record will be retained and can be restored later.
+          </p>
+        ) : (
+          <p className="text-gray-600">
+            Restore the renewal request for <strong>{renewalConfirm?.request?.intern?.full_name || renewalConfirm?.request?.intern_name}</strong> to the Resolved view?
+          </p>
+        )}
       </Modal>
 
       <Modal
