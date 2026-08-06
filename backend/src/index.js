@@ -1120,9 +1120,34 @@ app.get('/', (req, res) => {
   res.json({ status: 'ok', message: 'PNP ITMS backend is running' });
 });
 
-// Keep-alive endpoint — pinged by cron-job.org every 14 minutes to prevent Render cold starts
-app.get('/ping', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+// Health endpoint — invoking it verifies Vercel compute and keeps Supabase active.
+app.get('/ping', async (req, res) => {
+  const checkedAt = new Date().toISOString();
+  try {
+    const { error } = await supabase
+      .from('accounts')
+      .select('id')
+      .limit(1);
+
+    if (error) {
+      throw error;
+    }
+
+    return res.json({
+      status: 'ok',
+      backend: 'ok',
+      database: 'ok',
+      checked_at: checkedAt,
+    });
+  } catch (error) {
+    console.error('Supabase health check failed:', error?.message || error);
+    return res.status(503).json({
+      status: 'degraded',
+      backend: 'ok',
+      database: 'unavailable',
+      checked_at: checkedAt,
+    });
+  }
 });
 
 app.listen(port, host, () => {
