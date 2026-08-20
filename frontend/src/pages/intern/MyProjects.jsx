@@ -118,6 +118,23 @@ export default function MyProjects() {
   const QuickViewStatusIcon = quickViewStatus.icon;
   const quickViewMembers = Array.isArray(quickViewProject?.members) ? quickViewProject.members : [];
 
+  const isProjectMember = project => Array.isArray(project?.members)
+    && project.members.some(member => String(member?.id) === String(user?.id));
+
+  const isProjectStaff = project => user?.role === 'admin'
+    || (user?.role === 'supervisor'
+      && String(project?.division_id || '') === String(user?.division_id || ''));
+
+  const isProjectLeader = project => String(project?.leader_id || '') === String(user?.id || '');
+  const canEditProject = project => isProjectStaff(project)
+    || isProjectLeader(project)
+    || isProjectMember(project);
+  const canDeleteProject = project => isProjectStaff(project) || isProjectLeader(project);
+  const canUploadToProject = canEditProject;
+  const canDeleteProjectFile = (project, file) => isProjectStaff(project)
+    || isProjectLeader(project)
+    || String(file?.uploaded_by || '') === String(user?.id || '');
+
   const handleOpenCreateModal = () => {
     setEditingProject(null);
     const userDiv = user?.division_id || '';
@@ -469,14 +486,16 @@ export default function MyProjects() {
                   </button>
 
                   <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => handleOpenEditModal(proj)}
-                      className="p-1.5 text-slate-600 hover:text-blue-600 hover:bg-white rounded-lg transition-colors border border-transparent hover:border-slate-200"
-                      title="Edit Project"
-                    >
-                      <Edit3 className="w-4 h-4" />
-                    </button>
-                    {(user.role === 'admin' || user.role === 'supervisor' || String(proj.leader_id) === String(user.id)) && (
+                    {canEditProject(proj) && (
+                      <button
+                        onClick={() => handleOpenEditModal(proj)}
+                        className="p-1.5 text-slate-600 hover:text-blue-600 hover:bg-white rounded-lg transition-colors border border-transparent hover:border-slate-200"
+                        title="Edit Project"
+                      >
+                        <Edit3 className="w-4 h-4" />
+                      </button>
+                    )}
+                    {canDeleteProject(proj) && (
                       <button
                         onClick={() => handleDeleteProject(proj.id)}
                         className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-white rounded-lg transition-colors border border-transparent hover:border-slate-200"
@@ -880,6 +899,7 @@ export default function MyProjects() {
       >
         <div className="space-y-5 max-h-[75vh] overflow-y-auto pr-1">
           {/* Upload Deliverable Box */}
+          {canUploadToProject(activeProjectForFiles) && (
           <form onSubmit={handleFileUpload} className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
             <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
               <Upload className="w-4 h-4 text-blue-600" /> Upload Project Deliverable / File
@@ -919,6 +939,7 @@ export default function MyProjects() {
               Upload File to Directory
             </button>
           </form>
+          )}
 
           {/* Files List */}
           <div className="space-y-2">
@@ -965,7 +986,7 @@ export default function MyProjects() {
                         >
                           <Download className="w-3.5 h-3.5" /> Download
                         </a>
-                        {(user.role === 'admin' || user.role === 'supervisor' || String(file.uploaded_by) === String(user.id)) && (
+                        {canDeleteProjectFile(activeProjectForFiles, file) && (
                           <button
                             onClick={() => handleDeleteFile(file.id)}
                             className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg"

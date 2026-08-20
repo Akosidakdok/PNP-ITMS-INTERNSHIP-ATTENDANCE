@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext.jsx';
 import api from '../utils/api.js';
 import toast from 'react-hot-toast';
@@ -7,7 +7,7 @@ import Modal from '../components/common/Modal.jsx';
 import FaceRegistrationModal from '../components/face/FaceRegistrationModal.jsx';
 
 export default function Profile({ role }) {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState(null);
   
@@ -34,6 +34,8 @@ export default function Profile({ role }) {
   const [renewalReason, setRenewalReason] = useState('');
   const [submittingRenewal, setSubmittingRenewal] = useState(false);
   const [selfRenewalOpen, setSelfRenewalOpen] = useState(false);
+  const [initialEnrollmentOpen, setInitialEnrollmentOpen] = useState(false);
+  const initialEnrollmentPrompted = useRef(false);
 
   const fetchProfile = async () => {
     setLoading(true);
@@ -42,6 +44,15 @@ export default function Profile({ role }) {
         const res = await api.get('/interns/me/profile');
         const intern = res.data.intern;
         setProfile(intern);
+        if (
+          !initialEnrollmentPrompted.current
+          && intern.self_face_enrollment_available
+          && !intern.face_registered
+          && intern.status === 'active'
+        ) {
+          initialEnrollmentPrompted.current = true;
+          setInitialEnrollmentOpen(true);
+        }
         setPersonalForm({
           email: intern.email || '',
           phone: intern.phone || '',
@@ -160,6 +171,11 @@ export default function Profile({ role }) {
 
   const initials = (role === 'intern' ? profile?.full_name : 'Administrator')
     .split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
+  const canSelfEnroll = Boolean(
+    profile?.self_face_enrollment_available
+    && !profile?.face_registered
+    && profile?.status === 'active'
+  );
 
   return (
     <div className="max-w-6xl mx-auto space-y-6 animate-fade-in px-4">
@@ -386,14 +402,27 @@ export default function Profile({ role }) {
                 <p className="text-xs text-gray-600">
                   {profile.face_registered
                     ? 'Your face profile is registered and active for 1:1 attendance verification.'
-                    : 'Your biometric profile has not been enrolled. Contact your administrator or assigned supervisor to complete enrollment in person.'}
+                    : canSelfEnroll
+                      ? 'As a fresh account, you may complete your initial Face ID registration yourself once. This option closes after a successful enrollment.'
+                      : 'Your biometric profile has not been enrolled. Contact your administrator or assigned supervisor to complete enrollment in person.'}
                 </p>
 
                 {!profile.face_registered ? (
-                  <div className="w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg bg-blue-50 border border-blue-100 text-blue-700 text-xs font-semibold">
-                    <ShieldCheck className="w-4 h-4" />
-                    Initial enrollment is managed by authorized staff
-                  </div>
+                  canSelfEnroll ? (
+                    <button
+                      type="button"
+                      className="btn btn-primary w-full"
+                      onClick={() => setInitialEnrollmentOpen(true)}
+                    >
+                      <ShieldCheck className="w-4 h-4" />
+                      Register My Face Now
+                    </button>
+                  ) : (
+                    <div className="w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg bg-blue-50 border border-blue-100 text-blue-700 text-xs font-semibold">
+                      <ShieldCheck className="w-4 h-4" />
+                      Initial enrollment is managed by authorized staff
+                    </div>
+                  )
                 ) : faceWorkflow.active_request?.status === 'approved' ? (
                   <button
                     type="button"
@@ -524,6 +553,17 @@ export default function Profile({ role }) {
           </p>
         </div>
       </Modal>
+
+      <FaceRegistrationModal
+        isOpen={initialEnrollmentOpen}
+        onClose={() => setInitialEnrollmentOpen(false)}
+        onSuccess={async () => {
+          setInitialEnrollmentOpen(false);
+          await Promise.all([fetchProfile(), refreshUser()]);
+        }}
+        intern={profile}
+        selfEnrollment
+      />
 
       <FaceRegistrationModal
         isOpen={selfRenewalOpen}

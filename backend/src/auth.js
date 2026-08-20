@@ -77,7 +77,9 @@ export async function loginUser(username, password) {
     division_id: divId,
     division_name: divName,
     department_id: divId,
-    department_name: divName
+    department_name: divName,
+    face_registered: Boolean(data.face_registered),
+    self_face_enrollment_available: Boolean(data.self_face_enrollment_available),
   };
 
   const token = jwt.sign(userPayload, JWT_SECRET, { expiresIn: '8h' });

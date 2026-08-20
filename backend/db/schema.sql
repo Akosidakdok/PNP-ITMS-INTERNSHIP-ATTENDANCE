@@ -188,8 +188,9 @@ alter table public.intern_projects enable row level security;
 create policy "Allow all authenticated users to read projects"
 on public.intern_projects for select to authenticated using (true);
 
-create policy "Allow all authenticated users to manage projects"
-on public.intern_projects for all to authenticated using (true) with check (true);
+-- Project mutation policies are installed by migration_project_authorization.sql.
+-- The API additionally enforces leader/member permissions and supervisor
+-- division scope using the current database account state.
 
 -- Project Files repository table for deliverables & project documents
 create table if not exists project_files (
@@ -213,8 +214,9 @@ alter table public.project_files enable row level security;
 create policy "Allow all authenticated users to read project files"
 on public.project_files for select to authenticated using (true);
 
-create policy "Allow all authenticated users to manage project files"
-on public.project_files for all to authenticated using (true) with check (true);
+-- Project file mutation policies are installed by
+-- migration_project_authorization.sql. Files remain readable to authenticated
+-- users as part of the project directory.
 
 -- Example seed data for admin and intern users (password = "password")
 insert into accounts (username, password_hash, full_name, email, role)

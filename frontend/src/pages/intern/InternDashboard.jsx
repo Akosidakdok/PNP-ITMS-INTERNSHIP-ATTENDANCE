@@ -89,13 +89,25 @@ export default function InternDashboard() {
                 Biometric Face Verification Required
               </h3>
               <p className="text-xs text-amber-900 mt-0.5 max-w-lg">
-                Contact your administrator or assigned supervisor to complete biometric enrollment in person before using QR attendance.
+                {intern.self_face_enrollment_available
+                  ? 'Your fresh account includes one self-service Face ID enrollment. Register now before using QR attendance.'
+                  : 'Contact your administrator or assigned supervisor to complete biometric enrollment in person before using QR attendance.'}
               </p>
             </div>
           </div>
-          <div className="text-xs font-bold text-amber-800 bg-amber-100 border border-amber-200 rounded-xl px-4 py-2.5 whitespace-nowrap">
-            Staff enrollment required
-          </div>
+          {intern.self_face_enrollment_available ? (
+            <button
+              type="button"
+              className="btn btn-primary whitespace-nowrap"
+              onClick={() => navigate('/intern/profile')}
+            >
+              Register My Face
+            </button>
+          ) : (
+            <div className="text-xs font-bold text-amber-800 bg-amber-100 border border-amber-200 rounded-xl px-4 py-2.5 whitespace-nowrap">
+              Staff enrollment required
+            </div>
+          )}
         </div>
       )}
 

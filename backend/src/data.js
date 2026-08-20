@@ -5,7 +5,7 @@ import { supabase } from './supabaseClient.js';
 
 const INTERN_ROLE = 'intern';
 const ADMIN_ROLE = 'admin';
-const INTERN_LIST_FIELDS = 'id, username, full_name, first_name, middle_name, last_name, name_suffix, email, role, school, school_id, course, division_id, division_name, status, start_date, end_date, required_hours, rendered_hours, student_id, year_level, phone, home_address, emergency_name, emergency_relation, emergency_phone, face_registered, face_registered_at';
+const INTERN_LIST_FIELDS = 'id, username, full_name, first_name, middle_name, last_name, name_suffix, email, role, school, school_id, course, division_id, division_name, status, start_date, end_date, required_hours, rendered_hours, student_id, year_level, phone, home_address, emergency_name, emergency_relation, emergency_phone, face_registered, face_registered_at, self_face_enrollment_available';
 const INTERN_MUTATION_FIELDS = 'id, username, full_name, first_name, middle_name, last_name, name_suffix, email, role, school, school_id, course, division_id, division_name, status, start_date, end_date, required_hours, rendered_hours, student_id, year_level, phone, home_address, emergency_name, emergency_relation, emergency_phone';
 const SELF_PROFILE_EDITABLE_FIELDS = new Set([
   'email',
@@ -269,7 +269,7 @@ export async function getInternById(id) {
   try {
     const { data, error } = await supabase
       .from('accounts')
-      .select(`${baseFields}, face_registered, face_registered_at`)
+      .select(`${baseFields}, face_registered, face_registered_at, self_face_enrollment_available`)
       .eq('id', id)
       .eq('role', INTERN_ROLE)
       .single();
@@ -283,7 +283,7 @@ export async function getInternById(id) {
       .eq('role', INTERN_ROLE)
       .single();
     if (error) throw error;
-    return { ...data, face_registered: false, face_registered_at: null };
+    return { ...data, face_registered: false, face_registered_at: null, self_face_enrollment_available: false };
   }
 }
 
@@ -299,6 +299,7 @@ export async function createIntern(payload) {
     face_photo: _facePhoto,
     face_registered: _faceRegistered,
     face_registered_at: _faceRegisteredAt,
+    self_face_enrollment_available: _selfFaceEnrollmentAvailable,
     id: _id,
     created_at: _createdAt,
     ...rest
@@ -320,7 +321,16 @@ export async function createIntern(payload) {
 
   const { data, error } = await supabase
     .from('accounts')
-    .insert([{ ...rest, password_hash, role: INTERN_ROLE, division_id: divId, division_name: divName, school_id: schId, school: schoolName }])
+    .insert([{
+      ...rest,
+      password_hash,
+      role: INTERN_ROLE,
+      division_id: divId,
+      division_name: divName,
+      school_id: schId,
+      school: schoolName,
+      self_face_enrollment_available: true,
+    }])
     .select(INTERN_MUTATION_FIELDS)
     .single();
 
@@ -340,6 +350,7 @@ export async function updateIntern(id, payload) {
     face_photo: _facePhoto,
     face_registered: _faceRegistered,
     face_registered_at: _faceRegisteredAt,
+    self_face_enrollment_available: _selfFaceEnrollmentAvailable,
     id: _id,
     created_at: _createdAt,
     ...rest
@@ -418,7 +429,7 @@ export async function getCurrentUserProfile(userId) {
   try {
     const { data, error } = await supabase
       .from('accounts')
-      .select(`${baseFields}, face_registered, face_registered_at`)
+      .select(`${baseFields}, face_registered, face_registered_at, self_face_enrollment_available`)
       .eq('id', userId)
       .single();
 
@@ -438,7 +449,7 @@ export async function getCurrentUserProfile(userId) {
       if (error.code === 'PGRST116') return null;
       throw error;
     }
-    return { ...data, face_registered: false, face_registered_at: null };
+    return { ...data, face_registered: false, face_registered_at: null, self_face_enrollment_available: false };
   }
 }
 
@@ -472,7 +483,7 @@ export async function updateCurrentUserProfile(userId, updates) {
       .single();
 
     if (error) throw error;
-    return { ...data, face_registered: false, face_registered_at: null };
+    return { ...data, face_registered: false, face_registered_at: null, self_face_enrollment_available: false };
   }
 }
 
@@ -1669,14 +1680,17 @@ export async function createProject(payload, userId) {
 }
 
 export async function updateProject(id, payload) {
-  const updates = { ...payload, updated_at: new Date().toISOString() };
+  const allowedFields = new Set([
+    'title', 'description', 'group_name', 'division_id', 'status', 'progress',
+    'leader_id', 'members', 'github_repo', 'demo_url'
+  ]);
+  const updates = {
+    ...Object.fromEntries(Object.entries(payload || {}).filter(([key]) => allowedFields.has(key))),
+    updated_at: new Date().toISOString()
+  };
   if (updates.progress !== undefined) {
     updates.progress = Math.min(100, Math.max(0, Number(updates.progress)));
   }
-
-  delete updates.id;
-  delete updates.leader;
-  delete updates.files;
 
   const { data, error } = await supabase
     .from('intern_projects')
@@ -1817,7 +1831,7 @@ export async function getProjectMemberList() {
   try {
     const { data, error } = await supabase
       .from('accounts')
-      .select('id, full_name, email, division_name, division_id, role, status')
+      .select('id, full_name, division_name, division_id, role, status')
       .eq('role', 'intern')
       .order('full_name', { ascending: true });
 

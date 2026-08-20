@@ -38,7 +38,15 @@ export default function Login() {
       const password = String(form.password).trim();
       const user = await login(username, password);
       toast.success(`Welcome back, ${user.full_name || user.username}!`);
-      navigate(user.role === 'admin' ? '/admin' : '/intern', { replace: true });
+      const needsInitialFaceEnrollment = user.role === 'intern'
+        && user.self_face_enrollment_available
+        && !user.face_registered;
+      navigate(
+        needsInitialFaceEnrollment
+          ? '/intern/profile'
+          : user.role === 'admin' ? '/admin' : '/intern',
+        { replace: true }
+      );
     } catch (err) {
       const message = err?.response?.data?.error || 'Login failed. Please check your credentials.';
       const serverRetryAfter = Number(err?.response?.data?.retry_after_seconds || 0);

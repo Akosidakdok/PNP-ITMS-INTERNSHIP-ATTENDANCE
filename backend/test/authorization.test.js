@@ -1,5 +1,6 @@
 import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 
 process.env.SUPABASE_URL ||= 'http://authorization.test';
 process.env.SUPABASE_SERVICE_ROLE_KEY ||= 'test-service-role-key';
@@ -9,6 +10,12 @@ const {
   assertSupervisorCanAccessIntern,
   assertSupervisorCanAccessInterns,
   assertSupervisorCanAccessResource,
+  assertCanUpdateProject,
+  assertCanDeleteProject,
+  assertCanUploadProjectFile,
+  assertCanDeleteProjectFile,
+  getProjectAccessFlags,
+  sanitizeProjectUpdatePayload,
 } = await import('../src/authorization.js');
 
 const originalFrom = supabase.from.bind(supabase);
@@ -31,6 +38,13 @@ function fakeFrom({ supervisor, interns = [], resources = {} }) {
           const requestedIds = new Set(inFilter[1].map(Number));
           return {
             data: interns.filter(intern => requestedIds.has(Number(intern.id))),
+            error: null,
+          };
+        }
+        if (roleFilter === 'intern') {
+          const accountId = equalFilters.find(([column]) => column === 'id')?.[1];
+          return {
+            data: interns.find(intern => Number(intern.id) === Number(accountId)) || null,
             error: null,
           };
         }
@@ -159,4 +173,127 @@ test('true administrators bypass supervisor division checks', async () => {
       'intern documents'
     )
   );
+});
+
+test('project access flags distinguish leaders, members, and scoped staff', () => {
+  const project = {
+    id: 10,
+    leader_id: 1,
+    division_id: 7,
+    members: [{ id: 1 }, { id: 2 }, { id: 'custom_name' }],
+  };
+
+  const leader = getProjectAccessFlags({ id: 1, role: 'intern' }, project);
+  const member = getProjectAccessFlags({ id: 2, role: 'intern' }, project);
+  const unrelated = getProjectAccessFlags({ id: 3, role: 'intern' }, project);
+  const scopedSupervisor = getProjectAccessFlags({ id: 50, role: 'supervisor' }, project, 7);
+  const otherSupervisor = getProjectAccessFlags({ id: 51, role: 'supervisor' }, project, 8);
+
+  assert.equal(leader.canDelete, true);
+  assert.equal(member.canUpdate, true);
+  assert.equal(member.canDelete, false);
+  assert.equal(unrelated.canUpload, false);
+  assert.equal(scopedSupervisor.isStaff, true);
+  assert.equal(otherSupervisor.canUpdate, false);
+});
+
+test('member project updates cannot change team ownership or division', () => {
+  const payload = {
+    title: 'Updated title',
+    progress: 75,
+    members: [{ id: 999 }],
+    leader_id: 999,
+    division_id: 99,
+    unexpected_column: 'blocked',
+  };
+
+  assert.deepEqual(
+    sanitizeProjectUpdatePayload(payload, { canManageTeam: false, isStaff: false }),
+    { title: 'Updated title', progress: 75 }
+  );
+
+  assert.deepEqual(
+    sanitizeProjectUpdatePayload(payload, { canManageTeam: true, isStaff: true, isAdmin: true }),
+    {
+      title: 'Updated title',
+      progress: 75,
+      members: [{ id: 999 }],
+      division_id: 99,
+      leader_id: 999,
+    }
+  );
+
+  assert.deepEqual(
+    sanitizeProjectUpdatePayload(payload, { canManageTeam: true, isStaff: true, isAdmin: false }),
+    {
+      title: 'Updated title',
+      progress: 75,
+      members: [{ id: 999 }],
+    }
+  );
+});
+
+test('project mutations enforce member and supervisor scope', async () => {
+  const project = {
+    id: 10,
+    leader_id: 1,
+    division_id: 7,
+    members: [{ id: 1 }, { id: 2 }],
+  };
+
+  supabase.from = fakeFrom({
+    supervisor: { id: 50, role: 'supervisor', division_id: 7, status: 'active' },
+    interns: [
+      { id: 1, role: 'intern', division_id: 7, status: 'active' },
+      { id: 2, role: 'intern', division_id: 7, status: 'active' },
+      { id: 3, role: 'intern', division_id: 7, status: 'active' },
+    ],
+    resources: { intern_projects: [project] },
+  });
+
+  await assert.doesNotReject(assertCanUpdateProject({ id: 2, role: 'intern' }, 10));
+  await assert.doesNotReject(assertCanUploadProjectFile({ id: 2, role: 'intern' }, 10));
+  await assert.rejects(
+    assertCanDeleteProject({ id: 2, role: 'intern' }, 10),
+    error => error.statusCode === 403
+  );
+  await assert.rejects(
+    assertCanUpdateProject({ id: 3, role: 'intern' }, 10),
+    error => error.statusCode === 403
+  );
+  await assert.doesNotReject(assertCanDeleteProject(supervisorToken, 10));
+});
+
+test('project file deletion validates the route project and file ownership', async () => {
+  supabase.from = fakeFrom({
+    interns: [
+      { id: 1, role: 'intern', division_id: 7, status: 'active' },
+      { id: 2, role: 'intern', division_id: 7, status: 'active' },
+    ],
+    resources: {
+      intern_projects: [{ id: 10, leader_id: 1, division_id: 7, members: [{ id: 2 }] }],
+      project_files: [{ id: 20, project_id: 10, uploaded_by: 2 }],
+    },
+  });
+
+  await assert.doesNotReject(
+    assertCanDeleteProjectFile({ id: 2, role: 'intern' }, 10, 20)
+  );
+  await assert.rejects(
+    assertCanDeleteProjectFile({ id: 2, role: 'intern' }, 999, 20),
+    error => error.statusCode === 404
+  );
+});
+
+test('project authorization migration removes broad mutation policies', async () => {
+  const migration = await readFile(
+    new URL('../db/migration_project_authorization.sql', import.meta.url),
+    'utf8'
+  );
+
+  assert.match(migration, /drop policy if exists "Allow all authenticated users to manage projects"/);
+  assert.match(migration, /create policy "Authorized users can update projects"/);
+  assert.match(migration, /project\.division_id = me\.division_id/);
+  assert.match(migration, /project_files\.uploaded_by = me\.id/);
+  assert.doesNotMatch(migration, /for all to authenticated using \(true\)/);
 });

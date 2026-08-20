@@ -82,7 +82,13 @@ import {
   assertSupervisorCanAccessIntern,
   assertSupervisorCanAccessInterns,
   assertSupervisorCanAccessResource,
-  getCurrentSupervisorDivisionId
+  getCurrentSupervisorDivisionId,
+  authorizeProjectCreation,
+  assertCanUpdateProject,
+  assertCanDeleteProject,
+  assertCanUploadProjectFile,
+  assertCanDeleteProjectFile,
+  sanitizeProjectUpdatePayload
 } from './authorization.js';
 
 const app = express();
@@ -844,9 +850,49 @@ app.post('/attendance/validate-qr', authMiddleware, async (req, res) => {
 });
 
 app.post('/interns/register-face', authMiddleware, async (req, res) => {
-  return res.status(403).json({
-    error: 'Initial biometric enrollment must be completed by an authorized administrator or supervisor'
-  });
+  if (req.user.role !== 'intern') {
+    return res.status(403).json({ error: 'Intern access required' });
+  }
+
+  try {
+    const { data: intern, error: internError } = await supabase
+      .from('accounts')
+      .select('id, status, face_registered, self_face_enrollment_available')
+      .eq('id', req.user.id)
+      .eq('role', 'intern')
+      .single();
+
+    if (internError || !intern) {
+      return res.status(404).json({ error: 'Intern account not found' });
+    }
+    if (intern.status !== 'active') {
+      return res.status(403).json({ error: 'Only active intern accounts may enroll Face ID' });
+    }
+    if (intern.face_registered || !intern.self_face_enrollment_available) {
+      return res.status(409).json({
+        error: 'The one-time self-enrollment option is no longer available for this account'
+      });
+    }
+
+    const data = await registerUserFace(
+      req.user.id,
+      req.body.face_embedding,
+      req.body.photo,
+      {
+        actorId: req.user.id,
+        reason: 'One-time self enrollment for a fresh intern account',
+      }
+    );
+
+    return res.json({
+      success: true,
+      message: 'Face ID registered successfully. Your one-time enrollment is complete.',
+      user: data,
+    });
+  } catch (error) {
+    console.error('Error in one-time intern face enrollment:', error);
+    return res.status(error.statusCode || 400).json({ error: error.message });
+  }
 });
 
 app.get('/interns/me/face-enrollment', authMiddleware, async (req, res) => {
@@ -1097,34 +1143,44 @@ app.get('/projects/:id', authMiddleware, async (req, res) => {
 
 app.post('/projects', authMiddleware, async (req, res) => {
   try {
-    const project = await createProject(req.body, req.user.id);
+    const creation = await authorizeProjectCreation(req.user, req.body);
+    const project = await createProject({
+      ...req.body,
+      division_id: creation.divisionId,
+      leader_id: creation.leaderId,
+    }, req.user.id);
     return res.status(201).json(project);
   } catch (error) {
-    return res.status(400).json({ error: error.message });
+    return res.status(error.statusCode || 400).json({ error: error.message });
   }
 });
 
 app.put('/projects/:id', authMiddleware, async (req, res) => {
   try {
-    const project = await updateProject(Number(req.params.id), req.body);
+    const projectId = Number(req.params.id);
+    const access = await assertCanUpdateProject(req.user, projectId);
+    const updates = sanitizeProjectUpdatePayload(req.body, access);
+    const project = await updateProject(projectId, updates);
     return res.json(project);
   } catch (error) {
-    return res.status(400).json({ error: error.message });
+    return res.status(error.statusCode || 400).json({ error: error.message });
   }
 });
 
 app.delete('/projects/:id', authMiddleware, async (req, res) => {
   try {
+    await assertCanDeleteProject(req.user, Number(req.params.id));
     const isAdmin = req.user.role === 'admin' || req.user.role === 'supervisor';
     const result = await deleteProject(Number(req.params.id), req.user.id, isAdmin);
     return res.json(result);
   } catch (error) {
-    return res.status(400).json({ error: error.message });
+    return res.status(error.statusCode || 400).json({ error: error.message });
   }
 });
 
 app.post('/projects/:id/files', authMiddleware, upload.single('file'), async (req, res) => {
   try {
+    await assertCanUploadProjectFile(req.user, Number(req.params.id));
     const file = await uploadProjectFile({
       projectId: Number(req.params.id),
       userId: req.user.id,
@@ -1134,17 +1190,17 @@ app.post('/projects/:id/files', authMiddleware, upload.single('file'), async (re
     });
     return res.status(201).json(file);
   } catch (error) {
-    return res.status(400).json({ error: error.message });
+    return res.status(error.statusCode || 400).json({ error: error.message });
   }
 });
 
 app.delete('/projects/:id/files/:fileId', authMiddleware, async (req, res) => {
   try {
-    const isAdmin = req.user.role === 'admin' || req.user.role === 'supervisor';
-    const result = await deleteProjectFile(Number(req.params.fileId), req.user.id, isAdmin);
+    await assertCanDeleteProjectFile(req.user, Number(req.params.id), Number(req.params.fileId));
+    const result = await deleteProjectFile(Number(req.params.fileId), req.user.id, true);
     return res.json(result);
   } catch (error) {
-    return res.status(400).json({ error: error.message });
+    return res.status(error.statusCode || 400).json({ error: error.message });
   }
 });
 

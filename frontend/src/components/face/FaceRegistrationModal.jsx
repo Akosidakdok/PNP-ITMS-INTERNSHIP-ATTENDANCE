@@ -12,6 +12,7 @@ export default function FaceRegistrationModal({
   intern,
   approvedRequest = null,
   selfRenewal = false,
+  selfEnrollment = false,
 }) {
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -50,9 +51,11 @@ export default function FaceRegistrationModal({
         throw new Error('Select an intern before starting biometric enrollment');
       }
 
-      const endpoint = selfRenewal
-        ? '/interns/me/renew-face'
-        : `/interns/${intern.id}/register-face`;
+      const endpoint = selfEnrollment
+        ? '/interns/register-face'
+        : selfRenewal
+          ? '/interns/me/renew-face'
+          : `/interns/${intern.id}/register-face`;
       const res = await backendApi.post(endpoint, {
         face_embedding: embedding,
         photo: dataUrl,
@@ -88,15 +91,19 @@ export default function FaceRegistrationModal({
             </div>
             <div>
               <h2 className="font-bold text-lg leading-tight" style={{ fontFamily: 'Outfit, sans-serif' }}>
-                {selfRenewal
-                  ? 'Update Approved Face ID'
+                {selfEnrollment
+                  ? 'Set Up Your Face ID'
+                  : selfRenewal
+                    ? 'Update Approved Face ID'
                   : intern?.face_registered
                     ? 'Renew Face Enrollment'
                     : 'Authorized Face Enrollment'}
               </h2>
               <p className="text-xs text-blue-200">
-                {selfRenewal
-                  ? 'Your approved one-time biometric update'
+                {selfEnrollment
+                  ? 'Your one-time initial enrollment for this fresh account'
+                  : selfRenewal
+                    ? 'Your approved one-time biometric update'
                   : `Registering biometric profile for ${intern?.full_name || 'selected intern'}`}
               </p>
             </div>
@@ -119,7 +126,7 @@ export default function FaceRegistrationModal({
               </div>
               <div>
                 <h3 className="text-xl font-bold text-gray-800" style={{ fontFamily: 'Outfit, sans-serif' }}>
-                  {selfRenewal || intern?.face_registered ? 'Face ID Updated!' : 'Face Registered!'}
+                  {selfRenewal || (!selfEnrollment && intern?.face_registered) ? 'Face ID Updated!' : 'Face Registered!'}
                 </h3>
                 <p className="text-sm text-gray-500 mt-1 max-w-xs mx-auto">
                   The biometric profile is now active for attendance verification and the event was added to enrollment history.
@@ -139,7 +146,7 @@ export default function FaceRegistrationModal({
                 <ul className="list-disc ml-4 space-y-0.5 text-amber-700">
                   <li>Ensure good room lighting on your face</li>
                   <li>Remove sunglasses or face coverings</li>
-                  <li>Confirm the selected intern is physically present</li>
+                  <li>{selfEnrollment ? 'Make sure only you are visible in the camera' : 'Confirm the selected intern is physically present'}</li>
                   <li>Have the intern look directly into the camera</li>
                 </ul>
               </div>
@@ -171,7 +178,7 @@ export default function FaceRegistrationModal({
               )}
 
               <FaceCamera
-                title={selfRenewal || intern?.face_registered ? 'Capture Updated Face ID' : 'Enroll Face Profile'}
+                title={selfRenewal || (!selfEnrollment && intern?.face_registered) ? 'Capture Updated Face ID' : 'Enroll Face Profile'}
                 onCapture={handleCapture}
                 disabled={loading || reasonIncomplete}
                 disabledMessage={reasonIncomplete
@@ -179,7 +186,7 @@ export default function FaceRegistrationModal({
                   : ''}
                 actionLabel={reasonIncomplete
                   ? `Complete Renewal Reason (${reasonCharactersNeeded} more)`
-                  : selfRenewal || intern?.face_registered
+                  : selfRenewal || (!selfEnrollment && intern?.face_registered)
                     ? 'Capture & Update Face ID'
                     : 'Capture & Enroll Face ID'}
               />
