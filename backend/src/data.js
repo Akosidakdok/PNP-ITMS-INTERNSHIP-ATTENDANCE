@@ -1216,18 +1216,22 @@ export async function getDocuments(userId, isAdmin, { status, search, division_i
   const { data: documents, error } = await query;
   if (error) throw error;
 
-  return (documents || []).map(doc => {
-    const { data: publicUrlData } = supabase
+  return Promise.all((documents || []).map(async doc => {
+    const { data: signedUrlData, error: signedUrlError } = await supabase
       .storage
       .from('documents')
-      .getPublicUrl(doc.file_path);
+      .createSignedUrl(doc.file_path, 15 * 60);
 
+    if (signedUrlError) {
+      console.warn(`Could not create signed document URL: ${signedUrlError.message}`);
+    }
     return {
       ...doc,
       full_name: doc.account?.full_name || 'Unknown Intern',
-      public_url: publicUrlData.publicUrl,
+      public_url: signedUrlData?.signedUrl || '',
+      url_expires_in: 15 * 60,
     };
-  });
+  }));
 }
 
 export async function updateDocumentStatus(id, status, adminRemarks) {

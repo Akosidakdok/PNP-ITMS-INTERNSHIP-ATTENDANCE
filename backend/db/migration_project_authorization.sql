@@ -1,4 +1,4 @@
-4-- Restrict direct Supabase project mutations. The Express API performs the
+-- Restrict direct Supabase project mutations. The Express API performs the
 -- same checks with the current database account and service-role client.
 
 drop policy if exists "Allow all authenticated users to manage projects"

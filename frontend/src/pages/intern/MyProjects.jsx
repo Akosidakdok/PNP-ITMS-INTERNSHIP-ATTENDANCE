@@ -118,22 +118,27 @@ export default function MyProjects() {
   const QuickViewStatusIcon = quickViewStatus.icon;
   const quickViewMembers = Array.isArray(quickViewProject?.members) ? quickViewProject.members : [];
 
+  const hasPermissionPayload = project => Boolean(
+    project?.permissions && typeof project.permissions === 'object'
+  );
   const isProjectMember = project => Array.isArray(project?.members)
     && project.members.some(member => String(member?.id) === String(user?.id));
-
+  const isProjectLeader = project => String(project?.leader_id || '') === String(user?.id || '');
   const isProjectStaff = project => user?.role === 'admin'
     || (user?.role === 'supervisor'
       && String(project?.division_id || '') === String(user?.division_id || ''));
-
-  const isProjectLeader = project => String(project?.leader_id || '') === String(user?.id || '');
-  const canEditProject = project => isProjectStaff(project)
+  const hasLegacyProjectAccess = project => isProjectStaff(project)
     || isProjectLeader(project)
     || isProjectMember(project);
-  const canDeleteProject = project => isProjectStaff(project) || isProjectLeader(project);
-  const canUploadToProject = canEditProject;
-  const canDeleteProjectFile = (project, file) => isProjectStaff(project)
-    || isProjectLeader(project)
-    || String(file?.uploaded_by || '') === String(user?.id || '');
+  const canEditProject = project => hasPermissionPayload(project)
+    ? Boolean(project.permissions.can_edit_details || project.permissions.can_update_progress)
+    : hasLegacyProjectAccess(project);
+  const canDeleteProject = project => Boolean(project?.permissions?.can_delete);
+  const canArchiveProject = project => Boolean(project?.permissions?.can_archive);
+  const canUploadToProject = project => hasPermissionPayload(project)
+    ? Boolean(project.permissions.can_upload_files)
+    : hasLegacyProjectAccess(project);
+  const canDeleteProjectFile = (_project, file) => Boolean(file?.permissions?.can_delete);
 
   const handleOpenCreateModal = () => {
     setEditingProject(null);
@@ -205,12 +210,36 @@ export default function MyProjects() {
     }
   };
 
+  const handleArchiveProject = async (project) => {
+    if (!confirm(`Archive "${project.title}"? It will be hidden from interns until assigned staff restores it.`)) return;
+    try {
+      await api.patch(`/projects/${project.id}/archive`, {
+        reason: 'Archived from the intern project workspace',
+      });
+      toast.success('Project archived');
+      fetchData();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to archive project');
+    }
+  };
+
   const filteredInterns = internList.filter(i => {
     const name = i.full_name || '';
     const div = i.division_name || '';
     const query = memberSearch.trim().toLowerCase();
     return name.toLowerCase().includes(query) || div.toLowerCase().includes(query);
   });
+  const editingPermissions = editingProject?.permissions || {};
+  const usesBackendPermissions = hasPermissionPayload(editingProject);
+  const mayEditDetails = !editingProject || (usesBackendPermissions
+    ? editingPermissions.can_edit_details
+    : isProjectStaff(editingProject) || isProjectLeader(editingProject));
+  const mayUpdateProgress = !editingProject || (usesBackendPermissions
+    ? editingPermissions.can_update_progress
+    : hasLegacyProjectAccess(editingProject));
+  const mayManageMembers = !editingProject || (usesBackendPermissions
+    ? editingPermissions.can_manage_members
+    : isProjectStaff(editingProject) || isProjectLeader(editingProject));
 
   const handleSelectIntern = (intern) => {
     if (form.members.some(m => String(m.id) === String(intern.id) || m.full_name === intern.full_name)) {
@@ -504,6 +533,15 @@ export default function MyProjects() {
                         <Trash2 className="w-4 h-4" />
                       </button>
                     )}
+                    {!canDeleteProject(proj) && canArchiveProject(proj) && (
+                      <button
+                        onClick={() => handleArchiveProject(proj)}
+                        className="p-1.5 text-slate-400 hover:text-amber-700 hover:bg-white rounded-lg transition-colors border border-transparent hover:border-slate-200"
+                        title="Archive Project"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -527,18 +565,20 @@ export default function MyProjects() {
             >
               Close
             </button>
-            <button
-              type="button"
-              onClick={() => {
-                const project = quickViewProject;
-                setQuickViewProject(null);
-                handleOpenEditModal(project);
-              }}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-blue-200 text-sm font-semibold text-blue-700 hover:bg-blue-50 transition-colors"
-            >
-              <Edit3 className="w-4 h-4" />
-              Edit Project
-            </button>
+            {canEditProject(quickViewProject) && (
+              <button
+                type="button"
+                onClick={() => {
+                  const project = quickViewProject;
+                  setQuickViewProject(null);
+                  handleOpenEditModal(project);
+                }}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-blue-200 text-sm font-semibold text-blue-700 hover:bg-blue-50 transition-colors"
+              >
+                <Edit3 className="w-4 h-4" />
+                Edit Project
+              </button>
+            )}
             <button
               type="button"
               onClick={() => {
@@ -687,6 +727,7 @@ export default function MyProjects() {
               placeholder="e.g. Intern Attendance & QR Verification Mobile App"
               value={form.title}
               onChange={e => setForm({ ...form, title: e.target.value })}
+              disabled={!mayEditDetails}
               className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
             />
           </div>
@@ -700,6 +741,7 @@ export default function MyProjects() {
                 placeholder="e.g. Software Dev Group A"
                 value={form.group_name}
                 onChange={e => setForm({ ...form, group_name: e.target.value })}
+                disabled={!mayEditDetails}
                 className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
               />
             </div>
@@ -709,6 +751,7 @@ export default function MyProjects() {
               <select
                 value={form.division_id}
                 onChange={e => setForm({ ...form, division_id: e.target.value })}
+                disabled
                 className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">Select Division</option>
@@ -726,6 +769,7 @@ export default function MyProjects() {
               placeholder="Describe the objectives, technical features, and goal of this project..."
               value={form.description}
               onChange={e => setForm({ ...form, description: e.target.value })}
+              disabled={!mayEditDetails}
               className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
             />
           </div>
@@ -737,6 +781,7 @@ export default function MyProjects() {
               <select
                 value={form.status}
                 onChange={e => setForm({ ...form, status: e.target.value })}
+                disabled={!mayUpdateProgress}
                 className="w-full p-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 bg-white"
               >
                 <option value="planning">Planning</option>
@@ -759,6 +804,7 @@ export default function MyProjects() {
                 step="5"
                 value={form.progress}
                 onChange={e => setForm({ ...form, progress: Number(e.target.value) })}
+                disabled={!mayUpdateProgress}
                 className="w-full accent-blue-600 cursor-pointer"
               />
             </div>
@@ -768,6 +814,7 @@ export default function MyProjects() {
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1">Assigned Group Members</label>
             
+            {mayManageMembers && (
             <div className="relative mb-2" ref={memberDropdownRef}>
               <div className="relative">
                 <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
@@ -834,14 +881,17 @@ export default function MyProjects() {
                 </div>
               )}
             </div>
+            )}
 
             <div className="flex flex-wrap gap-2 pt-1 max-h-32 overflow-y-auto">
               {form.members.map((m, idx) => (
                 <span key={idx} className="bg-blue-50 text-blue-800 text-xs px-2.5 py-1 rounded-lg border border-blue-200 flex items-center gap-1.5 font-medium">
                   {m.full_name || m.name}
-                  <button type="button" onClick={() => handleRemoveMember(m)} className="text-blue-400 hover:text-red-600">
-                    <X className="w-3.5 h-3.5" />
-                  </button>
+                  {mayManageMembers && (
+                    <button type="button" onClick={() => handleRemoveMember(m)} className="text-blue-400 hover:text-red-600">
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                 </span>
               ))}
             </div>
@@ -856,6 +906,7 @@ export default function MyProjects() {
                 placeholder="https://github.com/org/repo"
                 value={form.github_repo}
                 onChange={e => setForm({ ...form, github_repo: e.target.value })}
+                disabled={!mayEditDetails}
                 className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
               />
             </div>
@@ -866,6 +917,7 @@ export default function MyProjects() {
                 placeholder="https://demo.app.com"
                 value={form.demo_url}
                 onChange={e => setForm({ ...form, demo_url: e.target.value })}
+                disabled={!mayEditDetails}
                 className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
               />
             </div>

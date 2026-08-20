@@ -136,6 +136,9 @@ export async function assertSupervisorCanAccessResource(
 }
 
 function projectMemberIds(project) {
+  if (Array.isArray(project?.member_ids)) {
+    return new Set(project.member_ids.map(normalizePositiveId).filter(Boolean));
+  }
   if (!Array.isArray(project?.members)) return new Set();
   return new Set(
     project.members
@@ -159,43 +162,56 @@ export function getProjectAccessFlags(user, project, supervisorDivisionId = null
     && projectDivisionId !== null
     && projectDivisionId === normalizePositiveId(supervisorDivisionId);
 
+  const canView = isAdmin || isScopedSupervisor || isLeader || isMember;
+  const canEditDetails = isAdmin || isScopedSupervisor || isLeader;
+  const canUpdateProgress = canEditDetails || isMember;
+  const canManageTeam = isAdmin || isScopedSupervisor || isLeader;
+  const canUpload = canView;
+
   return {
     isAdmin,
     isSupervisor: isScopedSupervisor,
     isStaff: isAdmin || isScopedSupervisor,
     isLeader,
     isMember,
-    canUpdate: isAdmin || isScopedSupervisor || isLeader || isMember,
-    canDelete: isAdmin || isScopedSupervisor || isLeader,
-    canUpload: isAdmin || isScopedSupervisor || isLeader || isMember,
-    canManageTeam: isAdmin || isScopedSupervisor || isLeader,
+    canView,
+    canEditDetails,
+    canUpdateProgress,
+    canUpdate: canEditDetails || canUpdateProgress,
+    canDelete: isAdmin,
+    canArchive: isAdmin || isScopedSupervisor || isLeader,
+    canRestore: isAdmin || isScopedSupervisor,
+    canUpload,
+    canManageTeam,
+    canReassignLeader: isAdmin,
+    canChangeDivision: isAdmin,
+    canViewAudit: isAdmin || isScopedSupervisor || isLeader,
   };
 }
 
-async function getCurrentInternAccount(user) {
-  const internId = normalizePositiveId(user?.id);
-  if (!internId || user?.role !== 'intern') {
-    throw authorizationError('Intern account is not authorized');
+export async function getCurrentAuthorizedAccount(user) {
+  const accountId = normalizePositiveId(user?.id);
+  if (!accountId || !['admin', 'supervisor', 'intern'].includes(user?.role)) {
+    throw authorizationError('Account is not authorized');
   }
 
-  const { data: intern, error } = await supabase
+  const { data: account, error } = await supabase
     .from('accounts')
-    .select('id, role, division_id, status')
-    .eq('id', internId)
-    .eq('role', 'intern')
+    .select('id, full_name, role, division_id, division_name, status')
+    .eq('id', accountId)
     .maybeSingle();
 
   if (error) {
-    console.error('Current intern project authorization lookup failed:', {
+    console.error('Current project account authorization lookup failed:', {
       code: error.code,
-      internId,
+      accountId,
     });
     throw authorizationError('Unable to verify project access', 500);
   }
-  if (!intern || isDisabledAccount(intern)) {
-    throw authorizationError('Intern account is not authorized');
+  if (!account || account.role !== user.role || isDisabledAccount(account)) {
+    throw authorizationError('Account is not authorized');
   }
-  return intern;
+  return account;
 }
 
 async function getProjectAuthorizationRecord(projectId) {
@@ -204,7 +220,7 @@ async function getProjectAuthorizationRecord(projectId) {
 
   const { data: project, error } = await supabase
     .from('intern_projects')
-    .select('id, leader_id, division_id, members')
+    .select('id, title, description, group_name, status, progress, leader_id, division_id, members, github_repo, demo_url, archived_at')
     .eq('id', id)
     .maybeSingle();
 
@@ -213,24 +229,36 @@ async function getProjectAuthorizationRecord(projectId) {
     throw authorizationError('Unable to verify project access', 500);
   }
   if (!project) throw authorizationError('Project not found', 404);
-  return project;
+
+  const { data: memberRows, error: memberError } = await supabase
+    .from('project_members')
+    .select('account_id')
+    .eq('project_id', id)
+    .is('removed_at', null);
+  if (memberError) {
+    console.error('Project membership authorization lookup failed:', {
+      code: memberError.code,
+      projectId: id,
+    });
+    throw authorizationError('Unable to verify project access', 500);
+  }
+  return {
+    ...project,
+    member_ids: (memberRows || []).map(row => row.account_id),
+  };
 }
 
-async function getVerifiedProjectAccess(user, projectId) {
+export async function getVerifiedProjectAccess(user, projectId) {
   const project = await getProjectAuthorizationRecord(projectId);
-  let supervisorDivisionId = null;
-
-  if (user?.role === 'supervisor') {
-    supervisorDivisionId = await getCurrentSupervisorDivisionId(user);
-  } else if (user?.role === 'intern') {
-    await getCurrentInternAccount(user);
-  } else if (user?.role !== 'admin') {
-    throw authorizationError('Project access is not permitted');
-  }
+  const account = await getCurrentAuthorizedAccount(user);
+  const supervisorDivisionId = account.role === 'supervisor'
+    ? normalizePositiveId(account.division_id)
+    : null;
 
   return {
     project,
-    ...getProjectAccessFlags(user, project, supervisorDivisionId),
+    account,
+    ...getProjectAccessFlags(account, project, supervisorDivisionId),
   };
 }
 
@@ -240,15 +268,22 @@ function requireProjectPermission(access, permission, message) {
 }
 
 export async function authorizeProjectCreation(user, payload = {}) {
-  if (user?.role === 'admin') {
+  const account = await getCurrentAuthorizedAccount(user);
+  if (account.role === 'admin') {
+    const leaderId = normalizePositiveId(payload.leader_id);
+    if (!leaderId) {
+      throw authorizationError('An intern project leader is required', 400);
+    }
     return {
       divisionId: normalizePositiveId(payload.division_id),
-      leaderId: normalizePositiveId(payload.leader_id) || normalizePositiveId(user.id),
+      leaderId,
+      account,
     };
   }
 
-  if (user?.role === 'supervisor') {
-    const divisionId = await getCurrentSupervisorDivisionId(user);
+  if (account.role === 'supervisor') {
+    const divisionId = normalizePositiveId(account.division_id);
+    if (!divisionId) throw authorizationError('Supervisor account has no assigned division');
     const requestedDivisionId = normalizePositiveId(payload.division_id);
     if (requestedDivisionId && requestedDivisionId !== divisionId) {
       throw authorizationError('Cannot create a project outside your assigned division');
@@ -257,13 +292,12 @@ export async function authorizeProjectCreation(user, payload = {}) {
     if (!leaderId) {
       throw authorizationError('A project leader from your division is required', 400);
     }
-    await assertSupervisorCanAccessIntern(user, leaderId, 'project leaders');
-    return { divisionId, leaderId };
+    await assertSupervisorCanAccessIntern(account, leaderId, 'project leaders');
+    return { divisionId, leaderId, account };
   }
 
-  const intern = await getCurrentInternAccount(user);
-  const internId = normalizePositiveId(intern.id);
-  const internDivisionId = normalizePositiveId(intern.division_id);
+  const internId = normalizePositiveId(account.id);
+  const internDivisionId = normalizePositiveId(account.division_id);
   const requestedLeaderId = normalizePositiveId(payload.leader_id);
   const requestedDivisionId = normalizePositiveId(payload.division_id);
 
@@ -273,7 +307,12 @@ export async function authorizeProjectCreation(user, payload = {}) {
   if (requestedDivisionId && requestedDivisionId !== internDivisionId) {
     throw authorizationError('Cannot create a project outside your assigned division');
   }
-  return { divisionId: internDivisionId, leaderId: internId };
+  return { divisionId: internDivisionId, leaderId: internId, account };
+}
+
+export async function assertCanViewProject(user, projectId) {
+  const access = await getVerifiedProjectAccess(user, projectId);
+  return requireProjectPermission(access, 'canView', 'Project not found');
 }
 
 export async function assertCanUpdateProject(user, projectId) {
@@ -284,6 +323,16 @@ export async function assertCanUpdateProject(user, projectId) {
 export async function assertCanDeleteProject(user, projectId) {
   const access = await getVerifiedProjectAccess(user, projectId);
   return requireProjectPermission(access, 'canDelete', 'Only the project leader or assigned staff can delete this project');
+}
+
+export async function assertCanArchiveProject(user, projectId) {
+  const access = await getVerifiedProjectAccess(user, projectId);
+  return requireProjectPermission(access, 'canArchive', 'Permission denied to archive this project');
+}
+
+export async function assertCanRestoreProject(user, projectId) {
+  const access = await getVerifiedProjectAccess(user, projectId);
+  return requireProjectPermission(access, 'canRestore', 'Only assigned staff can restore this project');
 }
 
 export async function assertCanUploadProjectFile(user, projectId) {
@@ -318,35 +367,59 @@ export async function assertCanDeleteProjectFile(user, projectId, fileId) {
   const access = await getVerifiedProjectAccess(user, normalizedProjectId);
   const isUploader = user?.role === 'intern'
     && normalizePositiveId(file.uploaded_by) === normalizePositiveId(user.id);
-  if (!access.isStaff && !access.isLeader && !isUploader) {
+  if (!access.isStaff && !access.isLeader && !(access.canView && isUploader)) {
     throw authorizationError('Permission denied to delete this project file');
   }
   return { ...access, file, isUploader };
 }
 
-const PROJECT_UPDATE_FIELDS = new Set([
+const PROJECT_DETAIL_FIELDS = new Set([
   'title',
   'description',
   'group_name',
-  'status',
-  'progress',
   'github_repo',
   'demo_url',
 ]);
 
 export function sanitizeProjectUpdatePayload(payload = {}, access = {}) {
-  const sanitized = Object.fromEntries(
-    Object.entries(payload).filter(([key]) => PROJECT_UPDATE_FIELDS.has(key))
-  );
+  const sanitized = {};
+
+  if (access.canEditDetails) {
+    Object.entries(payload)
+      .filter(([key]) => PROJECT_DETAIL_FIELDS.has(key))
+      .forEach(([key, value]) => { sanitized[key] = value; });
+  }
+  if (access.canUpdateProgress) {
+    if (payload.status !== undefined) sanitized.status = payload.status;
+    if (payload.progress !== undefined) sanitized.progress = payload.progress;
+  }
 
   if (access.canManageTeam && Array.isArray(payload.members)) {
     sanitized.members = payload.members;
   }
   // Changing ownership or division can expand access. Only a full administrator
   // may perform those changes; scoped supervisors remain inside their division.
-  if (access.isAdmin) {
+  if (access.canChangeDivision) {
     if (payload.division_id !== undefined) sanitized.division_id = payload.division_id;
+  }
+  if (access.canReassignLeader) {
     if (payload.leader_id !== undefined) sanitized.leader_id = payload.leader_id;
   }
   return sanitized;
+}
+
+export function serializeProjectPermissions(access = {}) {
+  return {
+    can_view: Boolean(access.canView),
+    can_edit_details: Boolean(access.canEditDetails),
+    can_update_progress: Boolean(access.canUpdateProgress),
+    can_manage_members: Boolean(access.canManageTeam),
+    can_reassign_leader: Boolean(access.canReassignLeader),
+    can_change_division: Boolean(access.canChangeDivision),
+    can_upload_files: Boolean(access.canUpload),
+    can_archive: Boolean(access.canArchive),
+    can_restore: Boolean(access.canRestore),
+    can_delete: Boolean(access.canDelete),
+    can_view_audit: Boolean(access.canViewAudit),
+  };
 }

@@ -185,12 +185,9 @@ create table if not exists intern_projects (
 -- Enable RLS for intern_projects
 alter table public.intern_projects enable row level security;
 
-create policy "Allow all authenticated users to read projects"
-on public.intern_projects for select to authenticated using (true);
-
--- Project mutation policies are installed by migration_project_authorization.sql.
--- The API additionally enforces leader/member permissions and supervisor
--- division scope using the current database account state.
+-- Role-scoped read and mutation policies are installed by
+-- migration_project_access_model.sql. The API additionally verifies the
+-- current database account for every project operation.
 
 -- Project Files repository table for deliverables & project documents
 create table if not exists project_files (
@@ -211,12 +208,8 @@ create table if not exists project_files (
 -- Enable RLS for project_files
 alter table public.project_files enable row level security;
 
-create policy "Allow all authenticated users to read project files"
-on public.project_files for select to authenticated using (true);
-
--- Project file mutation policies are installed by
--- migration_project_authorization.sql. Files remain readable to authenticated
--- users as part of the project directory.
+-- Project-file policies are installed by migration_project_access_model.sql.
+-- The documents bucket is private and the API returns authorized signed URLs.
 
 -- Example seed data for admin and intern users (password = "password")
 insert into accounts (username, password_hash, full_name, email, role)

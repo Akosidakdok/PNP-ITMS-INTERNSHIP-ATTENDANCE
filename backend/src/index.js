@@ -65,7 +65,9 @@ import {
   updateSchool,
   deleteSchool,
   setDtrOverride,
-  setBulkDtrOverride,
+  setBulkDtrOverride
+} from './data.js';
+import {
   getProjects,
   getProjectById,
   createProject,
@@ -74,8 +76,10 @@ import {
   uploadProjectFile,
   deleteProjectFile,
   getProjectDirectoryStats,
-  getProjectMemberList
-} from './data.js';
+  getProjectMemberList,
+  setProjectArchived,
+  getProjectAudit,
+} from './services/projectService.js';
 import { sendWelcomeEmail } from './mailer.js';
 import { supabase } from './supabaseClient.js';
 import {
@@ -86,8 +90,11 @@ import {
   authorizeProjectCreation,
   assertCanUpdateProject,
   assertCanDeleteProject,
+  assertCanArchiveProject,
+  assertCanRestoreProject,
   assertCanUploadProjectFile,
   assertCanDeleteProjectFile,
+  getVerifiedProjectAccess,
   sanitizeProjectUpdatePayload
 } from './authorization.js';
 
@@ -1101,17 +1108,20 @@ app.post('/attendance/scan', authMiddleware, async (req, res) => {
 
 app.get('/projects/members', authMiddleware, async (req, res) => {
   try {
-    const members = await getProjectMemberList();
+    const members = await getProjectMemberList(req.user, req.query.division_id);
     return res.json(members);
   } catch (error) {
     console.error('Error in GET /projects/members:', error);
-    return res.json([]);
+    return res.status(error.statusCode || 500).json({ error: error.message });
   }
 });
 
 app.get('/projects/stats', authMiddleware, async (req, res) => {
   try {
-    const stats = await getProjectDirectoryStats();
+    const stats = await getProjectDirectoryStats({
+      division_id: req.query.division_id,
+      include_archived: req.query.include_archived,
+    }, req.user);
     return res.json(stats);
   } catch (error) {
     return res.status(500).json({ error: error.message });
@@ -1120,8 +1130,14 @@ app.get('/projects/stats', authMiddleware, async (req, res) => {
 
 app.get('/projects', authMiddleware, async (req, res) => {
   try {
-    const { search, status, division_id, group_name } = req.query;
-    const projects = await getProjects({ search, status, division_id, group_name });
+    const { search, status, division_id, group_name, include_archived } = req.query;
+    const projects = await getProjects({
+      search,
+      status,
+      division_id,
+      group_name,
+      include_archived,
+    }, req.user);
     return res.json(projects);
   } catch (error) {
     return res.status(500).json({ error: error.message });
@@ -1134,21 +1150,17 @@ app.get('/projects/:id', authMiddleware, async (req, res) => {
     if (isNaN(id)) {
       return res.status(404).json({ error: 'Invalid project ID' });
     }
-    const project = await getProjectById(id);
+    const project = await getProjectById(id, req.user);
     return res.json(project);
   } catch (error) {
-    return res.status(500).json({ error: error.message });
+    return res.status(error.statusCode || 500).json({ error: error.message });
   }
 });
 
 app.post('/projects', authMiddleware, async (req, res) => {
   try {
     const creation = await authorizeProjectCreation(req.user, req.body);
-    const project = await createProject({
-      ...req.body,
-      division_id: creation.divisionId,
-      leader_id: creation.leaderId,
-    }, req.user.id);
+    const project = await createProject(req.body, creation);
     return res.status(201).json(project);
   } catch (error) {
     return res.status(error.statusCode || 400).json({ error: error.message });
@@ -1160,7 +1172,7 @@ app.put('/projects/:id', authMiddleware, async (req, res) => {
     const projectId = Number(req.params.id);
     const access = await assertCanUpdateProject(req.user, projectId);
     const updates = sanitizeProjectUpdatePayload(req.body, access);
-    const project = await updateProject(projectId, updates);
+    const project = await updateProject(projectId, updates, access);
     return res.json(project);
   } catch (error) {
     return res.status(error.statusCode || 400).json({ error: error.message });
@@ -1169,9 +1181,8 @@ app.put('/projects/:id', authMiddleware, async (req, res) => {
 
 app.delete('/projects/:id', authMiddleware, async (req, res) => {
   try {
-    await assertCanDeleteProject(req.user, Number(req.params.id));
-    const isAdmin = req.user.role === 'admin' || req.user.role === 'supervisor';
-    const result = await deleteProject(Number(req.params.id), req.user.id, isAdmin);
+    const access = await assertCanDeleteProject(req.user, Number(req.params.id));
+    const result = await deleteProject(Number(req.params.id), access);
     return res.json(result);
   } catch (error) {
     return res.status(error.statusCode || 400).json({ error: error.message });
@@ -1180,13 +1191,14 @@ app.delete('/projects/:id', authMiddleware, async (req, res) => {
 
 app.post('/projects/:id/files', authMiddleware, upload.single('file'), async (req, res) => {
   try {
-    await assertCanUploadProjectFile(req.user, Number(req.params.id));
+    const access = await assertCanUploadProjectFile(req.user, Number(req.params.id));
     const file = await uploadProjectFile({
       projectId: Number(req.params.id),
       userId: req.user.id,
       uploaderName: req.user.full_name,
       file: req.file,
-      fileCategory: req.body.file_category
+      fileCategory: req.body.file_category,
+      access,
     });
     return res.status(201).json(file);
   } catch (error) {
@@ -1196,9 +1208,44 @@ app.post('/projects/:id/files', authMiddleware, upload.single('file'), async (re
 
 app.delete('/projects/:id/files/:fileId', authMiddleware, async (req, res) => {
   try {
-    await assertCanDeleteProjectFile(req.user, Number(req.params.id), Number(req.params.fileId));
-    const result = await deleteProjectFile(Number(req.params.fileId), req.user.id, true);
+    const access = await assertCanDeleteProjectFile(req.user, Number(req.params.id), Number(req.params.fileId));
+    const result = await deleteProjectFile(Number(req.params.fileId), access);
     return res.json(result);
+  } catch (error) {
+    return res.status(error.statusCode || 400).json({ error: error.message });
+  }
+});
+
+app.patch('/projects/:id/archive', authMiddleware, async (req, res) => {
+  try {
+    const access = await assertCanArchiveProject(req.user, Number(req.params.id));
+    const project = await setProjectArchived(
+      Number(req.params.id),
+      true,
+      access,
+      req.body.reason || ''
+    );
+    return res.json({ success: true, message: 'Project archived', project });
+  } catch (error) {
+    return res.status(error.statusCode || 400).json({ error: error.message });
+  }
+});
+
+app.patch('/projects/:id/restore', authMiddleware, async (req, res) => {
+  try {
+    const access = await assertCanRestoreProject(req.user, Number(req.params.id));
+    const project = await setProjectArchived(Number(req.params.id), false, access);
+    return res.json({ success: true, message: 'Project restored', project });
+  } catch (error) {
+    return res.status(error.statusCode || 400).json({ error: error.message });
+  }
+});
+
+app.get('/projects/:id/audit', authMiddleware, async (req, res) => {
+  try {
+    const access = await getVerifiedProjectAccess(req.user, Number(req.params.id));
+    const history = await getProjectAudit(Number(req.params.id), access);
+    return res.json({ history });
   } catch (error) {
     return res.status(error.statusCode || 400).json({ error: error.message });
   }

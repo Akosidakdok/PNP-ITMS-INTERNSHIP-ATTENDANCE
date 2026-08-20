@@ -2,9 +2,11 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   FolderGit2, Search, Filter, Download, FileText, Users, Code,
   Presentation, CheckCircle2, Clock, AlertCircle, Layers, ExternalLink,
-  Github, BarChart3, FolderKanban, ShieldCheck, Loader2, Eye
+  Github, BarChart3, FolderKanban, ShieldCheck, Loader2, Eye,
+  Archive, RotateCcw, History, Trash2, Edit3, Save
 } from 'lucide-react';
 import api from '../../utils/api.js';
+import { useAuth } from '../../context/AuthContext.jsx';
 import Modal from '../../components/common/Modal.jsx';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
@@ -32,6 +34,7 @@ const formatProjectDate = value => {
 };
 
 export default function ProjectDirectory() {
+  const { user } = useAuth();
   const [projects, setProjects] = useState([]);
   const [divisions, setDivisions] = useState([]);
   const [stats, setStats] = useState(null);
@@ -41,18 +44,29 @@ export default function ProjectDirectory() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [divisionFilter, setDivisionFilter] = useState('');
+  const [showArchived, setShowArchived] = useState(false);
 
   // Selected project for detailed deliverables view
   const [selectedProject, setSelectedProject] = useState(null);
   const [quickViewProject, setQuickViewProject] = useState(null);
+  const [auditProject, setAuditProject] = useState(null);
+  const [auditHistory, setAuditHistory] = useState([]);
+  const [auditLoading, setAuditLoading] = useState(false);
+  const [editingProject, setEditingProject] = useState(null);
+  const [staffMemberOptions, setStaffMemberOptions] = useState([]);
+  const [savingProject, setSavingProject] = useState(false);
+  const [editForm, setEditForm] = useState({
+    title: '', description: '', group_name: '', division_id: '', leader_id: '',
+    status: 'in_progress', progress: 0, github_repo: '', demo_url: '', members: [],
+  });
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
       const [projRes, divRes, statsRes] = await Promise.allSettled([
-        api.get('/projects', { params: { search, status: statusFilter, division_id: divisionFilter } }),
+        api.get('/projects', { params: { search, status: statusFilter, division_id: divisionFilter, include_archived: showArchived } }),
         api.get('/divisions'),
-        api.get('/projects/stats')
+        api.get('/projects/stats', { params: { division_id: divisionFilter, include_archived: showArchived } })
       ]);
 
       if (projRes.status === 'fulfilled') {
@@ -69,7 +83,7 @@ export default function ProjectDirectory() {
     } finally {
       setLoading(false);
     }
-  }, [search, statusFilter, divisionFilter]);
+  }, [search, statusFilter, divisionFilter, showArchived]);
 
   useEffect(() => {
     fetchData();
@@ -78,6 +92,114 @@ export default function ProjectDirectory() {
   const quickViewStatus = STATUS_CONFIG[quickViewProject?.status] || STATUS_CONFIG.in_progress;
   const QuickViewStatusIcon = quickViewStatus.icon;
   const quickViewMembers = Array.isArray(quickViewProject?.members) ? quickViewProject.members : [];
+
+  const archiveProject = async project => {
+    const restoring = Boolean(project.archived_at);
+    if (!confirm(`${restoring ? 'Restore' : 'Archive'} "${project.title}"?`)) return;
+    try {
+      await api.patch(`/projects/${project.id}/${restoring ? 'restore' : 'archive'}`, restoring ? {} : {
+        reason: 'Archived by assigned staff from the project directory',
+      });
+      toast.success(`Project ${restoring ? 'restored' : 'archived'}`);
+      setQuickViewProject(null);
+      fetchData();
+    } catch (error) {
+      toast.error(error.response?.data?.error || `Could not ${restoring ? 'restore' : 'archive'} project`);
+    }
+  };
+
+  const permanentlyDeleteProject = async project => {
+    if (!confirm(`Permanently delete "${project.title}" and all its files? This cannot be undone.`)) return;
+    try {
+      await api.delete(`/projects/${project.id}`);
+      toast.success('Project permanently deleted');
+      setQuickViewProject(null);
+      fetchData();
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Could not delete project');
+    }
+  };
+
+  const openAuditHistory = async project => {
+    setAuditProject(project);
+    setAuditLoading(true);
+    try {
+      const response = await api.get(`/projects/${project.id}/audit`);
+      setAuditHistory(response.data?.history || []);
+    } catch (error) {
+      setAuditHistory([]);
+      toast.error(error.response?.data?.error || 'Could not load project history');
+    } finally {
+      setAuditLoading(false);
+    }
+  };
+
+  const updateProjectStatus = async (project, status) => {
+    try {
+      const response = await api.put(`/projects/${project.id}`, { status });
+      setQuickViewProject(response.data);
+      toast.success('Project status updated');
+      fetchData();
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Could not update project status');
+    }
+  };
+
+  const loadStaffMemberOptions = async divisionId => {
+    try {
+      const response = await api.get('/projects/members', { params: { division_id: divisionId } });
+      setStaffMemberOptions(response.data || []);
+    } catch (error) {
+      setStaffMemberOptions([]);
+      toast.error(error.response?.data?.error || 'Could not load eligible project members');
+    }
+  };
+
+  const openProjectEditor = async project => {
+    setEditingProject(project);
+    setEditForm({
+      title: project.title || '',
+      description: project.description || '',
+      group_name: project.group_name || '',
+      division_id: project.division_id || '',
+      leader_id: project.leader_id || '',
+      status: project.status || 'in_progress',
+      progress: Number(project.progress || 0),
+      github_repo: project.github_repo || '',
+      demo_url: project.demo_url || '',
+      members: Array.isArray(project.members) ? project.members : [],
+    });
+    await loadStaffMemberOptions(project.division_id);
+  };
+
+  const toggleStaffMember = member => {
+    setEditForm(current => {
+      const exists = current.members.some(item => String(item.id) === String(member.id));
+      return {
+        ...current,
+        members: exists
+          ? current.members.filter(item => String(item.id) !== String(member.id))
+          : [...current.members, member],
+      };
+    });
+  };
+
+  const saveStaffProject = async event => {
+    event.preventDefault();
+    if (!editingProject) return;
+    setSavingProject(true);
+    try {
+      await api.put(`/projects/${editingProject.id}`, editForm);
+      toast.success('Project updated');
+      setEditingProject(null);
+      setQuickViewProject(null);
+      fetchData();
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Could not update project');
+    } finally {
+      setSavingProject(false);
+    }
+  };
 
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto">
@@ -135,6 +257,7 @@ export default function ProjectDirectory() {
           <select
             value={divisionFilter}
             onChange={e => setDivisionFilter(e.target.value)}
+            disabled={user?.role === 'supervisor'}
             className="bg-slate-50 border border-slate-200 text-slate-700 text-sm rounded-lg p-2 focus:ring-2 focus:ring-blue-500"
           >
             <option value="">All Divisions</option>
@@ -142,6 +265,16 @@ export default function ProjectDirectory() {
               <option key={d.id} value={d.id}>{d.name}</option>
             ))}
           </select>
+
+          <label className="inline-flex items-center gap-2 text-xs font-semibold text-slate-600">
+            <input
+              type="checkbox"
+              checked={showArchived}
+              onChange={event => setShowArchived(event.target.checked)}
+              className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+            />
+            Include archived
+          </label>
 
           <select
             value={statusFilter}
@@ -284,12 +417,41 @@ export default function ProjectDirectory() {
                     {proj.files?.length || 0} File Deliverable(s)
                   </span>
 
-                  <button
-                    onClick={() => setSelectedProject(proj)}
-                    className="inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-3 py-1.5 rounded-lg transition-colors"
-                  >
-                    <FileText className="w-3.5 h-3.5" /> View Directory Files
-                  </button>
+                  <div className="flex items-center gap-1.5">
+                    {proj.permissions?.can_edit_details && (
+                      <button
+                        onClick={() => openProjectEditor(proj)}
+                        className="p-1.5 text-slate-500 hover:text-blue-700 rounded-lg"
+                        title="Edit project"
+                      >
+                        <Edit3 className="w-4 h-4" />
+                      </button>
+                    )}
+                    {proj.permissions?.can_view_audit && (
+                      <button
+                        onClick={() => openAuditHistory(proj)}
+                        className="p-1.5 text-slate-500 hover:text-blue-700 rounded-lg"
+                        title="View project history"
+                      >
+                        <History className="w-4 h-4" />
+                      </button>
+                    )}
+                    {(proj.archived_at ? proj.permissions?.can_restore : proj.permissions?.can_archive) && (
+                      <button
+                        onClick={() => archiveProject(proj)}
+                        className="p-1.5 text-slate-500 hover:text-amber-700 rounded-lg"
+                        title={proj.archived_at ? 'Restore project' : 'Archive project'}
+                      >
+                        {proj.archived_at ? <RotateCcw className="w-4 h-4" /> : <Archive className="w-4 h-4" />}
+                      </button>
+                    )}
+                    <button
+                      onClick={() => setSelectedProject(proj)}
+                      className="inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-3 py-1.5 rounded-lg transition-colors"
+                    >
+                      <FileText className="w-3.5 h-3.5" /> View Files
+                    </button>
+                  </div>
                 </div>
               </div>
             );
@@ -323,6 +485,53 @@ export default function ProjectDirectory() {
               <FileText className="w-4 h-4" />
               View Directory Files
             </button>
+            {quickViewProject?.permissions?.can_edit_details && (
+              <button
+                type="button"
+                onClick={() => {
+                  const project = quickViewProject;
+                  setQuickViewProject(null);
+                  openProjectEditor(project);
+                }}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-blue-200 text-sm font-semibold text-blue-700 hover:bg-blue-50"
+              >
+                <Edit3 className="w-4 h-4" /> Edit
+              </button>
+            )}
+            {quickViewProject?.permissions?.can_view_audit && (
+              <button
+                type="button"
+                onClick={() => {
+                  const project = quickViewProject;
+                  setQuickViewProject(null);
+                  openAuditHistory(project);
+                }}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-slate-200 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                <History className="w-4 h-4" /> History
+              </button>
+            )}
+            {(quickViewProject?.archived_at
+              ? quickViewProject?.permissions?.can_restore
+              : quickViewProject?.permissions?.can_archive) && (
+              <button
+                type="button"
+                onClick={() => archiveProject(quickViewProject)}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-amber-200 text-sm font-semibold text-amber-700 hover:bg-amber-50"
+              >
+                {quickViewProject.archived_at ? <RotateCcw className="w-4 h-4" /> : <Archive className="w-4 h-4" />}
+                {quickViewProject.archived_at ? 'Restore' : 'Archive'}
+              </button>
+            )}
+            {quickViewProject?.permissions?.can_delete && (
+              <button
+                type="button"
+                onClick={() => permanentlyDeleteProject(quickViewProject)}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-red-200 text-sm font-semibold text-red-700 hover:bg-red-50"
+              >
+                <Trash2 className="w-4 h-4" /> Delete
+              </button>
+            )}
           </>
         )}
       >
@@ -363,6 +572,22 @@ export default function ProjectDirectory() {
                   style={{ width: `${quickViewProject.progress}%` }}
                 />
               </div>
+              {quickViewProject.permissions?.can_update_progress && (
+                <div className="mt-3 flex items-center gap-2">
+                  <label className="text-xs font-semibold text-slate-600">Staff status:</label>
+                  <select
+                    value={quickViewProject.status}
+                    onChange={event => updateProjectStatus(quickViewProject, event.target.value)}
+                    className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700"
+                  >
+                    <option value="planning">Planning</option>
+                    <option value="in_progress">In Progress</option>
+                    <option value="review">Under Review</option>
+                    <option value="completed">Completed</option>
+                    <option value="on_hold">On Hold</option>
+                  </select>
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -507,6 +732,201 @@ export default function ProjectDirectory() {
             )}
           </div>
         </div>
+      </Modal>
+
+      <Modal
+        isOpen={Boolean(auditProject)}
+        onClose={() => {
+          setAuditProject(null);
+          setAuditHistory([]);
+        }}
+        title={`Project History — ${auditProject?.title || ''}`}
+        size="lg"
+      >
+        {auditLoading ? (
+          <div className="py-10 text-center text-sm text-slate-500">
+            <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2 text-blue-600" />
+            Loading project history...
+          </div>
+        ) : auditHistory.length === 0 ? (
+          <p className="py-8 text-center text-sm text-slate-500">No audit events have been recorded yet.</p>
+        ) : (
+          <div className="max-h-[65vh] overflow-y-auto divide-y divide-slate-100 border border-slate-200 rounded-xl">
+            {auditHistory.map(event => (
+              <div key={event.id} className="p-3.5 bg-white">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm font-semibold text-slate-800 capitalize">
+                    {String(event.action || '').replaceAll('_', ' ')}
+                  </p>
+                  <span className="text-[11px] text-slate-500">
+                    {format(new Date(event.created_at), 'MMM d, yyyy h:mm a')}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-600 mt-1">
+                  {event.actor_name} ({event.actor_role})
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
+      </Modal>
+
+      <Modal
+        isOpen={Boolean(editingProject)}
+        onClose={() => setEditingProject(null)}
+        title={`Manage Project — ${editingProject?.title || ''}`}
+        size="lg"
+      >
+        <form onSubmit={saveStaffProject} className="space-y-4 max-h-[72vh] overflow-y-auto pr-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Project title</label>
+              <input
+                required
+                value={editForm.title}
+                onChange={event => setEditForm(current => ({ ...current, title: event.target.value }))}
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Group name</label>
+              <input
+                required
+                value={editForm.group_name}
+                onChange={event => setEditForm(current => ({ ...current, group_name: event.target.value }))}
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">Description</label>
+            <textarea
+              rows={3}
+              value={editForm.description}
+              onChange={event => setEditForm(current => ({ ...current, description: event.target.value }))}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Division</label>
+              <select
+                value={editForm.division_id}
+                disabled={!editingProject?.permissions?.can_change_division}
+                onChange={event => {
+                  const divisionId = event.target.value;
+                  setEditForm(current => ({ ...current, division_id: divisionId, leader_id: '', members: [] }));
+                  loadStaffMemberOptions(divisionId);
+                }}
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100"
+              >
+                <option value="">Select division</option>
+                {divisions.map(division => <option key={division.id} value={division.id}>{division.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Project leader</label>
+              <select
+                value={editForm.leader_id}
+                disabled={!editingProject?.permissions?.can_reassign_leader}
+                onChange={event => setEditForm(current => ({ ...current, leader_id: event.target.value }))}
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100"
+              >
+                <option value="">Select leader</option>
+                {staffMemberOptions.map(member => <option key={member.id} value={member.id}>{member.full_name}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 rounded-xl border border-slate-200 bg-slate-50 p-3.5">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Status</label>
+              <select
+                value={editForm.status}
+                onChange={event => setEditForm(current => ({ ...current, status: event.target.value }))}
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white"
+              >
+                <option value="planning">Planning</option>
+                <option value="in_progress">In Progress</option>
+                <option value="review">Under Review</option>
+                <option value="completed">Completed</option>
+                <option value="on_hold">On Hold</option>
+              </select>
+            </div>
+            <div>
+              <div className="flex justify-between text-xs font-semibold text-slate-700 mb-1">
+                <span>Progress</span><span>{editForm.progress}%</span>
+              </div>
+              <input
+                type="range"
+                min="0"
+                max="100"
+                step="5"
+                value={editForm.progress}
+                onChange={event => setEditForm(current => ({ ...current, progress: Number(event.target.value) }))}
+                className="w-full accent-blue-600"
+              />
+            </div>
+          </div>
+
+          {editingProject?.permissions?.can_manage_members && (
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-2">Assigned team members</label>
+              <div className="max-h-44 overflow-y-auto rounded-xl border border-slate-200 divide-y divide-slate-100">
+                {staffMemberOptions.map(member => {
+                  const checked = editForm.members.some(item => String(item.id) === String(member.id));
+                  return (
+                    <label key={member.id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm hover:bg-slate-50">
+                      <span>
+                        <span className="font-semibold text-slate-800">{member.full_name}</span>
+                        <span className="block text-[11px] text-slate-500">{member.division_name}</span>
+                      </span>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleStaffMember(member)}
+                        className="rounded border-slate-300 text-blue-600"
+                      />
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Repository URL</label>
+              <input
+                type="url"
+                value={editForm.github_repo}
+                onChange={event => setEditForm(current => ({ ...current, github_repo: event.target.value }))}
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Demo URL</label>
+              <input
+                type="url"
+                value={editForm.demo_url}
+                onChange={event => setEditForm(current => ({ ...current, demo_url: event.target.value }))}
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-3 border-t border-slate-200">
+            <button type="button" onClick={() => setEditingProject(null)} className="px-4 py-2 text-sm rounded-lg border border-slate-200">
+              Cancel
+            </button>
+            <button disabled={savingProject} className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg bg-blue-600 text-white disabled:bg-slate-300">
+              {savingProject ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+              Save Changes
+            </button>
+          </div>
+        </form>
       </Modal>
     </div>
   );

@@ -48,6 +48,23 @@ function fakeFrom({ supervisor, interns = [], resources = {} }) {
             error: null,
           };
         }
+        const accountId = equalFilters.find(([column]) => column === 'id')?.[1];
+        if (accountId !== undefined) {
+          const account = [supervisor, ...interns]
+            .filter(Boolean)
+            .find(item => Number(item.id) === Number(accountId));
+          return { data: account || null, error: null };
+        }
+      }
+
+      if (table === 'project_members') {
+        const projectId = equalFilters.find(([column]) => column === 'project_id')?.[1];
+        return {
+          data: (resources.project_members || []).filter(
+            row => Number(row.project_id) === Number(projectId)
+          ),
+          error: null,
+        };
       }
 
       const resourceId = equalFilters.find(([column]) => column === 'id')?.[1];
@@ -65,6 +82,9 @@ function fakeFrom({ supervisor, interns = [], resources = {} }) {
       },
       in(column, values) {
         inFilter = [column, values];
+        return builder;
+      },
+      is() {
         return builder;
       },
       maybeSingle() {
@@ -189,7 +209,8 @@ test('project access flags distinguish leaders, members, and scoped staff', () =
   const scopedSupervisor = getProjectAccessFlags({ id: 50, role: 'supervisor' }, project, 7);
   const otherSupervisor = getProjectAccessFlags({ id: 51, role: 'supervisor' }, project, 8);
 
-  assert.equal(leader.canDelete, true);
+  assert.equal(leader.canDelete, false);
+  assert.equal(leader.canArchive, true);
   assert.equal(member.canUpdate, true);
   assert.equal(member.canDelete, false);
   assert.equal(unrelated.canUpload, false);
@@ -208,12 +229,22 @@ test('member project updates cannot change team ownership or division', () => {
   };
 
   assert.deepEqual(
-    sanitizeProjectUpdatePayload(payload, { canManageTeam: false, isStaff: false }),
-    { title: 'Updated title', progress: 75 }
+    sanitizeProjectUpdatePayload(payload, {
+      canEditDetails: false,
+      canUpdateProgress: true,
+      canManageTeam: false,
+    }),
+    { progress: 75 }
   );
 
   assert.deepEqual(
-    sanitizeProjectUpdatePayload(payload, { canManageTeam: true, isStaff: true, isAdmin: true }),
+    sanitizeProjectUpdatePayload(payload, {
+      canEditDetails: true,
+      canUpdateProgress: true,
+      canManageTeam: true,
+      canChangeDivision: true,
+      canReassignLeader: true,
+    }),
     {
       title: 'Updated title',
       progress: 75,
@@ -224,7 +255,13 @@ test('member project updates cannot change team ownership or division', () => {
   );
 
   assert.deepEqual(
-    sanitizeProjectUpdatePayload(payload, { canManageTeam: true, isStaff: true, isAdmin: false }),
+    sanitizeProjectUpdatePayload(payload, {
+      canEditDetails: true,
+      canUpdateProgress: true,
+      canManageTeam: true,
+      canChangeDivision: false,
+      canReassignLeader: false,
+    }),
     {
       title: 'Updated title',
       progress: 75,
@@ -248,7 +285,13 @@ test('project mutations enforce member and supervisor scope', async () => {
       { id: 2, role: 'intern', division_id: 7, status: 'active' },
       { id: 3, role: 'intern', division_id: 7, status: 'active' },
     ],
-    resources: { intern_projects: [project] },
+    resources: {
+      intern_projects: [project],
+      project_members: [
+        { project_id: 10, account_id: 1 },
+        { project_id: 10, account_id: 2 },
+      ],
+    },
   });
 
   await assert.doesNotReject(assertCanUpdateProject({ id: 2, role: 'intern' }, 10));
@@ -261,7 +304,10 @@ test('project mutations enforce member and supervisor scope', async () => {
     assertCanUpdateProject({ id: 3, role: 'intern' }, 10),
     error => error.statusCode === 403
   );
-  await assert.doesNotReject(assertCanDeleteProject(supervisorToken, 10));
+  await assert.rejects(
+    assertCanDeleteProject(supervisorToken, 10),
+    error => error.statusCode === 403
+  );
 });
 
 test('project file deletion validates the route project and file ownership', async () => {
@@ -272,6 +318,7 @@ test('project file deletion validates the route project and file ownership', asy
     ],
     resources: {
       intern_projects: [{ id: 10, leader_id: 1, division_id: 7, members: [{ id: 2 }] }],
+      project_members: [{ project_id: 10, account_id: 2 }],
       project_files: [{ id: 20, project_id: 10, uploaded_by: 2 }],
     },
   });
@@ -296,4 +343,33 @@ test('project authorization migration removes broad mutation policies', async ()
   assert.match(migration, /project\.division_id = me\.division_id/);
   assert.match(migration, /project_files\.uploaded_by = me\.id/);
   assert.doesNotMatch(migration, /for all to authenticated using \(true\)/);
+});
+
+test('project access-model migration normalizes teams and removes global reads', async () => {
+  const migration = await readFile(
+    new URL('../db/migration_project_access_model.sql', import.meta.url),
+    'utf8'
+  );
+
+  assert.match(migration, /create table if not exists public\.project_members/i);
+  assert.match(migration, /create table if not exists public\.project_contributors/i);
+  assert.match(migration, /create table if not exists public\.project_audit_log/i);
+  assert.match(migration, /drop policy if exists "Allow all authenticated users to read projects"/i);
+  assert.match(migration, /create policy "Role scoped project reads"/i);
+  assert.match(migration, /update storage\.buckets[\s\S]*set public = false/i);
+  assert.doesNotMatch(migration, /^4--/);
+});
+
+test('project API uses the scoped service instead of legacy global data helpers', async () => {
+  const indexSource = await readFile(new URL('../src/index.js', import.meta.url), 'utf8');
+  const serviceSource = await readFile(
+    new URL('../src/services/projectService.js', import.meta.url),
+    'utf8'
+  );
+
+  assert.match(indexSource, /getProjects\([\s\S]*req\.user\)/);
+  assert.match(indexSource, /getProjectById\(id, req\.user\)/);
+  assert.match(serviceSource, /from\('project_members'\)[\s\S]*eq\('account_id', accountId\)/);
+  assert.match(serviceSource, /createSignedUrl\(path, SIGNED_URL_TTL_SECONDS\)/);
+  assert.doesNotMatch(serviceSource, /getPublicUrl/);
 });
