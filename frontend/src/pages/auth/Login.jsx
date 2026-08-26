@@ -78,9 +78,9 @@ export default function Login() {
             <img src="/ITMS_LOGO.jpg" alt="ITMS Logo" className="w-full h-full object-cover" />
           </div>
           <h1 className="text-4xl font-bold text-white mb-3" style={{ fontFamily: 'Outfit, sans-serif' }}>
-            P-DITMS
+            P-IDTMS
           </h1>
-          <p className="text-xl text-blue-200 mb-2 font-medium">PNP - Database Internship Tracking  Management System</p>
+          <p className="text-xl text-blue-200 mb-2 font-medium">PNP - Internship Database Tracking Management System</p>
           <p className="text-blue-300 text-sm max-w-xs mx-auto leading-relaxed">
             Philippine National Police<br />
             Information Technology Management Service
