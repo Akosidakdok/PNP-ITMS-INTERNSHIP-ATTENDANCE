@@ -83,6 +83,12 @@ import {
 import { sendWelcomeEmail } from './mailer.js';
 import { supabase } from './supabaseClient.js';
 import {
+  acceptLegalDocuments,
+  getActiveLegalDocuments,
+  getLegalAcceptanceSummary,
+  getLegalAcceptanceStatus,
+} from './services/legalService.js';
+import {
   assertSupervisorCanAccessIntern,
   assertSupervisorCanAccessInterns,
   assertSupervisorCanAccessResource,
@@ -133,6 +139,7 @@ app.post('/auth/login', async (req, res) => {
 
   try {
     const result = await loginUser(username, password);
+    result.legal_status = await getLegalAcceptanceStatus(result.user.id);
     return res.json(result);
   } catch (error) {
     if (error.retryAfterSeconds) {
@@ -168,7 +175,47 @@ app.get('/auth/me', authMiddleware, async (req, res) => {
     if (!profile) {
       return res.status(401).json({ error: 'User account not found' });
     }
-    return res.json({ user: profile });
+    const legal_status = await getLegalAcceptanceStatus(req.user.id);
+    return res.json({ user: profile, legal_status });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/legal/documents/active', async (req, res) => {
+  try {
+    const documents = await getActiveLegalDocuments();
+    return res.json({ documents });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/legal/acceptance-status', authMiddleware, async (req, res) => {
+  try {
+    const status = await getLegalAcceptanceStatus(req.user.id);
+    return res.json(status);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/legal/accept', authMiddleware, async (req, res) => {
+  try {
+    const acceptances = await acceptLegalDocuments(req.user.id, req.body?.acceptances, {
+      ip: req.ip,
+      userAgent: req.get('user-agent'),
+    });
+    return res.json({ success: true, acceptances });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message });
+  }
+});
+
+app.get('/admin/legal/acceptance-status', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const accounts = await getLegalAcceptanceSummary();
+    return res.json({ accounts });
   } catch (error) {
     return res.status(500).json({ error: error.message });
   }

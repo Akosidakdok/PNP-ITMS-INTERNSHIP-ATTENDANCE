@@ -6,6 +6,7 @@ const AuthContext = createContext(null);
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [legalStatus, setLegalStatus] = useState(null);
 
   useEffect(() => {
     const token = localStorage.getItem('pnp_token');
@@ -15,9 +16,13 @@ export function AuthProvider({ children }) {
     }
 
     backendApi.get('/auth/me')
-      .then((res) => setUser(res.data.user))
+      .then((res) => {
+        setUser(res.data.user);
+        setLegalStatus(res.data.legal_status || null);
+      })
       .catch(() => {
         setUser(null);
+        setLegalStatus(null);
         localStorage.removeItem('pnp_token');
       })
       .finally(() => setLoading(false));
@@ -34,26 +39,42 @@ export function AuthProvider({ children }) {
 
     localStorage.setItem('pnp_token', data.token);
     setUser(data.user);
+    setLegalStatus(data.legal_status || null);
     return data.user;
+  };
+
+  const acceptLegalDocuments = async (acceptances) => {
+    const { data } = await backendApi.post('/legal/accept', { acceptances });
+    setLegalStatus({ required: false, pending: [], accepted: data.acceptances || [] });
+    return data;
+  };
+
+  const refreshLegalStatus = async () => {
+    const { data } = await backendApi.get('/legal/acceptance-status');
+    setLegalStatus(data);
+    return data;
   };
 
   const logout = async () => {
     localStorage.removeItem('pnp_token');
     setUser(null);
+    setLegalStatus(null);
   };
 
   const refreshUser = async () => {
     try {
       const { data } = await backendApi.get('/auth/me');
       setUser(data.user);
+      setLegalStatus(data.legal_status || null);
     } catch {
       setUser(null);
+      setLegalStatus(null);
       localStorage.removeItem('pnp_token');
     }
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, refreshUser }}>
+    <AuthContext.Provider value={{ user, loading, legalStatus, login, logout, refreshUser, acceptLegalDocuments, refreshLegalStatus }}>
       {children}
     </AuthContext.Provider>
   );

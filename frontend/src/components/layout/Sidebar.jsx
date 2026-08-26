@@ -1,4 +1,4 @@
-import { NavLink, useNavigate } from 'react-router-dom';
+import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext.jsx';
 import {
   LayoutDashboard, Users, CalendarCheck, FileText, Star,
@@ -125,6 +125,11 @@ export default function Sidebar({ isOpen, onClose }) {
             <LogOut className="w-4 h-4 flex-shrink-0" />
             <span>Sign Out</span>
           </button>
+          <div className="mt-3 flex justify-center gap-2 text-[10px] text-blue-300/70">
+            <Link to="/legal?document=terms" className="hover:text-white hover:underline">Terms</Link>
+            <span aria-hidden="true">·</span>
+            <Link to="/legal?document=privacy" className="hover:text-white hover:underline">Privacy</Link>
+          </div>
           <p className="text-center text-blue-400/50 text-xs mt-3">v1.0.0</p>
         </div>
       </aside>

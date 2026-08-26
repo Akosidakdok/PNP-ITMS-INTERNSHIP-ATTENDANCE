@@ -5,6 +5,8 @@ import { NotificationProvider } from './context/NotificationContext.jsx';
 import Layout from './components/layout/Layout.jsx';
 import InstallPrompt from './components/pwa/InstallPrompt.jsx';
 import SystemLoader from './components/common/SystemLoader.jsx';
+import LegalDocuments from './pages/legal/LegalDocuments.jsx';
+import LegalAcceptance from './pages/legal/LegalAcceptance.jsx';
 
 // Auth pages
 import Login from './pages/auth/Login.jsx';
@@ -60,6 +62,7 @@ function AppRoutes() {
   const { user } = useAuth();
   return (
     <Routes>
+      <Route path="/legal" element={<LegalDocuments />} />
       <Route path="/login" element={user ? <Navigate to={getHomePath(user.role)} replace /> : <Login />} />
 
       {/* Admin & Supervisor Routes */}
@@ -120,11 +123,12 @@ export default function App() {
 }
 
 function AppShell() {
-  const { loading } = useAuth();
+  const { loading, user, legalStatus } = useAuth();
+  const needsLegalAcceptance = Boolean(user && !loading && legalStatus?.required);
 
   return (
     <>
-      <AppRoutes />
+      {needsLegalAcceptance ? <LegalAcceptance /> : <AppRoutes />}
       <InstallPrompt />
       <Toaster
         position="top-right"

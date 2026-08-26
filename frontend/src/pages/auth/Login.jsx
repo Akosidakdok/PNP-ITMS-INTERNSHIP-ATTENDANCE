@@ -186,6 +186,15 @@ export default function Login() {
           <p className="text-center text-blue-200 text-xs mt-4 opacity-70">
             Secured with end-to-end encryption
           </p>
+          <div className="mt-3 flex justify-center gap-3 text-xs text-blue-200/80">
+            <a href="/legal?document=terms" target="_blank" rel="noreferrer" className="hover:text-white hover:underline">
+              Terms and Conditions
+            </a>
+            <span aria-hidden="true">·</span>
+            <a href="/legal?document=privacy" target="_blank" rel="noreferrer" className="hover:text-white hover:underline">
+              Privacy Notice
+            </a>
+          </div>
         </div>
       </div>
 

@@ -97,6 +97,7 @@ export default function InternManagement() {
   const [historyTarget, setHistoryTarget] = useState(null);
   const [enrollmentHistory, setEnrollmentHistory] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [legalStatuses, setLegalStatuses] = useState({});
 
   const fetchInterns = useCallback(async () => {
     setLoading(true);
@@ -138,6 +139,19 @@ export default function InternManagement() {
     }
   }, []);
 
+  const fetchLegalStatuses = useCallback(async () => {
+    try {
+      const res = await api.get('/admin/legal/acceptance-status');
+      const nextStatuses = Object.fromEntries((res.data.accounts || []).map(account => [
+        account.id,
+        account.legal_acceptance_required ? 'Pending' : 'Accepted',
+      ]));
+      setLegalStatuses(nextStatuses);
+    } catch {
+      // Legal status is supplementary to the intern list and should not block it.
+    }
+  }, []);
+
   useEffect(() => {
     api.get('/divisions').catch(() => api.get('/departments'))
       .then(r => setDepartments(r.data.divisions || r.data.departments || []))
@@ -149,6 +163,7 @@ export default function InternManagement() {
 
   useEffect(() => { fetchInterns(); }, [fetchInterns]);
   useEffect(() => { fetchRenewalRequests(); }, [fetchRenewalRequests]);
+  useEffect(() => { fetchLegalStatuses(); }, [fetchLegalStatuses]);
 
   useEffect(() => {
     if (form.start_date && form.required_hours) {
@@ -389,6 +404,17 @@ export default function InternManagement() {
     {
       key: 'status', label: 'Status',
       render: v => <span className={`badge badge-${v}`}>{v}</span>
+    },
+    {
+      key: 'legal_status', label: 'Legal',
+      render: (_, row) => {
+        const status = legalStatuses[row.id];
+        return status ? (
+          <span className={`badge ${status === 'Accepted' ? 'badge-approved' : 'badge-pending'}`}>
+            {status}
+          </span>
+        ) : <span className="text-xs text-gray-400">Checking...</span>;
+      }
     },
     {
       key: 'id', label: 'Actions',

@@ -5,22 +5,22 @@ import api from '../utils/api.js';
 const NotificationContext = createContext(null);
 
 export function NotificationProvider({ children }) {
-  const { user } = useAuth();
+  const { user, legalStatus } = useAuth();
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const eventSourceRef = useRef(null);
 
   const fetchNotifications = useCallback(async () => {
-    if (!user) return;
+    if (!user || legalStatus?.required) return;
     try {
       const res = await api.get('/notifications');
       setNotifications(res.data.notifications || []);
       setUnreadCount(res.data.unread_count || 0);
     } catch {}
-  }, [user]);
+  }, [user, legalStatus?.required]);
 
   useEffect(() => {
-    if (!user) {
+    if (!user || legalStatus?.required) {
       setNotifications([]);
       setUnreadCount(0);
       if (eventSourceRef.current) {
@@ -31,7 +31,7 @@ export function NotificationProvider({ children }) {
     }
 
     fetchNotifications();
-  }, [user, fetchNotifications]);
+  }, [user, legalStatus?.required, fetchNotifications]);
 
   const markAsRead = async (id) => {
     try {
