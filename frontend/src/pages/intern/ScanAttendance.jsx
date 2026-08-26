@@ -379,36 +379,43 @@ export default function ScanAttendance() {
       .catch(() => setNextScanHint('Unable to load next scan'));
   };
 
+  const activeStage = scanResult ? 3 : isCameraOpen ? 2 : 1;
+
   // ─── Render ───────────────────────────────────────────────────────────────
   return (
-    <div className="max-w-lg mx-auto space-y-6 animate-fade-in px-4 sm:px-0">
-      <div className="text-center">
+    <div className="intern-scan-page animate-fade-in">
+      <div className="scan-page-heading text-center">
         <h1 className="text-xl sm:text-2xl font-bold text-gray-800 mb-1" style={{ fontFamily: 'Outfit, sans-serif' }}>
           QR Attendance Scanner
         </h1>
         <p className="text-gray-500 text-sm">Scan the office QR code to record your attendance</p>
       </div>
 
-      {/* Instructions */}
-      <div className="card p-4 bg-blue-50 border border-blue-100">
-        <div className="flex gap-3">
-          <Shield className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-          <div className="text-sm text-blue-700">
-            <p className="font-semibold mb-1">How it works:</p>
-            <ol className="list-decimal ml-4 space-y-1 text-blue-600">
-              <li>Point camera at the office QR code</li>
-              <li>Face camera opens automatically</li>
-              <li>Look at the camera — face recognized automatically</li>
-              <li>Attendance is recorded instantly</li>
-            </ol>
+      <div className="scan-progress" aria-label={`Attendance scanning step ${activeStage} of 3`}>
+        {[
+          { number: 1, label: 'Scan QR' },
+          { number: 2, label: 'Verify face' },
+          { number: 3, label: 'Recorded' },
+        ].map((stage, index) => (
+          <div key={stage.number} className={`scan-progress__item ${activeStage >= stage.number ? 'is-active' : ''} ${activeStage === stage.number ? 'is-current' : ''}`}>
+            <span>{activeStage > stage.number ? <CheckCircle /> : stage.number}</span>
+            <small>{stage.label}</small>
+            {index < 2 && <i />}
           </div>
-        </div>
+        ))}
       </div>
+
+      {activeStage === 1 && (
+        <div className="scan-help-note">
+          <Shield />
+          <p><strong>Secure attendance:</strong> scan the office QR, then look at the front camera for automatic Face ID verification.</p>
+        </div>
+      )}
 
       {/* Main Content */}
       {scanResult ? (
         /* ── Success Screen ── */
-        <div className="card p-8 text-center animate-scale-in">
+        <div className="card scan-stage-card scan-result-card text-center animate-scale-in">
           <div
             className="w-20 h-20 rounded-full mx-auto mb-4 flex items-center justify-center"
             style={{ background: scanResult.scan_type === 'time_in' ? 'linear-gradient(135deg,#15803d,#22c55e)' : 'linear-gradient(135deg,#7c3aed,#a855f7)' }}
@@ -421,33 +428,33 @@ export default function ScanAttendance() {
           </h2>
           <p className="text-gray-500 mb-6">{scanResult.message}</p>
 
-          <div className="bg-gray-50 rounded-2xl p-4 text-left space-y-3 mb-6">
-            <div className="flex justify-between text-sm">
+          <div className="scan-result-details">
+            <div>
               <span className="text-gray-500">Intern:</span>
               <span className="font-semibold text-gray-800">{scanResult.intern_name}</span>
             </div>
-            <div className="flex justify-between text-sm">
+            <div>
               <span className="text-gray-500">Verification:</span>
               <span className="badge badge-time-in flex items-center gap-1">
                 <UserCheck className="w-3 h-3" />
                 Verified ({Math.round((scanResult.similarity || 0.95) * 100)}%)
               </span>
             </div>
-            <div className="flex justify-between text-sm">
+            <div>
               <span className="text-gray-500">Scan:</span>
               <span className={`badge ${scanResult.scan_type === 'time_in' ? 'badge-time-in' : 'badge-time-out'}`}>
                 {scanResult.scan_label || (scanResult.scan_type === 'time_in' ? 'Time In' : 'Time Out')}
               </span>
             </div>
-            <div className="flex justify-between text-sm">
+            <div>
               <span className="text-gray-500">Date:</span>
               <span className="font-medium">{safeFormatDate(scanResult.scan_time, 'MMMM dd, yyyy')}</span>
             </div>
-            <div className="flex justify-between text-sm">
+            <div>
               <span className="text-gray-500">Time:</span>
               <span className="font-medium">{safeFormatDate(scanResult.scan_time, 'hh:mm:ss a')}</span>
             </div>
-            <div className="flex justify-between text-sm">
+            <div>
               <span className="text-gray-500">Status:</span>
               <span className="badge badge-pending">Pending Approval</span>
             </div>
@@ -468,10 +475,10 @@ export default function ScanAttendance() {
         </div>
       ) : isCameraOpen ? (
         /* ── Face Camera Screen ── */
-        <div className="card p-5 space-y-4">
-          <div className="flex items-center gap-2 mb-1">
+        <div className="card scan-stage-card scan-stage-card--face">
+          <div className="scan-stage-heading">
             <Camera className="w-5 h-5 text-blue-600" />
-            <h2 className="font-bold text-gray-800">Face Verification</h2>
+            <div><h2 className="font-bold text-gray-800">Face Verification</h2><p>Center your face and hold still</p></div>
           </div>
 
           {/* Error banner */}
@@ -491,7 +498,7 @@ export default function ScanAttendance() {
           )}
 
           {/* Video feed */}
-          <div className="relative rounded-2xl overflow-hidden bg-black aspect-video border border-gray-200 shadow-inner">
+          <div className="face-camera-viewport">
             <video
               ref={videoRef}
               autoPlay
@@ -502,7 +509,7 @@ export default function ScanAttendance() {
 
             {/* Dynamic oval */}
             <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-              <div className={`w-44 h-56 rounded-[50%] border-[3px] transition-all duration-300 ${
+              <div className={`face-camera-guide transition-all duration-300 ${
                 faceStatus.type === 'success'
                   ? 'border-emerald-500 bg-emerald-500/10 shadow-[0_0_30px_rgba(16,185,129,0.6)] animate-pulse'
                   : faceStatus.type === 'rejected'
@@ -539,7 +546,7 @@ export default function ScanAttendance() {
             <span>{isProcessing ? 'Verifying your identity...' : faceStatus.message}</span>
           </div>
 
-          <p className="text-[11px] text-gray-400 text-center">
+          <p className="scan-camera-hint">
             Look directly at the camera — attendance is recorded automatically when your face is recognized.
           </p>
 
@@ -561,20 +568,21 @@ export default function ScanAttendance() {
         </div>
       ) : (
         /* ── QR Scanner Screen ── */
-        <div className="card p-5">
-          <div className="flex items-center gap-2 mb-4">
+        <div className="card scan-stage-card scan-stage-card--qr">
+          <div className="scan-stage-heading">
             <QrCode className="w-5 h-5 text-blue-600" />
-            <h2 className="font-bold text-gray-800">Camera Scanner</h2>
+            <div><h2 className="font-bold text-gray-800">Scan Office QR</h2><p>Place the code inside the camera frame</p></div>
           </div>
-          <div className="max-w-sm mx-auto">
+          <div>
             {scanning && (
               <div className="mb-3 p-3 bg-yellow-50 border border-yellow-200 rounded-xl flex items-center gap-2 text-sm text-yellow-700">
                 <Clock className="w-4 h-4 animate-spin" />
                 Processing QR scan...
               </div>
             )}
-            <div className="mb-3 text-sm text-gray-600">
-              <span className="font-semibold">Next scan:</span> {nextScanHint}
+            <div className="next-scan-indicator">
+              <Clock />
+              <span><small>Next scan</small><strong>{nextScanHint}</strong></span>
             </div>
             {error && (
               <div className="mb-3 p-3 bg-red-50 border border-red-200 rounded-xl flex items-center gap-2 text-sm text-red-700">

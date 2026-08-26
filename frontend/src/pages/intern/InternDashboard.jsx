@@ -60,9 +60,9 @@ export default function InternDashboard() {
   const recentNotifs = notifications.filter(n => !n.is_read).slice(0, 3);
 
   return (
-    <div className="space-y-6 animate-fade-in dashboard-module">
+    <div className="space-y-6 animate-fade-in dashboard-module intern-mobile-page">
       {/* Welcome Banner */}
-      <div className="rounded-2xl p-6 text-white stat-gradient-blue relative overflow-hidden">
+      <div className="intern-dashboard-welcome rounded-2xl p-6 text-white stat-gradient-blue relative overflow-hidden">
         <div className="absolute right-6 top-0 bottom-0 flex items-center opacity-20">
           <TrendingUp className="w-32 h-32" />
         </div>
@@ -71,7 +71,7 @@ export default function InternDashboard() {
           {loading ? '...' : intern?.full_name || user?.username}
         </h1>
         <p className="text-blue-200 text-sm">{loading ? '' : intern?.department_name || 'PNP-ITMS'}</p>
-        <div className="mt-4 flex items-center gap-3">
+        <div className="mt-4 flex flex-wrap items-center gap-2 sm:gap-3">
           <span className="badge bg-white/20 text-white">{intern?.school || '—'}</span>
           <span className="badge bg-white/20 text-white">{intern?.course || '—'}</span>
         </div>
@@ -119,7 +119,7 @@ export default function InternDashboard() {
       )}
 
       {/* Stats Row */}
-      <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="intern-dashboard-stats grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {[
           { icon: CheckCircle, label: 'Hours Rendered',  value: loading ? '—' : `${approvedRendered.toFixed(1)}h`,  color: 'text-green-600',  bg: 'bg-green-50'  },
           { icon: Clock,        label: 'Hours Required',  value: loading ? '—' : `${requiredHours}h`,                color: 'text-blue-600',   bg: 'bg-blue-50'   },
@@ -158,7 +158,7 @@ export default function InternDashboard() {
         )}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="intern-dashboard-panels grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Quick Actions */}
         <div className="card p-5">
           <h2 className="font-bold text-gray-800 mb-4">Quick Actions</h2>

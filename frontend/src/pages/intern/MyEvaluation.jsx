@@ -88,7 +88,7 @@ export default function MyEvaluation() {
   });
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="intern-mobile-page intern-evaluation-page space-y-6 animate-fade-in">
       <div>
         <h1 className="text-xl sm:text-2xl font-bold text-gray-800" style={{ fontFamily: 'Outfit, sans-serif' }}>Performance Evaluations</h1>
         <p className="text-gray-500 text-sm">{visibleEvaluations.length} evaluation(s) visible</p>

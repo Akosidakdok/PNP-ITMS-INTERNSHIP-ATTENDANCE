@@ -10,6 +10,20 @@ export const EVENT_TYPES = [
 ];
 
 export function useCalendar(calendarRef) {
+  const loadEvents = useCallback(async (year, month) => {
+    const res = await api.get('/calendar-events', { params: { year, month } });
+
+    return res.data.events.map(e => ({
+      id: e.id,
+      title: e.title,
+      start: e.event_date,
+      allDay: true,
+      backgroundColor: EVENT_TYPES.find(t => t.key === e.event_type)?.color || '#6b7280',
+      borderColor: EVENT_TYPES.find(t => t.key === e.event_type)?.color || '#6b7280',
+      extendedProps: { ...e, creator_name: e.creator?.full_name },
+    }));
+  }, []);
+
   const fetchEvents = useCallback(async (fetchInfo, successCallback, failureCallback) => {
     if (!calendarRef.current) {
       failureCallback(new Error("Calendar not ready"));
@@ -19,29 +33,14 @@ export function useCalendar(calendarRef) {
     try {
       const calendarApi = calendarRef.current.getApi();
       const currentDate = calendarApi.getDate();
-      const res = await api.get('/calendar-events', {
-        params: {
-          year: currentDate.getFullYear(),
-          month: currentDate.getMonth() + 1,
-        },
-      });
-
-      const formattedEvents = res.data.events.map(e => ({
-        id: e.id,
-        title: e.title,
-        start: e.event_date,
-        allDay: true,
-        backgroundColor: EVENT_TYPES.find(t => t.key === e.event_type)?.color || '#6b7280',
-        borderColor: EVENT_TYPES.find(t => t.key === e.event_type)?.color || '#6b7280',
-        extendedProps: { ...e, creator_name: e.creator?.full_name },
-      }));
+      const formattedEvents = await loadEvents(currentDate.getFullYear(), currentDate.getMonth() + 1);
 
       successCallback(formattedEvents);
     } catch (err) {
       toast.error(err?.response?.data?.error || 'Failed to load calendar events');
       failureCallback(err);
     }
-  }, [calendarRef]);
+  }, [calendarRef, loadEvents]);
 
-  return { fetchEvents };
+  return { fetchEvents, loadEvents };
 }

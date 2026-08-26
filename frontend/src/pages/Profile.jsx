@@ -178,7 +178,7 @@ export default function Profile({ role }) {
   );
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6 animate-fade-in px-4">
+    <div className={`max-w-6xl mx-auto space-y-6 animate-fade-in px-0 sm:px-4 ${role === 'intern' ? 'intern-mobile-page intern-profile-page' : ''}`}>
       {/* Title Header */}
       <div>
         <div className="flex items-center gap-2 text-gray-800 mb-1">

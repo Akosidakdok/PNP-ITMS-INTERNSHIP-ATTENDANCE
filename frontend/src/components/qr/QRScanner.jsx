@@ -18,7 +18,14 @@ export default function QRScanner({ onScan, onError, isActive }) {
 
       await html5Qr.start(
         { facingMode: 'environment' },
-        { fps: 10, qrbox: { width: 200, height: 200 } },
+        {
+          fps: 10,
+          qrbox: (viewfinderWidth, viewfinderHeight) => {
+            const availableEdge = Math.min(viewfinderWidth, viewfinderHeight);
+            const edge = Math.floor(Math.min(280, availableEdge * 0.76));
+            return { width: edge, height: edge };
+          },
+        },
         (decodedText) => {
           onScan(decodedText);
         },
@@ -63,10 +70,10 @@ export default function QRScanner({ onScan, onError, isActive }) {
   }, [isActive]);
 
   return (
-    <div className="space-y-4">
+    <div className="qr-scanner space-y-4">
       {/* Camera viewport */}
-      <div className="qr-scanner-container rounded-2xl overflow-hidden" style={{ minHeight: 280 }}>
-        <div id={containerId} className="w-full" style={{ minHeight: 280 }} />
+      <div className="qr-scanner-container rounded-2xl overflow-hidden">
+        <div id={containerId} className="qr-reader-surface w-full" />
         {!started && !loading && (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900/95 rounded-2xl">
             <Camera className="w-16 h-16 text-blue-400 mb-4" />
@@ -90,11 +97,11 @@ export default function QRScanner({ onScan, onError, isActive }) {
       )}
 
       {/* Controls */}
-      <div className="flex justify-center gap-3">
+      <div className="qr-scanner-controls">
         {!started ? (
           <button
             id="qr-start-btn"
-            className="btn btn-primary"
+            className="btn btn-primary btn-mobile-full"
             onClick={startScanner}
             disabled={loading}
           >
@@ -107,7 +114,7 @@ export default function QRScanner({ onScan, onError, isActive }) {
         ) : (
           <button
             id="qr-stop-btn"
-            className="btn btn-danger"
+            className="btn btn-danger btn-mobile-full"
             onClick={stopScanner}
           >
             <CameraOff className="w-4 h-4" /> Stop Camera

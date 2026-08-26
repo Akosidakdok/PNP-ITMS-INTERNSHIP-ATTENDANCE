@@ -128,7 +128,7 @@ export default function MyDocuments() {
   };
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="intern-mobile-page intern-documents-page space-y-6 animate-fade-in">
 
       {/* ── Header ── */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
