@@ -37,6 +37,8 @@ import {
   changePassword,
   getAttendanceLogs,
   setAttendanceApproval,
+  removeRejectedAttendanceForRescan,
+  deleteAttendanceEntry,
   getAttendanceReport,
   getDtrRecords,
   getNotifications,
@@ -946,6 +948,46 @@ app.post('/interns/register-face', authMiddleware, async (req, res) => {
   } catch (error) {
     console.error('Error in one-time intern face enrollment:', error);
     return res.status(error.statusCode || 400).json({ error: error.message });
+  }
+});
+
+app.delete('/attendance/:id/rescan', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const attendanceId = Number(req.params.id);
+    await assertSupervisorCanAccessResource(
+      req.user,
+      'attendance_logs',
+      attendanceId,
+      'attendance records'
+    );
+    const result = await removeRejectedAttendanceForRescan(attendanceId);
+    return res.json({
+      success: true,
+      message: 'Rejected attendance removed. The intern can scan again.',
+      ...result,
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message });
+  }
+});
+
+app.delete('/attendance/:id', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const attendanceId = Number(req.params.id);
+    await assertSupervisorCanAccessResource(
+      req.user,
+      'attendance_logs',
+      attendanceId,
+      'attendance records'
+    );
+    const result = await deleteAttendanceEntry(attendanceId);
+    return res.json({
+      success: true,
+      message: 'Attendance entry permanently deleted.',
+      ...result,
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message });
   }
 });
 

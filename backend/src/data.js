@@ -594,6 +594,112 @@ export async function setAttendanceApproval(attendanceId, status, remarks) {
   return data;
 }
 
+export async function removeRejectedAttendanceForRescan(attendanceId) {
+  const { data: attendance, error: attendanceError } = await supabase
+    .from('attendance_logs')
+    .select('id, intern_id, scan_type, scan_time, approval_status')
+    .eq('id', attendanceId)
+    .single();
+
+  if (attendanceError || !attendance) {
+    const notFoundError = new Error('Attendance record not found');
+    notFoundError.statusCode = 404;
+    throw notFoundError;
+  }
+
+  if (attendance.approval_status !== 'rejected') {
+    const stateError = new Error('Only rejected attendance records can be removed for rescanning');
+    stateError.statusCode = 409;
+    throw stateError;
+  }
+
+  const scanDate = new Date(attendance.scan_time);
+  const now = new Date();
+  if (scanDate.toDateString() !== now.toDateString()) {
+    const dateError = new Error("Only today's rejected attendance can be removed for rescanning");
+    dateError.statusCode = 409;
+    throw dateError;
+  }
+
+  const dayStart = new Date(scanDate);
+  dayStart.setHours(0, 0, 0, 0);
+  const dayEnd = new Date(scanDate);
+  dayEnd.setHours(23, 59, 59, 999);
+
+  const { data: latest, error: latestError } = await supabase
+    .from('attendance_logs')
+    .select('id')
+    .eq('intern_id', attendance.intern_id)
+    .gte('scan_time', dayStart.toISOString())
+    .lte('scan_time', dayEnd.toISOString())
+    .order('scan_time', { ascending: false })
+    .limit(1)
+    .single();
+
+  if (latestError || Number(latest?.id) !== Number(attendance.id)) {
+    const orderError = new Error("Only the intern's latest attendance entry can be removed for rescanning");
+    orderError.statusCode = 409;
+    throw orderError;
+  }
+
+  const { error: photoDeleteError } = await supabase
+    .from('attendance_photos')
+    .delete()
+    .eq('attendance_log_id', attendance.id);
+
+  if (photoDeleteError) throw photoDeleteError;
+
+  const { data: removed, error: removeError } = await supabase
+    .from('attendance_logs')
+    .delete()
+    .eq('id', attendance.id)
+    .eq('approval_status', 'rejected')
+    .select('id, intern_id, scan_type, scan_time')
+    .single();
+
+  if (removeError) throw removeError;
+  return { removed };
+}
+
+export async function deleteAttendanceEntry(attendanceId) {
+  const normalizedId = Number(attendanceId);
+  if (!Number.isInteger(normalizedId) || normalizedId <= 0) {
+    const validationError = new Error('Invalid attendance entry');
+    validationError.statusCode = 400;
+    throw validationError;
+  }
+
+  const { data: attendance, error: attendanceError } = await supabase
+    .from('attendance_logs')
+    .select('id')
+    .eq('id', normalizedId)
+    .maybeSingle();
+
+  if (attendanceError) throw attendanceError;
+  if (!attendance) {
+    const notFoundError = new Error('Attendance record not found');
+    notFoundError.statusCode = 404;
+    throw notFoundError;
+  }
+
+  const { error: photoDeleteError } = await supabase
+    .from('attendance_photos')
+    .delete()
+    .eq('attendance_log_id', normalizedId);
+
+  if (photoDeleteError) throw photoDeleteError;
+
+  const { data: removed, error: removeError } = await supabase
+    .from('attendance_logs')
+    .delete()
+    .eq('id', normalizedId)
+    .select('id, intern_id, scan_type, scan_time, approval_status')
+    .single();
+
+  if (removeError) throw removeError;
+  return { removed };
+}
+
 export async function getAdminDashboardStats() {
   const today = new Date();
   const start = new Date(today);

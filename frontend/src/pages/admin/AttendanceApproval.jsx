@@ -1,10 +1,41 @@
 import { useState, useEffect, useCallback } from 'react';
-import { CheckCircle, XCircle, Clock, Filter, Calendar, Camera } from 'lucide-react';
+import { CheckCircle, XCircle, Camera, Trash2, Settings2, RotateCcw, ChevronRight, AlertTriangle } from 'lucide-react';
 import api from '../../utils/api.js';
 import DataTable from '../../components/common/DataTable.jsx';
 import Modal from '../../components/common/Modal.jsx';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
+
+const ACTION_DETAILS = {
+  approve: {
+    title: 'Approve Attendance',
+    button: 'Approve',
+    processing: 'Approving...',
+    success: 'Attendance approved',
+    buttonClass: 'btn-success',
+  },
+  reject: {
+    title: 'Reject Attendance',
+    button: 'Reject',
+    processing: 'Rejecting...',
+    success: 'Attendance rejected',
+    buttonClass: 'btn-danger',
+  },
+  remove: {
+    title: 'Remove Rejected Scan',
+    button: 'Remove & Allow Rescan',
+    processing: 'Removing...',
+    success: 'Rejected scan removed. The intern can scan again.',
+    buttonClass: 'btn-danger',
+  },
+  delete: {
+    title: 'Delete Attendance Entry',
+    button: 'Delete Entry Permanently',
+    processing: 'Deleting...',
+    success: 'Attendance entry permanently deleted.',
+    buttonClass: 'btn-danger',
+  },
+};
 
 export default function AttendanceApproval() {
   const [logs, setLogs] = useState([]);
@@ -31,20 +62,43 @@ export default function AttendanceApproval() {
   useEffect(() => { fetchLogs(); }, [fetchLogs]);
 
   const handleAction = async (action) => {
+    const actionDetails = ACTION_DETAILS[action];
+    if (!selected || !actionDetails) return;
     setSaving(true);
     try {
-      await api.patch(`/attendance/${selected.id}/${action}`, { remarks });
-      toast.success(`Attendance ${action}d`);
+      if (action === 'remove') {
+        await api.delete(`/attendance/${selected.id}/rescan`);
+      } else if (action === 'delete') {
+        await api.delete(`/attendance/${selected.id}`);
+      } else {
+        await api.patch(`/attendance/${selected.id}/${action}`, { remarks });
+      }
+      toast.success(actionDetails.success);
       setModal(null);
+      setSelected(null);
       fetchLogs();
-    } catch { toast.error(`Failed to ${action} attendance`); }
+    } catch (error) {
+      toast.error(error?.response?.data?.error || `Failed to ${action} attendance`);
+    }
     finally { setSaving(false); }
   };
 
-  const openModal = (log, type) => {
+  const openActions = (log) => {
     setSelected(log);
+    setRemarks(log.remarks || '');
+    setModal('menu');
+  };
+
+  const closeModal = () => {
+    if (saving) return;
+    setModal(null);
+    setSelected(null);
     setRemarks('');
-    setModal(type);
+  };
+
+  const selectAction = (action) => {
+    if (!ACTION_DETAILS[action]) return;
+    setModal(action);
   };
 
   const columns = [
@@ -91,16 +145,15 @@ export default function AttendanceApproval() {
     },
     {
       key: 'id', label: 'Actions',
-      render: (_, row) => row.approval_status === 'pending' ? (
-        <div className="flex gap-1">
-          <button id={`approve-btn-${row.id}`} className="btn btn-success btn-sm" onClick={() => openModal(row, 'approve')}>
-            <CheckCircle className="w-3.5 h-3.5" /> Approve
-          </button>
-          <button id={`reject-btn-${row.id}`} className="btn btn-danger btn-sm" onClick={() => openModal(row, 'reject')}>
-            <XCircle className="w-3.5 h-3.5" /> Reject
-          </button>
-        </div>
-      ) : <span className="text-xs text-gray-400">—</span>
+      render: (_, row) => (
+        <button
+          id={`attendance-actions-btn-${row.id}`}
+          className="btn btn-secondary btn-sm"
+          onClick={() => openActions(row)}
+        >
+          <Settings2 className="w-3.5 h-3.5" /> Manage
+        </button>
+      )
     },
   ];
 
@@ -108,7 +161,7 @@ export default function AttendanceApproval() {
     <div className="space-y-6 animate-fade-in">
       <div>
         <h1 className="text-xl sm:text-2xl font-bold text-gray-800" style={{ fontFamily: 'Outfit, sans-serif' }}>Attendance Approval</h1>
-        <p className="text-gray-500 text-sm">Review and approve intern attendance records</p>
+        <p className="text-gray-500 text-sm">Review attendance and reopen a rejected scan slot when correction is needed</p>
       </div>
 
       {/* Filters */}
@@ -142,37 +195,135 @@ export default function AttendanceApproval() {
         />
       </div>
 
-      {/* Approve/Reject Modal */}
+      {/* Attendance action menu and confirmations */}
       <Modal
         isOpen={!!modal}
-        onClose={() => setModal(null)}
-        title={modal === 'approve' ? 'Approve Attendance' : 'Reject Attendance'}
+        onClose={closeModal}
+        title={modal === 'menu' ? 'Attendance Actions' : ACTION_DETAILS[modal]?.title || 'Review Attendance'}
         size="sm"
         footer={
-          <>
-            <button className="btn btn-secondary" onClick={() => setModal(null)}>Cancel</button>
-            <button
-              id={`confirm-${modal}-btn`}
-              className={`btn ${modal === 'approve' ? 'btn-success' : 'btn-danger'}`}
-              onClick={() => handleAction(modal)}
-              disabled={saving}
-            >
-              {saving ? 'Processing...' : modal === 'approve' ? 'Approve' : 'Reject'}
-            </button>
-          </>
+          modal !== 'menu' ? (
+            <>
+              <button className="btn btn-secondary" onClick={() => setModal('menu')} disabled={saving}>Back</button>
+              <button
+                id={`confirm-${modal}-btn`}
+                className={`btn ${ACTION_DETAILS[modal]?.buttonClass || 'btn-primary'}`}
+                onClick={() => handleAction(modal)}
+                disabled={saving}
+              >
+                {saving ? ACTION_DETAILS[modal]?.processing || 'Processing...' : ACTION_DETAILS[modal]?.button || 'Confirm'}
+              </button>
+            </>
+          ) : null
         }
       >
         {selected && (
           <div className="space-y-3">
-            <div className="bg-gray-50 rounded-xl p-3 text-sm">
-              <p><strong>Intern:</strong> {selected.full_name}</p>
-              <p><strong>Type:</strong> {selected.scan_type === 'time_in' ? 'Time In' : 'Time Out'}</p>
-              <p><strong>Time:</strong> {selected.scan_time ? format(new Date(selected.scan_time), 'MMM dd, yyyy hh:mm a') : '—'}</p>
+            <div className="attendance-action-summary">
+              <div className="attendance-action-summary__header">
+                <div>
+                  <span className="attendance-action-summary__label">Intern</span>
+                  <p className="attendance-action-summary__name">{selected.full_name}</p>
+                </div>
+                <span className={`badge badge-${selected.approval_status}`}>{selected.approval_status}</span>
+              </div>
+              <div className="attendance-action-summary__meta">
+                <div>
+                  <span>Scan type</span>
+                  <strong>{selected.scan_type === 'time_in' ? 'Time In' : 'Time Out'}</strong>
+                </div>
+                <div>
+                  <span>Date &amp; time</span>
+                  <strong>{selected.scan_time ? format(new Date(selected.scan_time), 'MMM dd, yyyy · hh:mm a') : '—'}</strong>
+                </div>
+              </div>
             </div>
-            <div className="form-group">
-              <label className="form-label">Remarks (optional)</label>
-              <textarea className="form-input" rows={3} value={remarks} onChange={e => setRemarks(e.target.value)} placeholder="Add a note..." />
-            </div>
+            {modal === 'menu' ? (
+              <div className="attendance-action-list">
+                <p className="attendance-action-list__label">Choose an action</p>
+                {selected.approval_status !== 'approved' && (
+                  <button
+                    id={`approve-btn-${selected.id}`}
+                    className="attendance-action-row"
+                    onClick={() => selectAction('approve')}
+                  >
+                    <span className="attendance-action-row__icon attendance-action-row__icon--approve">
+                      <CheckCircle />
+                    </span>
+                    <span className="attendance-action-row__content">
+                      <strong>Approve attendance</strong>
+                      <small>Mark this scan as verified.</small>
+                    </span>
+                    <ChevronRight className="attendance-action-row__arrow" />
+                  </button>
+                )}
+
+                {selected.approval_status !== 'rejected' && (
+                  <button
+                    id={`reject-btn-${selected.id}`}
+                    className="attendance-action-row"
+                    onClick={() => selectAction('reject')}
+                  >
+                    <span className="attendance-action-row__icon attendance-action-row__icon--reject">
+                      <XCircle />
+                    </span>
+                    <span className="attendance-action-row__content">
+                      <strong>Reject attendance</strong>
+                      <small>Reject this scan with optional remarks.</small>
+                    </span>
+                    <ChevronRight className="attendance-action-row__arrow" />
+                  </button>
+                )}
+
+                {selected.approval_status === 'rejected' && (
+                  <button
+                    id={`remove-rescan-btn-${selected.id}`}
+                    className="attendance-action-row"
+                    onClick={() => selectAction('remove')}
+                  >
+                    <span className="attendance-action-row__icon attendance-action-row__icon--rescan">
+                      <RotateCcw />
+                    </span>
+                    <span className="attendance-action-row__content">
+                      <strong>Remove &amp; allow rescan</strong>
+                      <small>Reopen today&apos;s latest scan slot.</small>
+                    </span>
+                    <ChevronRight className="attendance-action-row__arrow" />
+                  </button>
+                )}
+
+                <div className="attendance-action-list__divider"><span>Danger zone</span></div>
+                <button
+                  id={`delete-attendance-btn-${selected.id}`}
+                  className="attendance-action-row attendance-action-row--danger"
+                  onClick={() => selectAction('delete')}
+                >
+                  <span className="attendance-action-row__icon attendance-action-row__icon--delete">
+                    <Trash2 />
+                  </span>
+                  <span className="attendance-action-row__content">
+                    <strong>Delete entry permanently</strong>
+                    <small>Remove the record and its selfie.</small>
+                  </span>
+                  <ChevronRight className="attendance-action-row__arrow" />
+                </button>
+              </div>
+            ) : modal === 'remove' ? (
+              <div className="attendance-action-warning attendance-action-warning--rescan">
+                <AlertTriangle />
+                <div><strong>Reopen this scan slot?</strong><p>This removes the rejected entry and selfie. It is allowed only for today&apos;s latest scan.</p></div>
+              </div>
+            ) : modal === 'delete' ? (
+              <div className="attendance-action-warning attendance-action-warning--delete">
+                <AlertTriangle />
+                <div><strong>Delete this entry permanently?</strong><p>The attendance record and its selfie will be removed. This cannot be undone.</p></div>
+              </div>
+            ) : (
+              <div className="form-group">
+                <label className="form-label">Remarks (optional)</label>
+                <textarea className="form-input" rows={3} value={remarks} onChange={e => setRemarks(e.target.value)} placeholder="Add a note..." />
+              </div>
+            )}
           </div>
         )}
       </Modal>
