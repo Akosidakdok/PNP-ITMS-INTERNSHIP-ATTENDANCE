@@ -5,14 +5,9 @@ import Modal from '../../components/common/Modal.jsx';
 import DocumentPreview from '../../components/common/DocumentPreview.jsx';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
+import { REQUIRED_DOCUMENTS, UPLOAD_DOCUMENT_TYPES } from '../../utils/documentRequirements.js';
 
 const MAX_FILE_SIZE_BYTES = 25 * 1024 * 1024; // 25 MB
-
-const DOCUMENT_TYPES = [
-  'Resume', 'Endorsement Letter', 'MOA', 'Medical Certificate',
-  'School ID', 'Government ID', 'Parent Consent', 'Weekly Report',
-  'Monthly Report', 'Daily Journal', 'Certificate of Completion', 'Other'
-];
 
 // File types that cannot be previewed in the browser
 const PREVIEWABLE_TYPES = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'pdf'];
@@ -118,7 +113,7 @@ export default function MyDocuments() {
 
   // 5. Build checklist data for progress tracking
   // Build checklist: one entry per required type (excluding "Other")
-  const checklistTypes = DOCUMENT_TYPES.filter(t => t !== 'Other');
+  const checklistTypes = REQUIRED_DOCUMENTS;
   const docsByType = docs.reduce((acc, d) => {
     if (!acc[d.document_type]) acc[d.document_type] = [];
     acc[d.document_type].push(d);
@@ -126,10 +121,10 @@ export default function MyDocuments() {
   }, {});
 
   const checklistStats = {
-    done:    checklistTypes.filter(t => docsByType[t]?.some(d => d.status === 'accepted')).length,
-    pending: checklistTypes.filter(t => !docsByType[t]?.some(d => d.status === 'accepted') && docsByType[t]?.some(d => d.status === 'pending')).length,
-    revision: checklistTypes.filter(t => !docsByType[t]?.some(d => d.status === 'accepted') && docsByType[t]?.some(d => d.status === 'revision')).length,
-    missing: checklistTypes.filter(t => !docsByType[t]).length,
+    done:    checklistTypes.filter(requirement => docsByType[requirement.value]?.some(d => d.status === 'accepted')).length,
+    pending: checklistTypes.filter(requirement => !docsByType[requirement.value]?.some(d => d.status === 'accepted') && docsByType[requirement.value]?.some(d => d.status === 'pending')).length,
+    revision: checklistTypes.filter(requirement => !docsByType[requirement.value]?.some(d => d.status === 'accepted') && docsByType[requirement.value]?.some(d => d.status === 'revision')).length,
+    missing: checklistTypes.filter(requirement => !docsByType[requirement.value]).length,
   };
 
   return (
@@ -180,8 +175,8 @@ export default function MyDocuments() {
             </button>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-            {checklistTypes.map(type => {
-              const entries = docsByType[type] || [];
+            {checklistTypes.map(requirement => {
+              const entries = docsByType[requirement.value] || [];
               const accepted = entries.some(d => d.status === 'accepted');
               const revision = entries.some(d => d.status === 'revision');
               const pending  = entries.some(d => d.status === 'pending');
@@ -194,7 +189,8 @@ export default function MyDocuments() {
 
               return (
                 <div
-                  key={type}
+                  key={requirement.value}
+                  title={requirement.details}
                   className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-colors ${
                     accepted ? 'bg-green-50 border-green-100' :
                     revision ? 'bg-orange-50 border-orange-100' :
@@ -204,7 +200,8 @@ export default function MyDocuments() {
                 >
                   <Icon className={`w-4 h-4 flex-shrink-0 ${iconClass}`} />
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-gray-700 truncate">{type}</p>
+                    <p className="text-sm font-medium text-gray-700">{requirement.label}</p>
+                    <p className="mt-0.5 text-[11px] leading-4 text-gray-400">{requirement.details}</p>
                     <p className={`text-xs ${labelClass} font-medium`}>{label}</p>
                   </div>
                 </div>
@@ -280,7 +277,7 @@ export default function MyDocuments() {
             <label className="form-label">Document Type *</label>
             <select className="form-input form-select" value={uploadForm.document_type} onChange={e => setUploadForm(f => ({ ...f, document_type: e.target.value }))}>
               <option value="">Select a type...</option>
-              {DOCUMENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+              {UPLOAD_DOCUMENT_TYPES.map(requirement => <option key={requirement.value} value={requirement.value}>{requirement.label}</option>)}
             </select>
           </div>
           <div className="form-group">

@@ -2,12 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { CheckCircle, AlertCircle, Clock } from 'lucide-react';
 import api from '../../utils/api.js';
 import toast from 'react-hot-toast';
-
-const DOCUMENT_TYPES = [
-  'Resume', 'Endorsement Letter', 'MOA', 'Medical Certificate',
-  'School ID', 'Government ID', 'Parent Consent', 'Weekly Report',
-  'Monthly Report', 'Daily Journal', 'Certificate of Completion', 'Other'
-];
+import { REQUIRED_DOCUMENTS } from '../../utils/documentRequirements.js';
 
 export default function DocumentChecklist({ internId }) {
   const [docs, setDocs] = useState([]);
@@ -31,7 +26,7 @@ export default function DocumentChecklist({ internId }) {
   }, [fetchDocs]);
 
   // Build checklist data
-  const checklistTypes = DOCUMENT_TYPES.filter(t => t !== 'Other');
+  const checklistTypes = REQUIRED_DOCUMENTS;
   const docsByType = docs.reduce((acc, d) => {
     if (!acc[d.document_type]) acc[d.document_type] = [];
     acc[d.document_type].push(d);
@@ -39,10 +34,10 @@ export default function DocumentChecklist({ internId }) {
   }, {});
 
   const checklistStats = {
-    done: checklistTypes.filter(t => docsByType[t]?.some(d => d.status === 'accepted')).length,
-    pending: checklistTypes.filter(t => !docsByType[t]?.some(d => d.status === 'accepted') && docsByType[t]?.some(d => d.status === 'pending')).length,
-    revision: checklistTypes.filter(t => !docsByType[t]?.some(d => d.status === 'accepted') && docsByType[t]?.some(d => d.status === 'revision')).length,
-    missing: checklistTypes.filter(t => !docsByType[t]).length,
+    done: checklistTypes.filter(requirement => docsByType[requirement.value]?.some(d => d.status === 'accepted')).length,
+    pending: checklistTypes.filter(requirement => !docsByType[requirement.value]?.some(d => d.status === 'accepted') && docsByType[requirement.value]?.some(d => d.status === 'pending')).length,
+    revision: checklistTypes.filter(requirement => !docsByType[requirement.value]?.some(d => d.status === 'accepted') && docsByType[requirement.value]?.some(d => d.status === 'revision')).length,
+    missing: checklistTypes.filter(requirement => !docsByType[requirement.value]).length,
   };
 
   if (loading) {
@@ -67,8 +62,8 @@ export default function DocumentChecklist({ internId }) {
         <span className="text-gray-400 font-medium">{checklistStats.missing} not yet uploaded</span>
       </p>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-        {checklistTypes.map(type => {
-          const entries = docsByType[type] || [];
+        {checklistTypes.map(requirement => {
+          const entries = docsByType[requirement.value] || [];
           const accepted = entries.some(d => d.status === 'accepted');
           const revision = entries.some(d => d.status === 'revision');
           const pending = entries.some(d => d.status === 'pending');
@@ -80,7 +75,8 @@ export default function DocumentChecklist({ internId }) {
 
           return (
             <div
-              key={type}
+              key={requirement.value}
+              title={requirement.details}
               className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-colors ${
                 accepted ? 'bg-green-50 border-green-100' :
                 revision ? 'bg-orange-50 border-orange-100' :
@@ -90,7 +86,8 @@ export default function DocumentChecklist({ internId }) {
             >
               <Icon className={`w-4 h-4 flex-shrink-0 ${iconClass}`} />
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-gray-700 truncate">{type}</p>
+                <p className="text-sm font-medium text-gray-700">{requirement.label}</p>
+                <p className="mt-0.5 text-[11px] leading-4 text-gray-400">{requirement.details}</p>
                 <p className={`text-xs ${labelClass} font-medium`}>{label}</p>
               </div>
             </div>

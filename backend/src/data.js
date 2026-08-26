@@ -5,6 +5,16 @@ import { supabase } from './supabaseClient.js';
 
 const INTERN_ROLE = 'intern';
 const ADMIN_ROLE = 'admin';
+const ALLOWED_DOCUMENT_TYPES = new Set([
+  'Endorsement Letter',
+  'Curriculum Vitae/Resume',
+  'Memorandum of Agreement (MOA)',
+  'Personal Data Sheet (PDS)',
+  'National Police Clearance',
+  'Directorate for Intelligence Clearance',
+  '2x2 and 1x1 Pictures',
+  'Other',
+]);
 const INTERN_LIST_FIELDS = 'id, username, full_name, first_name, middle_name, last_name, name_suffix, email, role, school, school_id, course, division_id, division_name, status, start_date, end_date, required_hours, rendered_hours, student_id, year_level, phone, home_address, emergency_name, emergency_relation, emergency_phone, face_registered, face_registered_at, self_face_enrollment_available';
 const INTERN_MUTATION_FIELDS = 'id, username, full_name, first_name, middle_name, last_name, name_suffix, email, role, school, school_id, course, division_id, division_name, status, start_date, end_date, required_hours, rendered_hours, student_id, year_level, phone, home_address, emergency_name, emergency_relation, emergency_phone';
 const SELF_PROFILE_EDITABLE_FIELDS = new Set([
@@ -1248,6 +1258,9 @@ export async function updateDocumentStatus(id, status, adminRemarks) {
 
 export async function createDocument({ userId, file, document_type }) {
   if (!file) throw new Error('File upload is required');
+  if (!ALLOWED_DOCUMENT_TYPES.has(document_type)) {
+    throw new Error('Unsupported document type');
+  }
   const { originalname, mimetype, size, buffer } = file;
   const fileExtension = originalname.split('.').pop();
   const newFileName = `${uuidv4()}.${fileExtension}`;
