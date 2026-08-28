@@ -20,11 +20,36 @@ const safeFormatDistanceToNow = (dateStr) => {
   }
 };
 
+const toNonNegativeMinutes = (value) => {
+  if (value === null || value === undefined || value === '') return null;
+  const minutes = Number(value);
+  return Number.isFinite(minutes) ? Math.max(0, Math.round(minutes)) : null;
+};
+
+const getRecordMinutes = (record) => {
+  const fallbackMinutes = record?.total_hours === null
+    || record?.total_hours === undefined
+    || record?.total_hours === ''
+    ? null
+    : toNonNegativeMinutes(Number(record.total_hours) * 60);
+
+  return toNonNegativeMinutes(record?.total_minutes) ?? fallbackMinutes ?? 0;
+};
+
+const getApprovedMinutes = record => toNonNegativeMinutes(record?.approved_minutes)
+  ?? (record?.approval_status === 'approved' ? getRecordMinutes(record) : 0);
+
+const formatDuration = (value) => {
+  const minutes = toNonNegativeMinutes(value) ?? 0;
+  return `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, '0')}m`;
+};
+
 export default function InternDashboard() {
   const { user } = useAuth();
   const { notifications } = useNotifications();
   const [profile, setProfile] = useState(null);
   const [dtrRecords, setDtrRecords] = useState([]);
+  const [dtrSummary, setDtrSummary] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const navigate = useNavigate();
@@ -37,6 +62,7 @@ export default function InternDashboard() {
     ]).then(([profRes, dtrRes]) => {
       setProfile(profRes.data?.intern);
       setDtrRecords(dtrRes.data?.records || []);
+      setDtrSummary(dtrRes.data?.summary || null);
       setError(null);
     }).catch((err) => {
       const message = err.response?.data?.error || 'Failed to load your dashboard data. Please refresh the page.';
@@ -47,15 +73,23 @@ export default function InternDashboard() {
 
   const intern = profile;
 
-  // Calculate hours from DTR records (same source as the DTR page)
-  const totalRendered  = dtrRecords.reduce((s, r) => s + (r.total_hours || 0), 0);
-  const approvedRendered = dtrRecords
-    .filter(r => r.approval_status === 'approved')
-    .reduce((s, r) => s + (r.total_hours || 0), 0);
+  // Prefer the server's authoritative minute summary, with a record fallback for
+  // compatibility while older API responses are still in circulation.
+  const fallbackApprovedMinutes = dtrRecords.reduce(
+    (sum, record) => sum + getApprovedMinutes(record),
+    0
+  );
+  const approvedMinutes = toNonNegativeMinutes(dtrSummary?.approved_minutes) ?? fallbackApprovedMinutes;
 
-  const requiredHours = intern?.required_hours || 486;
-  const pct       = Math.min(100, (approvedRendered / requiredHours) * 100);
-  const remaining = Math.max(0, requiredHours - approvedRendered);
+  const rawRequiredHours = intern?.required_hours;
+  const parsedRequiredHours = rawRequiredHours === null || rawRequiredHours === undefined || rawRequiredHours === ''
+    ? Number.NaN
+    : Number(rawRequiredHours);
+  const requiredHours = Number.isFinite(parsedRequiredHours) ? Math.max(0, parsedRequiredHours) : 486;
+  const requiredMinutes = Math.round(requiredHours * 60);
+  const pct = requiredMinutes > 0 ? Math.min(100, (approvedMinutes / requiredMinutes) * 100) : 0;
+  const remainingMinutes = Math.max(0, requiredMinutes - approvedMinutes);
+  const requiredDisplay = Number.isInteger(requiredHours) ? `${requiredHours}h` : formatDuration(requiredMinutes);
 
   const recentNotifs = notifications.filter(n => !n.is_read).slice(0, 3);
 
@@ -121,10 +155,10 @@ export default function InternDashboard() {
       {/* Stats Row */}
       <div className="intern-dashboard-stats grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { icon: CheckCircle, label: 'Hours Rendered',  value: loading ? '—' : `${approvedRendered.toFixed(1)}h`,  color: 'text-green-600',  bg: 'bg-green-50'  },
-          { icon: Clock,        label: 'Hours Required',  value: loading ? '—' : `${requiredHours}h`,                color: 'text-blue-600',   bg: 'bg-blue-50'   },
-          { icon: TrendingUp,   label: 'Remaining',       value: loading ? '—' : `${remaining.toFixed(1)}h`,         color: 'text-orange-600', bg: 'bg-orange-50' },
-          { icon: Calendar,     label: 'Progress',        value: loading ? '—' : `${pct.toFixed(0)}%`,               color: 'text-purple-600', bg: 'bg-purple-50' },
+          { icon: CheckCircle, label: 'Hours Rendered',  value: loading ? '—' : formatDuration(approvedMinutes),  color: 'text-green-600',  bg: 'bg-green-50'  },
+          { icon: Clock,        label: 'Hours Required',  value: loading ? '—' : requiredDisplay,                   color: 'text-blue-600',   bg: 'bg-blue-50'   },
+          { icon: TrendingUp,   label: 'Remaining',       value: loading ? '—' : formatDuration(remainingMinutes), color: 'text-orange-600', bg: 'bg-orange-50' },
+          { icon: Calendar,     label: 'Progress',        value: loading ? '—' : `${pct.toFixed(1)}%`,               color: 'text-purple-600', bg: 'bg-purple-50' },
         ].map(s => (
           <div key={s.label} className="card p-4 flex items-center gap-3">
             <div className={`p-2 rounded-xl ${s.bg}`}>
@@ -148,8 +182,8 @@ export default function InternDashboard() {
           <div className="progress-fill" style={{ width: `${pct}%` }} />
         </div>
         <div className="flex justify-between text-xs text-gray-400">
-          <span>{approvedRendered.toFixed(1)} hours completed</span>
-          <span>{remaining.toFixed(1)} hours remaining</span>
+          <span>{formatDuration(approvedMinutes)} completed</span>
+          <span>{formatDuration(remainingMinutes)} remaining</span>
         </div>
         {intern?.start_date && intern?.end_date && (
           <p className="text-xs text-gray-400 mt-2">
@@ -223,7 +257,9 @@ export default function InternDashboard() {
                     <p className="text-xs text-gray-400">{r.time_in ? `In: ${r.time_in}` : '—'} {r.time_out ? `| Out: ${r.time_out}` : ''}</p>
                   </div>
                   <div className="text-right">
-                    <p className="text-sm font-bold text-blue-600">{r.total_hours ? `${r.total_hours.toFixed(1)}h` : '—'}</p>
+                    <p className="text-sm font-bold text-blue-600">
+                      {r.is_complete ? formatDuration(getRecordMinutes(r)) : 'Incomplete'}
+                    </p>
                     <span className={`badge badge-${r.approval_status} text-xs`}>{r.approval_status}</span>
                   </div>
                 </div>

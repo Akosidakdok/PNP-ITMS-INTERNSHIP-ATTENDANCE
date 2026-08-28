@@ -5,6 +5,17 @@ import DTRPrint from '../../components/dtr/DTRPrint.jsx';
 import Modal from '../../components/common/Modal.jsx';
 import toast from 'react-hot-toast';
 
+const getPhtTodayKey = () => {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Manila',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date());
+  const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+};
+
 export default function AdminDTRViewer() {
   const [interns, setInterns] = useState([]);
   const [selectedInternId, setSelectedInternId] = useState('');
@@ -30,7 +41,7 @@ export default function AdminDTRViewer() {
   // Bulk override dialog state
   const [bulkModalOpen, setBulkModalOpen] = useState(false);
   const [bulkForm, setBulkForm] = useState({
-    date: new Date().toISOString().slice(0, 10),
+    date: getPhtTodayKey(),
     type: 'suspended', // 'none' | 'suspended' | 'excused' | 'hours' | 'others'
     hours: 8,
     remarks: '',
@@ -156,7 +167,7 @@ export default function AdminDTRViewer() {
           className="btn btn-secondary flex items-center gap-1.5 w-full sm:w-auto"
           onClick={() => {
             setBulkForm({
-              date: new Date().toISOString().slice(0, 10),
+              date: getPhtTodayKey(),
               type: 'suspended',
               hours: 8,
               remarks: ''
@@ -316,8 +327,8 @@ export default function AdminDTRViewer() {
                 <input
                   type="number"
                   min="0"
-                  max="24"
-                  step="0.5"
+                  max="8"
+                  step="0.25"
                   className="form-input font-bold"
                   value={overrideForm.hours}
                   onChange={e => setOverrideForm(f => ({ ...f, hours: Number(e.target.value) }))}
@@ -391,8 +402,8 @@ export default function AdminDTRViewer() {
                 <input
                   type="number"
                   min="0"
-                  max="24"
-                  step="0.5"
+                  max="8"
+                  step="0.25"
                   className="form-input font-bold"
                   value={bulkForm.hours}
                   onChange={e => setBulkForm(f => ({ ...f, hours: Number(e.target.value) }))}

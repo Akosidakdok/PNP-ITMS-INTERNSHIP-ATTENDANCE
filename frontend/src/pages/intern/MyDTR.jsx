@@ -1,11 +1,37 @@
 import { useState, useEffect, useCallback } from 'react';
 import api from '../../utils/api.js';
 import DTRPrint from '../../components/dtr/DTRPrint.jsx';
-import { Clock, Calendar } from 'lucide-react';
+import { Clock } from 'lucide-react';
 import toast from 'react-hot-toast';
+
+const toNonNegativeMinutes = (value) => {
+  if (value === null || value === undefined || value === '') return null;
+  const minutes = Number(value);
+  return Number.isFinite(minutes) ? Math.max(0, Math.round(minutes)) : null;
+};
+
+const getRecordMinutes = (record) => {
+  const fallbackMinutes = record?.total_hours === null
+    || record?.total_hours === undefined
+    || record?.total_hours === ''
+    ? null
+    : toNonNegativeMinutes(Number(record.total_hours) * 60);
+
+  return toNonNegativeMinutes(record?.total_minutes) ?? fallbackMinutes ?? 0;
+};
+
+const getWorkedMinutes = record => toNonNegativeMinutes(record?.worked_minutes) ?? getRecordMinutes(record);
+const getApprovedMinutes = record => toNonNegativeMinutes(record?.approved_minutes)
+  ?? (record?.approval_status === 'approved' ? getRecordMinutes(record) : 0);
+
+const formatDuration = (value) => {
+  const minutes = toNonNegativeMinutes(value) ?? 0;
+  return `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, '0')}m`;
+};
 
 export default function MyDTR() {
   const [records, setRecords] = useState([]);
+  const [summary, setSummary] = useState(null);
   const [intern, setIntern] = useState(null);
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({
@@ -20,7 +46,8 @@ export default function MyDTR() {
         api.get('/dtr', { params: { month: filters.month, year: filters.year, limit: 31 } }),
         api.get('/interns/me/profile'),
       ]);
-      setRecords(dtrRes.data.records);
+      setRecords(dtrRes.data?.records || []);
+      setSummary(dtrRes.data?.summary || null);
       setIntern(profRes.data.intern);
     } catch {
       toast.error('Failed to load your DTR data.');
@@ -29,8 +56,11 @@ export default function MyDTR() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  const totalHours = records.reduce((s, r) => s + (r.total_hours || 0), 0);
-  const approvedHours = records.filter(r => r.approval_status === 'approved').reduce((s, r) => s + (r.total_hours || 0), 0);
+  const fallbackWorkedMinutes = records.reduce((sum, record) => sum + getWorkedMinutes(record), 0);
+  const fallbackApprovedMinutes = records.reduce((sum, record) => sum + getApprovedMinutes(record), 0);
+  const workedMinutes = toNonNegativeMinutes(summary?.worked_minutes) ?? fallbackWorkedMinutes;
+  const approvedMinutes = toNonNegativeMinutes(summary?.approved_minutes) ?? fallbackApprovedMinutes;
+  const daysPresent = toNonNegativeMinutes(summary?.days_present) ?? records.length;
 
   const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
   const years = [2024, 2025, 2026, 2027, 2028, 2029, 2030, 2031, 2032, 2033, 2034, 2035, 2036, 2037, 2038, 2039, 2040];
@@ -45,15 +75,15 @@ export default function MyDTR() {
       {/* Summary Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="card p-4 text-center">
-          <p className="text-2xl font-bold text-blue-600">{records.length}</p>
+          <p className="text-2xl font-bold text-blue-600">{daysPresent}</p>
           <p className="text-xs text-gray-500 mt-1">Days Present</p>
         </div>
         <div className="card p-4 text-center">
-          <p className="text-2xl font-bold text-green-600">{totalHours.toFixed(1)}h</p>
+          <p className="text-2xl font-bold text-green-600">{formatDuration(workedMinutes)}</p>
           <p className="text-xs text-gray-500 mt-1">Total Hours</p>
         </div>
         <div className="card p-4 text-center">
-          <p className="text-2xl font-bold text-purple-600">{approvedHours.toFixed(1)}h</p>
+          <p className="text-2xl font-bold text-purple-600">{formatDuration(approvedMinutes)}</p>
           <p className="text-xs text-gray-500 mt-1">Approved Hours</p>
         </div>
       </div>

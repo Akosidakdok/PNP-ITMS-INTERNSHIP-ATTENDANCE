@@ -2,6 +2,8 @@
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 import { supabase } from './supabaseClient.js';
+import { getPhtDateKey, getPhtDayBoundsUtc } from './utils/attendanceTime.js';
+import { buildDtrRecords, summarizeDtrRecords } from './utils/dtrRecords.js';
 
 const INTERN_ROLE = 'intern';
 const ADMIN_ROLE = 'admin';
@@ -25,6 +27,36 @@ const SELF_PROFILE_EDITABLE_FIELDS = new Set([
   'emergency_relation',
   'emergency_phone',
 ]);
+
+async function addCalculatedRenderedHours(interns = []) {
+  const internIds = interns.map(intern => intern.id).filter(Boolean);
+  if (internIds.length === 0) return interns;
+
+  const { data: logs, error } = await supabase
+    .from('attendance_logs')
+    .select('id, intern_id, scan_time, scan_type, approval_status, remarks')
+    .in('intern_id', internIds)
+    .order('scan_time', { ascending: true });
+
+  if (error) throw error;
+
+  const logsByIntern = new Map(internIds.map(id => [String(id), []]));
+  for (const log of logs || []) {
+    const key = String(log.intern_id);
+    if (!logsByIntern.has(key)) logsByIntern.set(key, []);
+    logsByIntern.get(key).push(log);
+  }
+
+  return interns.map(intern => {
+    const records = buildDtrRecords(logsByIntern.get(String(intern.id)) || []);
+    const summary = summarizeDtrRecords(records);
+    return {
+      ...intern,
+      rendered_minutes: summary.approved_minutes,
+      rendered_hours: summary.approved_hours,
+    };
+  });
+}
 
 export async function getDivisions() {
   let { data: divisions, error } = await supabase
@@ -271,7 +303,8 @@ export async function getInterns({ search, page = 1, limit = 10, division_id, de
 
   const { data, error, count } = await query;
   if (error) throw error;
-  return { interns: data || [], total: count || 0 };
+  const interns = await addCalculatedRenderedHours(data || []);
+  return { interns, total: count || 0 };
 }
 
 export async function getInternById(id) {
@@ -284,7 +317,8 @@ export async function getInternById(id) {
       .eq('role', INTERN_ROLE)
       .single();
     if (error) throw error;
-    return data;
+    const [intern] = await addCalculatedRenderedHours([data]);
+    return intern;
   } catch (err) {
     const { data, error } = await supabase
       .from('accounts')
@@ -293,7 +327,13 @@ export async function getInternById(id) {
       .eq('role', INTERN_ROLE)
       .single();
     if (error) throw error;
-    return { ...data, face_registered: false, face_registered_at: null, self_face_enrollment_available: false };
+    const [intern] = await addCalculatedRenderedHours([{
+      ...data,
+      face_registered: false,
+      face_registered_at: null,
+      self_face_enrollment_available: false,
+    }]);
+    return intern;
   }
 }
 
@@ -310,6 +350,8 @@ export async function createIntern(payload) {
     face_registered: _faceRegistered,
     face_registered_at: _faceRegisteredAt,
     self_face_enrollment_available: _selfFaceEnrollmentAvailable,
+    rendered_hours: _renderedHours,
+    rendered_minutes: _renderedMinutes,
     id: _id,
     created_at: _createdAt,
     ...rest
@@ -361,6 +403,8 @@ export async function updateIntern(id, payload) {
     face_registered: _faceRegistered,
     face_registered_at: _faceRegisteredAt,
     self_face_enrollment_available: _selfFaceEnrollmentAvailable,
+    rendered_hours: _renderedHours,
+    rendered_minutes: _renderedMinutes,
     id: _id,
     created_at: _createdAt,
     ...rest
@@ -447,7 +491,8 @@ export async function getCurrentUserProfile(userId) {
       if (error.code === 'PGRST116') return null;
       throw error;
     }
-    return data;
+    const [intern] = await addCalculatedRenderedHours([data]);
+    return intern;
   } catch (err) {
     const { data, error } = await supabase
       .from('accounts')
@@ -459,7 +504,13 @@ export async function getCurrentUserProfile(userId) {
       if (error.code === 'PGRST116') return null;
       throw error;
     }
-    return { ...data, face_registered: false, face_registered_at: null, self_face_enrollment_available: false };
+    const [intern] = await addCalculatedRenderedHours([{
+      ...data,
+      face_registered: false,
+      face_registered_at: null,
+      self_face_enrollment_available: false,
+    }]);
+    return intern;
   }
 }
 
@@ -482,7 +533,8 @@ export async function updateCurrentUserProfile(userId, updates) {
       .single();
 
     if (error) throw error;
-    return data;
+    const [intern] = await addCalculatedRenderedHours([data]);
+    return intern;
   } catch (err) {
     const { data, error } = await supabase
       .from('accounts')
@@ -493,7 +545,13 @@ export async function updateCurrentUserProfile(userId, updates) {
       .single();
 
     if (error) throw error;
-    return { ...data, face_registered: false, face_registered_at: null, self_face_enrollment_available: false };
+    const [intern] = await addCalculatedRenderedHours([{
+      ...data,
+      face_registered: false,
+      face_registered_at: null,
+      self_face_enrollment_available: false,
+    }]);
+    return intern;
   }
 }
 
@@ -522,6 +580,7 @@ export async function getAttendanceLogs({ status, date, page = 1, limit = 15, di
   let query = supabase
     .from('attendance_logs')
     .select('*, attendance_photos(photo)', { count: 'exact' })
+    .or('remarks.is.null,remarks.not.like.OVERRIDE:%')
     .order('scan_time', { ascending: false });
 
   if (status) {
@@ -529,11 +588,8 @@ export async function getAttendanceLogs({ status, date, page = 1, limit = 15, di
   }
 
   if (date) {
-    const start = new Date(date);
-    start.setHours(0, 0, 0, 0);
-    const end = new Date(date);
-    end.setHours(23, 59, 59, 999);
-    query = query.gte('scan_time', start.toISOString()).lte('scan_time', end.toISOString());
+    const { startIso, endExclusiveIso } = getPhtDayBoundsUtc(date);
+    query = query.gte('scan_time', startIso).lt('scan_time', endExclusiveIso);
   }
 
   const divId = division_id || department_id;
@@ -614,24 +670,21 @@ export async function removeRejectedAttendanceForRescan(attendanceId) {
   }
 
   const scanDate = new Date(attendance.scan_time);
-  const now = new Date();
-  if (scanDate.toDateString() !== now.toDateString()) {
+  if (getPhtDateKey(scanDate) !== getPhtDateKey()) {
     const dateError = new Error("Only today's rejected attendance can be removed for rescanning");
     dateError.statusCode = 409;
     throw dateError;
   }
 
-  const dayStart = new Date(scanDate);
-  dayStart.setHours(0, 0, 0, 0);
-  const dayEnd = new Date(scanDate);
-  dayEnd.setHours(23, 59, 59, 999);
+  const { startIso, endExclusiveIso } = getPhtDayBoundsUtc(scanDate);
 
   const { data: latest, error: latestError } = await supabase
     .from('attendance_logs')
     .select('id')
     .eq('intern_id', attendance.intern_id)
-    .gte('scan_time', dayStart.toISOString())
-    .lte('scan_time', dayEnd.toISOString())
+    .or('remarks.is.null,remarks.not.like.OVERRIDE:%')
+    .gte('scan_time', startIso)
+    .lt('scan_time', endExclusiveIso)
     .order('scan_time', { ascending: false })
     .limit(1)
     .single();
@@ -701,17 +754,14 @@ export async function deleteAttendanceEntry(attendanceId) {
 }
 
 export async function getAdminDashboardStats() {
-  const today = new Date();
-  const start = new Date(today);
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(today);
-  end.setHours(23, 59, 59, 999);
+  const { startIso, endExclusiveIso } = getPhtDayBoundsUtc();
 
   const [internsRes, attendanceRes, pendingDocsRes, divisionsRes] = await Promise.all([
     supabase.from('accounts').select('id', { count: 'exact', head: false }).eq('role', INTERN_ROLE),
     supabase.from('attendance_logs').select('id, intern_id, scan_time, approval_status', { count: 'exact' })
-      .gte('scan_time', start.toISOString())
-      .lte('scan_time', end.toISOString()),
+      .or('remarks.is.null,remarks.not.like.OVERRIDE:%')
+      .gte('scan_time', startIso)
+      .lt('scan_time', endExclusiveIso),
     supabase.from('documents').select('id', { count: 'exact' }).eq('status', 'pending'),
     supabase.from('divisions').select('id', { count: 'exact', head: false })
   ]);
@@ -732,6 +782,7 @@ export async function getAdminDashboardStats() {
   const { data: recentAttendance, error: recentAttendanceError } = await supabase
     .from('attendance_logs')
     .select('*')
+    .or('remarks.is.null,remarks.not.like.OVERRIDE:%')
     .order('scan_time', { ascending: false })
     .limit(5);
 
@@ -807,18 +858,15 @@ export async function getSupervisorDashboardStats(user) {
   let approvedToday = 0;
 
   if (departmentInternIds.length > 0) {
-    const today = new Date();
-    const start = new Date(today);
-    start.setHours(0, 0, 0, 0);
-    const end = new Date(today);
-    end.setHours(23, 59, 59, 999);
+    const { startIso, endExclusiveIso } = getPhtDayBoundsUtc();
 
     const { data: todayLogsData, error: todayLogsError } = await supabase
       .from('attendance_logs')
       .select('id, intern_id, scan_time, approval_status')
       .in('intern_id', departmentInternIds)
-      .gte('scan_time', start.toISOString())
-      .lte('scan_time', end.toISOString());
+      .or('remarks.is.null,remarks.not.like.OVERRIDE:%')
+      .gte('scan_time', startIso)
+      .lt('scan_time', endExclusiveIso);
     
     if (todayLogsError) throw todayLogsError;
     const todayLogs = todayLogsData || [];
@@ -834,6 +882,7 @@ export async function getSupervisorDashboardStats(user) {
       .from('attendance_logs')
       .select('id', { count: 'exact', head: true })
       .in('intern_id', departmentInternIds)
+      .or('remarks.is.null,remarks.not.like.OVERRIDE:%')
       .eq('approval_status', 'pending');
 
     if (pendingLogsError) throw pendingLogsError;
@@ -852,6 +901,7 @@ export async function getSupervisorDashboardStats(user) {
       .from('attendance_logs')
       .select('*')
       .in('intern_id', departmentInternIds)
+      .or('remarks.is.null,remarks.not.like.OVERRIDE:%')
       .order('scan_time', { ascending: false })
       .limit(5);
 
@@ -919,15 +969,9 @@ export async function getAttendanceReport({ month, year, division_id, department
       const yNum = year ? Number(year) : undefined;
 
       const monthlyDtr = await getDtrRecords(intern.id, { month: mNum, year: yNum });
-      const allTimeDtr = await getDtrRecords(intern.id, { limit: 500 });
-
-      const monthlyTotalHours = monthlyDtr.reduce((sum, r) => sum + (r.total_hours || 0), 0);
-
-      const cumulativeApprovedHours = allTimeDtr
-        .filter(r => r.approval_status === 'approved')
-        .reduce((sum, r) => sum + (r.total_hours || 0), 0);
-
-      const daysPresent = monthlyDtr.length;
+      const allTimeDtr = await getDtrRecords(intern.id, { allTime: true });
+      const monthlySummary = summarizeDtrRecords(monthlyDtr);
+      const cumulativeSummary = summarizeDtrRecords(allTimeDtr);
 
       return {
         id: intern.id,
@@ -935,10 +979,13 @@ export async function getAttendanceReport({ month, year, division_id, department
         school: intern.school,
         division_name: intern.division_name,
         department_name: intern.division_name,
-        days_present: daysPresent,
-        total_hours: Number(monthlyTotalHours.toFixed(2)),
+        days_present: monthlySummary.days_present,
+        total_minutes: monthlySummary.worked_minutes,
+        approved_minutes: monthlySummary.approved_minutes,
+        total_hours: monthlySummary.worked_hours,
         required_hours: Number(intern.required_hours || 0),
-        rendered_hours: Number(cumulativeApprovedHours.toFixed(2)),
+        rendered_minutes: cumulativeSummary.approved_minutes,
+        rendered_hours: cumulativeSummary.approved_hours,
       };
     })
   );
@@ -946,219 +993,162 @@ export async function getAttendanceReport({ month, year, division_id, department
   return reportData;
 }
 
-export async function getDtrRecords(userId, { month, year, limit = 31 } = {}) {
-  const MNL_OFFSET_MS = 8 * 60 * 60 * 1000;
-
-  function toMNLDate(date) {
-    return new Date(date.getTime() + MNL_OFFSET_MS);
-  }
-
-  function toHHMM(mnlDate) {
-    if (!mnlDate) return null;
-    return mnlDate.toISOString().slice(11, 16);
-  }
-
-  function mnlTimeStr(rawUTC) {
-    if (!rawUTC) return null;
-    return toHHMM(toMNLDate(rawUTC));
-  }
-
+export async function getDtrRecords(userId, { month, year, limit = 31, allTime = false } = {}) {
   let query = supabase
     .from('attendance_logs')
-    .select('scan_time, scan_type, approval_status, remarks')
+    .select('id, intern_id, scan_time, scan_type, approval_status, remarks')
     .eq('intern_id', userId)
     .order('scan_time', { ascending: true });
 
-  if (month && year) {
-    const startUTC = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0, 0) - MNL_OFFSET_MS);
-    const endUTC = new Date(Date.UTC(year, month, 0, 23, 59, 59, 999) - MNL_OFFSET_MS);
-    query = query.gte('scan_time', startUTC.toISOString()).lte('scan_time', endUTC.toISOString());
-  } else {
-    const since = new Date(Date.now() - limit * 24 * 60 * 60 * 1000);
-    query = query.gte('scan_time', since.toISOString());
+  if (month !== undefined || year !== undefined) {
+    const monthNumber = Number(month);
+    const yearNumber = Number(year);
+    if (
+      !Number.isInteger(monthNumber)
+      || monthNumber < 1
+      || monthNumber > 12
+      || !Number.isInteger(yearNumber)
+    ) {
+      const validationError = new Error('A valid DTR month and year are required');
+      validationError.statusCode = 400;
+      throw validationError;
+    }
+
+    const startKey = `${yearNumber}-${String(monthNumber).padStart(2, '0')}-01`;
+    const nextMonth = new Date(Date.UTC(yearNumber, monthNumber, 1));
+    const nextMonthKey = nextMonth.toISOString().slice(0, 10);
+    const { startIso } = getPhtDayBoundsUtc(startKey);
+    const { startIso: endExclusiveIso } = getPhtDayBoundsUtc(nextMonthKey);
+    query = query.gte('scan_time', startIso).lt('scan_time', endExclusiveIso);
+  } else if (!allTime) {
+    const normalizedLimit = Math.max(1, Math.floor(Number(limit) || 31));
+    const firstIncludedDay = new Date(Date.now() - (normalizedLimit - 1) * 24 * 60 * 60 * 1000);
+    const { startIso } = getPhtDayBoundsUtc(firstIncludedDay);
+    query = query.gte('scan_time', startIso);
   }
 
   const { data: logs, error } = await query;
   if (error) throw error;
-
-  const grouped = logs.reduce((acc, log) => {
-    const mnlDate = toMNLDate(new Date(log.scan_time));
-    const dateKey = mnlDate.toISOString().slice(0, 10);
-    if (!acc[dateKey]) acc[dateKey] = [];
-    acc[dateKey].push(log);
-    return acc;
-  }, {});
-
-  function computeStandardDtrRecord(date, entries) {
-    const sorted = [...entries].sort((a, b) => new Date(a.scan_time) - new Date(b.scan_time));
-    const [s1, s2, s3, s4] = sorted;
-
-    const amInRaw = s1?.scan_type === 'time_in' ? new Date(s1.scan_time) : null;
-    const amOutRaw = s2?.scan_type === 'time_out' ? new Date(s2.scan_time) : null;
-    const pmInRaw = s3?.scan_type === 'time_in' ? new Date(s3.scan_time) : null;
-    const pmOutRaw = s4?.scan_type === 'time_out' ? new Date(s4.scan_time) : null;
-
-    let effectiveAmIn = null;
-    if (amInRaw) {
-      const m = toMNLDate(amInRaw);
-      effectiveAmIn = m.getUTCHours() < 8
-        ? new Date(`${date}T08:00:00+08:00`)
-        : amInRaw;
-    }
-
-    let effectivePmIn = null;
-    if (pmInRaw) {
-      const m = toMNLDate(pmInRaw);
-      const h = m.getUTCHours(), min = m.getUTCMinutes();
-      effectivePmIn = (h < 13 || (h === 13 && min === 0))
-        ? new Date(`${date}T13:00:00+08:00`)
-        : pmInRaw;
-    }
-
-    const effectivePmOut = pmOutRaw;
-    const noon = new Date(`${date}T12:00:00+08:00`);
-
-    let totalHours = 0;
-    if (effectiveAmIn && effectivePmIn && effectivePmOut) {
-      const amSession = Math.max(0, (noon - effectiveAmIn) / 3600000);
-      const pmSession = Math.max(0, (effectivePmOut - effectivePmIn) / 3600000);
-      totalHours = amSession + pmSession;
-    } else if (effectiveAmIn && amOutRaw) {
-      const amEnd = amOutRaw < noon ? amOutRaw : noon;
-      totalHours = Math.max(0, (amEnd - effectiveAmIn) / 3600000);
-    } else if (effectivePmIn && effectivePmOut) {
-      totalHours = Math.max(0, (effectivePmOut - effectivePmIn) / 3600000);
-    }
-
-    const amStatus = s1?.approval_status || 'pending';
-    const pmStatus = s4?.approval_status || s3?.approval_status || 'pending';
-    const allStatuses = entries.map(e => e.approval_status).filter(Boolean);
-    let overallStatus = 'pending';
-    if (allStatuses.length && allStatuses.every(s => s === 'approved')) overallStatus = 'approved';
-    if (allStatuses.some(s => s === 'rejected')) overallStatus = 'rejected';
-
-    return {
-      date,
-      am_time_in: mnlTimeStr(effectiveAmIn),
-      am_time_out: mnlTimeStr(amOutRaw),
-      pm_time_in: mnlTimeStr(effectivePmIn),
-      pm_time_out: mnlTimeStr(effectivePmOut),
-      am_status: amStatus,
-      pm_status: pmStatus,
-      approval_status: overallStatus,
-      total_hours: Number(totalHours.toFixed(2)),
-      time_in: mnlTimeStr(effectiveAmIn),
-      time_out: mnlTimeStr(effectivePmOut),
-    };
-  }
-
-  return Object.entries(grouped).map(([date, entries]) => {
-    const overrideLog = entries.find(l => l.remarks && l.remarks.startsWith('OVERRIDE:'));
-    if (overrideLog) {
-      const parts = overrideLog.remarks.split(':');
-      const overrideType = parts[1];
-
-      if (overrideType === 'SUSPENDED') {
-        const textRemarks = parts.slice(2).join(':');
-        return {
-          date,
-          am_time_in: null,
-          am_time_out: null,
-          pm_time_in: null,
-          pm_time_out: null,
-          am_status: 'approved',
-          pm_status: 'approved',
-          approval_status: 'approved',
-          total_hours: 0,
-          time_in: null,
-          time_out: null,
-          remarks: textRemarks || 'Suspension',
-          is_override: true,
-          override_type: 'suspended',
-          override_remarks: textRemarks
-        };
-      } else if (overrideType === 'EXCUSED') {
-        const textRemarks = parts.slice(2).join(':');
-        return {
-          date,
-          am_time_in: null,
-          am_time_out: null,
-          pm_time_in: null,
-          pm_time_out: null,
-          am_status: 'approved',
-          pm_status: 'approved',
-          approval_status: 'approved',
-          total_hours: 8.0,
-          time_in: null,
-          time_out: null,
-          remarks: textRemarks || 'Excused',
-          is_override: true,
-          override_type: 'excused',
-          override_remarks: textRemarks
-        };
-      } else if (overrideType === 'HOURS') {
-        const customHrs = Number(parts[2]) || 0;
-        const textRemarks = parts.slice(3).join(':');
-        const normalScans = entries.filter(l => l.id !== overrideLog.id);
-        const standardRecord = computeStandardDtrRecord(date, normalScans);
-        return {
-          ...standardRecord,
-          total_hours: customHrs,
-          remarks: textRemarks || 'Hours Overridden',
-          is_override: true,
-          override_type: 'hours',
-          override_hours: customHrs,
-          override_remarks: textRemarks
-        };
-      } else if (overrideType === 'OTHERS') {
-        const customHrs = Number(parts[2]) || 0;
-        const textRemarks = parts.slice(3).join(':');
-        return {
-          date,
-          am_time_in: null,
-          am_time_out: null,
-          pm_time_in: null,
-          pm_time_out: null,
-          am_status: 'approved',
-          pm_status: 'approved',
-          approval_status: 'approved',
-          total_hours: customHrs,
-          time_in: null,
-          time_out: null,
-          remarks: textRemarks || 'Others',
-          is_override: true,
-          override_type: 'others',
-          override_hours: customHrs,
-          override_remarks: textRemarks
-        };
-      }
-    }
-
-    return computeStandardDtrRecord(date, entries);
-  }).sort((a, b) => b.date.localeCompare(a.date));
+  return buildDtrRecords(logs || []);
 }
+
+export function getDtrSummary(records = []) {
+  return summarizeDtrRecords(records);
+}
+
 
 export async function setDtrOverride(internId, { date, type, hours = 0, remarks = '' }) {
   if (!internId || !date || !type) {
-    throw new Error('Intern ID, date, and override type are required');
+    const validationError = new Error('Intern ID, date, and override type are required');
+    validationError.statusCode = 400;
+    throw validationError;
   }
-  const formattedType = type.toUpperCase();
-  const overrideRemark = `OVERRIDE:${formattedType}:${hours}:${remarks}`;
+
+  const formattedType = String(type).toUpperCase();
+  const allowedTypes = new Set(['NONE', 'SUSPENDED', 'EXCUSED', 'HOURS', 'OTHERS']);
+  if (!allowedTypes.has(formattedType)) {
+    const validationError = new Error('Unsupported DTR override type');
+    validationError.statusCode = 400;
+    throw validationError;
+  }
+
+  try {
+    getPhtDayBoundsUtc(date);
+  } catch {
+    const validationError = new Error('A valid override date is required');
+    validationError.statusCode = 400;
+    throw validationError;
+  }
+
+  const numericHours = Number(hours);
+  if (
+    (formattedType === 'HOURS' || formattedType === 'OTHERS')
+    && (!Number.isFinite(numericHours) || numericHours < 0 || numericHours > 8)
+  ) {
+    const validationError = new Error('Custom credited hours must be between 0 and 8');
+    validationError.statusCode = 400;
+    throw validationError;
+  }
+
+  const creditedHours = formattedType === 'EXCUSED'
+    ? 8
+    : formattedType === 'SUSPENDED' || formattedType === 'NONE'
+      ? 0
+      : numericHours;
+  const cleanRemarks = String(remarks || '').trim();
+  const overrideRemark = `OVERRIDE:${formattedType}:${creditedHours}:${cleanRemarks}`;
   const scanTime = new Date(`${date}T08:00:00+08:00`).toISOString();
 
-  const { data: intern } = await supabase.from('accounts').select('full_name').eq('id', internId).single();
-  const internName = intern?.full_name || 'Intern';
+  const { data: intern, error: internError } = await supabase
+    .from('accounts')
+    .select('full_name')
+    .eq('id', internId)
+    .eq('role', INTERN_ROLE)
+    .single();
+  if (internError || !intern) {
+    const notFoundError = new Error('Intern account not found');
+    notFoundError.statusCode = 404;
+    throw notFoundError;
+  }
+  const internName = intern.full_name || 'Intern';
+
+  const { startIso, endExclusiveIso } = getPhtDayBoundsUtc(date);
+  const { data: existingLogs, error: existingError } = await supabase
+    .from('attendance_logs')
+    .select('id, remarks')
+    .eq('intern_id', internId)
+    .gte('scan_time', startIso)
+    .lt('scan_time', endExclusiveIso);
+  if (existingError) throw existingError;
+
+  const previousOverrideIds = (existingLogs || [])
+    .filter(log => typeof log.remarks === 'string' && log.remarks.startsWith('OVERRIDE:'))
+    .map(log => log.id);
+
+  if (formattedType === 'NONE') {
+    if (previousOverrideIds.length === 0) {
+      return { cleared: true, removed_count: 0 };
+    }
+    const { error: removeError } = await supabase
+      .from('attendance_logs')
+      .delete()
+      .in('id', previousOverrideIds);
+    if (removeError) throw removeError;
+    return { cleared: true, removed_count: previousOverrideIds.length };
+  }
+
+  const overridePayload = {
+    intern_id: internId,
+    intern_name: internName,
+    scan_type: 'time_in',
+    scan_time: scanTime,
+    approval_status: 'approved',
+    remarks: overrideRemark,
+  };
+
+  if (previousOverrideIds.length > 0) {
+    const [primaryOverrideId, ...duplicateOverrideIds] = previousOverrideIds;
+    const { data, error } = await supabase
+      .from('attendance_logs')
+      .update(overridePayload)
+      .eq('id', primaryOverrideId)
+      .select()
+      .single();
+    if (error) throw error;
+
+    if (duplicateOverrideIds.length > 0) {
+      const { error: removeDuplicateError } = await supabase
+        .from('attendance_logs')
+        .delete()
+        .in('id', duplicateOverrideIds);
+      if (removeDuplicateError) throw removeDuplicateError;
+    }
+    return data;
+  }
 
   const { data, error } = await supabase
     .from('attendance_logs')
-    .insert([{
-      intern_id: internId,
-      intern_name: internName,
-      scan_type: 'time_in',
-      scan_time: scanTime,
-      approval_status: 'approved',
-      remarks: overrideRemark
-    }])
+    .insert([overridePayload])
     .select()
     .single();
 
@@ -1168,7 +1158,9 @@ export async function setDtrOverride(internId, { date, type, hours = 0, remarks 
 
 export async function setBulkDtrOverride({ internIds, date, type, hours = 0, remarks = '' }) {
   if (!Array.isArray(internIds) || !internIds.length || !date || !type) {
-    throw new Error('Intern IDs list, date, and override type are required');
+    const validationError = new Error('Intern IDs list, date, and override type are required');
+    validationError.statusCode = 400;
+    throw validationError;
   }
 
   const results = [];
@@ -1607,7 +1599,11 @@ export async function resetSupervisorPassword(id, newPassword) {
 }
 
 export async function bulkMarkHoliday({ date, holiday_name }) {
-  if (!date) throw new Error('Holiday date is required');
+  if (!date) {
+    const validationError = new Error('Holiday date is required');
+    validationError.statusCode = 400;
+    throw validationError;
+  }
 
   const finalRemarks = holiday_name ? `Holiday: ${holiday_name}` : 'Holiday';
 
@@ -1619,39 +1615,13 @@ export async function bulkMarkHoliday({ date, holiday_name }) {
 
   if (internError) throw internError;
   if (!interns || interns.length === 0) return { count: 0 };
-
-  const startOfDay = `${date}T00:00:00.000Z`;
-  const endOfDay = `${date}T23:59:59.999Z`;
-
-  const { data: existingLogs, error: fetchError } = await supabase
-    .from('attendance_logs')
-    .select('id')
-    .gte('scan_time', startOfDay)
-    .lte('scan_time', endOfDay);
-
-  if (fetchError) throw fetchError;
-
-  if (existingLogs && existingLogs.length > 0) {
-    const idsToDelete = existingLogs.map(l => l.id);
-    await supabase.from('attendance_logs').delete().in('id', idsToDelete);
-  }
-
-  const logsToInsert = interns.map(intern => ({
-    intern_id: intern.id,
-    intern_name: intern.full_name,
-    scan_type: 'time_in',
-    scan_time: new Date(`${date}T08:00:00Z`).toISOString(),
-    approval_status: 'approved',
-    remarks: finalRemarks
-  }));
-
-  const { data, error } = await supabase
-    .from('attendance_logs')
-    .insert(logsToInsert)
-    .select();
-
-  if (error) throw error;
-  return { count: data.length };
+  return setBulkDtrOverride({
+    internIds: interns.map(intern => intern.id),
+    date,
+    type: 'suspended',
+    hours: 0,
+    remarks: finalRemarks,
+  });
 }
 
 /* ==========================================================================

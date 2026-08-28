@@ -18,6 +18,11 @@ const INIT_FORM = {
 
 const SENTINEL_NEW_SCHOOL = '__new__';
 
+const formatRenderedMinutes = minutes => {
+  const value = Math.max(0, Math.round(Number(minutes) || 0));
+  return `${Math.floor(value / 60)}h ${String(value % 60).padStart(2, '0')}m`;
+};
+
 const generateUsername = (firstName, lastName) => {
   const cleanFirst = (firstName || '').trim().toLowerCase().split(/\s+/)[0] || '';
   const cleanLast = (lastName || '').trim().toLowerCase().replace(/\s+/g, '') || '';
@@ -389,11 +394,15 @@ export default function InternManagement() {
     {
       key: 'rendered_hours', label: 'Progress',
       render: (v, row) => {
-        const pct = Math.min(100, ((v || 0) / (row.required_hours || 486)) * 100);
+        const renderedMinutes = Number.isFinite(Number(row.rendered_minutes))
+          ? Math.max(0, Math.round(Number(row.rendered_minutes)))
+          : Math.max(0, Math.round((Number(v) || 0) * 60));
+        const requiredMinutes = (Number(row.required_hours) || 486) * 60;
+        const pct = Math.min(100, requiredMinutes > 0 ? (renderedMinutes / requiredMinutes) * 100 : 0);
         return (
-          <div className="w-28">
+          <div className="w-32">
             <div className="flex justify-between text-xs mb-1">
-              <span>{(v || 0).toFixed(0)}h</span>
+              <span>{formatRenderedMinutes(renderedMinutes)}</span>
               <span className="text-gray-400">{row.required_hours}h</span>
             </div>
             <div className="progress-bar"><div className="progress-fill" style={{ width: `${pct}%` }} /></div>

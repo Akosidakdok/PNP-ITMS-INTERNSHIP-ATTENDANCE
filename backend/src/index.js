@@ -41,6 +41,7 @@ import {
   deleteAttendanceEntry,
   getAttendanceReport,
   getDtrRecords,
+  getDtrSummary,
   getNotifications,
   markNotificationRead,
   markAllNotificationsRead,
@@ -69,6 +70,7 @@ import {
   setDtrOverride,
   setBulkDtrOverride
 } from './data.js';
+import { getPhtDayBoundsUtc } from './utils/attendanceTime.js';
 import {
   getProjects,
   getProjectById,
@@ -610,9 +612,9 @@ app.get('/dtr', authMiddleware, async (req, res) => {
       year: req.query.year ? Number(req.query.year) : undefined,
       limit: req.query.limit ? Number(req.query.limit) : 31,
     });
-    return res.json({ records });
+    return res.json({ records, summary: getDtrSummary(records) });
   } catch (error) {
-    return res.status(500).json({ error: error.message });
+    return res.status(error.statusCode || 500).json({ error: error.message });
   }
 });
 
@@ -625,7 +627,7 @@ app.get('/admin/dtr/:internId', authMiddleware, adminMiddleware, async (req, res
     const yNum = year ? Number(year) : undefined;
 
     const dtr = await getDtrRecords(internId, { month: mNum, year: yNum });
-    return res.json({ records: dtr });
+    return res.json({ records: dtr, summary: getDtrSummary(dtr) });
   } catch (error) {
     return res.status(error.statusCode || 500).json({ error: error.message });
   }
@@ -644,8 +646,31 @@ app.post('/admin/dtr/:internId/override', authMiddleware, adminMiddleware, async
 
 app.post('/admin/dtr/bulk-override', authMiddleware, adminMiddleware, async (req, res) => {
   try {
-    await assertSupervisorCanAccessInterns(req.user, req.body?.internIds, 'DTR records');
-    const result = await setBulkDtrOverride(req.body);
+    let internIds = Array.isArray(req.body?.internIds)
+      ? req.body.internIds.map(Number).filter(Number.isInteger)
+      : [];
+
+    if (internIds.length === 0) {
+      let internQuery = supabase
+        .from('accounts')
+        .select('id')
+        .eq('role', 'intern')
+        .neq('status', 'archived');
+      if (req.user.role === 'supervisor') {
+        const divisionId = await getCurrentSupervisorDivisionId(req.user);
+        internQuery = internQuery.eq('division_id', divisionId);
+      }
+      const { data: interns, error: internsError } = await internQuery;
+      if (internsError) throw internsError;
+      internIds = (interns || []).map(intern => Number(intern.id));
+    }
+
+    if (internIds.length === 0) {
+      return res.status(400).json({ error: 'No active interns are available for this override' });
+    }
+
+    await assertSupervisorCanAccessInterns(req.user, internIds, 'DTR records');
+    const result = await setBulkDtrOverride({ ...req.body, internIds });
     return res.json(result);
   } catch (error) {
     return res.status(error.statusCode || 500).json({ error: error.message });
@@ -883,19 +908,19 @@ app.post('/attendance/validate-qr', authMiddleware, async (req, res) => {
       return res.status(400).json({ error: 'Invalid or expired QR code' });
     }
 
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
-    const todayEnd = new Date();
-    todayEnd.setHours(23, 59, 59, 999);
+    const { startIso, endExclusiveIso } = getPhtDayBoundsUtc();
 
     const { data: todayLogs } = await supabase
       .from('attendance_logs')
-      .select('id')
+      .select('id, remarks')
       .eq('intern_id', req.user.id)
-      .gte('scan_time', todayStart.toISOString())
-      .lte('scan_time', todayEnd.toISOString());
+      .gte('scan_time', startIso)
+      .lt('scan_time', endExclusiveIso);
 
-    if (todayLogs && todayLogs.length >= 2) {
+    const attendanceLogs = (todayLogs || []).filter(
+      log => typeof log.remarks !== 'string' || !log.remarks.startsWith('OVERRIDE:')
+    );
+    if (attendanceLogs.length >= 2) {
       return res.status(400).json({ error: 'You have already completed 2 attendance scans (Time In - Time Out) today. Please try again tomorrow.' });
     }
 
