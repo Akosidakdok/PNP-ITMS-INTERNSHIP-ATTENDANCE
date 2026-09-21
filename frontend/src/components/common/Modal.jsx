@@ -4,6 +4,14 @@ import { X } from 'lucide-react';
 
 export default function Modal({ isOpen, onClose, title, children, size = 'md', footer }) {
   const overlayRef = useRef(null);
+  const onCloseRef = useRef(onClose);
+
+  // Parent components commonly pass an inline onClose callback. Keep the
+  // latest callback without making the keyboard listener churn on every
+  // controlled-input change inside the modal.
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   useEffect(() => {
     if (isOpen) {
@@ -15,10 +23,10 @@ export default function Modal({ isOpen, onClose, title, children, size = 'md', f
   }, [isOpen]);
 
   useEffect(() => {
-    const handler = (e) => { if (e.key === 'Escape') onClose(); };
+    const handler = (e) => { if (e.key === 'Escape') onCloseRef.current(); };
     if (isOpen) document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [isOpen, onClose]);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -49,6 +57,7 @@ export default function Modal({ isOpen, onClose, title, children, size = 'md', f
       <div
         className={`card w-full ${sizeClass} animate-scale-in flex flex-col`}
         style={{ maxHeight: 'calc(100vh - 2rem)' }}
+        onClick={e => e.stopPropagation()}
       >
         {/* Header */}
         <div className="flex items-center justify-between p-4 sm:p-5 border-b border-gray-100 flex-shrink-0">
