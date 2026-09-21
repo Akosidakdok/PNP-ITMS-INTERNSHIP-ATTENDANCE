@@ -32,6 +32,7 @@ import {
   updateCurrentUserProfile,
   createIntern,
   updateIntern,
+  updateInternUsername,
   deleteIntern,
   resetInternPassword,
   changePassword,
@@ -509,6 +510,19 @@ app.put('/interns/:id', authMiddleware, adminMiddleware, async (req, res) => {
     return res.json({ intern });
   } catch (error) {
     return res.status(error.statusCode || 500).json({ error: error.message });
+  }
+});
+
+app.patch('/interns/:id/username', authMiddleware, adminOnlyMiddleware, async (req, res) => {
+  try {
+    const internId = Number(req.params.id);
+    if (!Number.isInteger(internId) || internId <= 0) {
+      return res.status(400).json({ error: 'Invalid intern ID' });
+    }
+    const intern = await updateInternUsername(internId, req.body?.username);
+    return res.json({ intern });
+  } catch (error) {
+    return res.status(error.statusCode || 400).json({ error: error.message });
   }
 });
 

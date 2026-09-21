@@ -457,6 +457,48 @@ export async function updateIntern(id, payload) {
   return data;
 }
 
+export async function updateInternUsername(id, username) {
+  const normalizedUsername = typeof username === 'string' ? username.trim().toLowerCase() : '';
+  if (!normalizedUsername) throw new Error('Username is required');
+  if (normalizedUsername.length < 3 || normalizedUsername.length > 50) {
+    throw new Error('Username must be between 3 and 50 characters');
+  }
+  if (!/^[a-z0-9._-]+$/.test(normalizedUsername)) {
+    throw new Error('Username may contain only letters, numbers, dots, underscores, and hyphens');
+  }
+
+  const { data: existing, error: lookupError } = await supabase
+    .from('accounts')
+    .select('id')
+    .eq('username', normalizedUsername)
+    .neq('id', id)
+    .maybeSingle();
+  if (lookupError) throw lookupError;
+  if (existing) {
+    const error = new Error('Username is already in use');
+    error.statusCode = 409;
+    throw error;
+  }
+
+  const { data, error } = await supabase
+    .from('accounts')
+    .update({ username: normalizedUsername })
+    .eq('id', id)
+    .eq('role', INTERN_ROLE)
+    .select(INTERN_MUTATION_FIELDS)
+    .single();
+
+  if (error) {
+    if (error.code === '23505') {
+      const conflict = new Error('Username is already in use');
+      conflict.statusCode = 409;
+      throw conflict;
+    }
+    throw error;
+  }
+  return data;
+}
+
 export async function deleteIntern(id) {
   const { error } = await supabase
     .from('accounts')

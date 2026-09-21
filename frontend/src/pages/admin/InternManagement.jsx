@@ -291,6 +291,9 @@ export default function InternManagement() {
         toast.error('Email Address is required');
         return;
       }
+    } else if (!form.username || !form.username.trim()) {
+      toast.error('Username is required');
+      return;
     }
 
     setSaving(true);
@@ -325,7 +328,13 @@ export default function InternManagement() {
         await api.post('/interns', payload);
         toast.success('Intern created successfully');
       } else {
-        await api.put(`/interns/${selected.id}`, payload);
+        const currentUsername = (selected.username || '').trim().toLowerCase();
+        const nextUsername = (form.username || '').trim().toLowerCase();
+        if (nextUsername !== currentUsername) {
+          await api.patch(`/interns/${selected.id}/username`, { username: nextUsername });
+        }
+        const { username: _username, ...profilePayload } = payload;
+        await api.put(`/interns/${selected.id}`, profilePayload);
         toast.success('Intern updated successfully');
       }
       setModal(null);
@@ -470,7 +479,7 @@ export default function InternManagement() {
   const formFields = (
     <div className="space-y-6">
       {/* 1. Portal Authentication Credentials */}
-      {modal === 'create' && (
+      {(modal === 'create' || modal === 'edit') && (
         <div className="space-y-3">
           <p className="text-[10px] uppercase font-extrabold tracking-widest text-blue-500">
             Portal Authentication Credentials
@@ -481,11 +490,12 @@ export default function InternManagement() {
               <input
                 className="form-input bg-gray-50/50"
                 placeholder="e.g. john.doe"
-                value={form.username}
+                value={form.username || ''}
+                disabled={modal === 'edit' && useAuth().user?.role !== 'admin'}
                 onChange={e => setForm(f => ({ ...f, username: e.target.value }))}
               />
             </div>
-            <div className="form-group">
+            {modal === 'create' && <div className="form-group">
               <label className="form-label text-[11px] text-gray-500 uppercase font-bold tracking-wider">Initial Password <span className="text-red-500">*</span></label>
               <input
                 type="text"
@@ -494,7 +504,7 @@ export default function InternManagement() {
                 value={form.password}
                 onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
               />
-            </div>
+            </div>}
           </div>
         </div>
       )}
