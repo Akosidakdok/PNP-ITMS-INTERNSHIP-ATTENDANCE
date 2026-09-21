@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
-  Sliders, Plus, Edit2, Users, CheckCircle, XCircle,
+  Sliders, Plus, Edit2, Users, UserPlus, CheckCircle, XCircle,
   Clock, ShieldAlert, Check, X, Search, AlertCircle, RefreshCw
 } from 'lucide-react';
 import api from '../../utils/api.js';
@@ -8,8 +8,15 @@ import Modal from '../../components/common/Modal.jsx';
 import toast from 'react-hot-toast';
 
 export default function AttendanceControl() {
+  const [activeTab, setActiveTab] = useState('attendance');
   const [profiles, setProfiles] = useState([]);
   const [accounts, setAccounts] = useState([]);
+  const [adminAccounts, setAdminAccounts] = useState([]);
+  const [adminAccountsLoading, setAdminAccountsLoading] = useState(false);
+  const [adminSaving, setAdminSaving] = useState(false);
+  const [adminForm, setAdminForm] = useState({
+    username: '', password: '', full_name: '', email: '', phone: '', status: 'active'
+  });
   const [loading, setLoading] = useState(true);
 
   // Profile Create / Edit modal state
@@ -57,6 +64,41 @@ export default function AttendanceControl() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  const loadAdminAccounts = useCallback(async () => {
+    setAdminAccountsLoading(true);
+    try {
+      const response = await api.get('/admin/accounts');
+      setAdminAccounts(response.data.accounts || []);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to load admin accounts.');
+    } finally {
+      setAdminAccountsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === 'admins') loadAdminAccounts();
+  }, [activeTab, loadAdminAccounts]);
+
+  const handleCreateAdmin = async (e) => {
+    e.preventDefault();
+    if (adminForm.password.length < 8) {
+      toast.error('Password must be at least 8 characters.');
+      return;
+    }
+    setAdminSaving(true);
+    try {
+      await api.post('/admin/accounts', adminForm);
+      toast.success('Admin account created successfully.');
+      setAdminForm({ username: '', password: '', full_name: '', email: '', phone: '', status: 'active' });
+      loadAdminAccounts();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to create admin account.');
+    } finally {
+      setAdminSaving(false);
+    }
+  };
 
   // Format HH:MM:SS to 12-hour AM/PM for display
   const formatTimeDisplay = (timeStr) => {
@@ -234,17 +276,31 @@ export default function AttendanceControl() {
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
             Refresh
           </button>
-          <button
+          {activeTab === 'attendance' && <button
             type="button"
             className="btn btn-primary btn-sm flex items-center gap-1.5 bg-blue-700 hover:bg-blue-800"
             onClick={handleOpenCreate}
           >
             <Plus className="w-4 h-4" />
             Create Profile
-          </button>
+          </button>}
         </div>
       </div>
 
+      <div className="flex items-center gap-1 p-1 bg-gray-100 rounded-xl w-fit" role="tablist" aria-label="Superadmin controls">
+        <button type="button" role="tab" aria-selected={activeTab === 'attendance'}
+          className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${activeTab === 'attendance' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+          onClick={() => setActiveTab('attendance')}>
+          <Sliders className="w-4 h-4 inline-block mr-1.5 -mt-0.5" /> Attendance Control
+        </button>
+        <button type="button" role="tab" aria-selected={activeTab === 'admins'}
+          className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${activeTab === 'admins' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+          onClick={() => setActiveTab('admins')}>
+          <UserPlus className="w-4 h-4 inline-block mr-1.5 -mt-0.5" /> Admin Accounts
+        </button>
+      </div>
+
+      {activeTab === 'attendance' && <>
       {/* Profiles Table Card */}
       <div className="card overflow-hidden">
         <div className="p-4 border-b border-gray-100 flex items-center justify-between">
@@ -274,7 +330,7 @@ export default function AttendanceControl() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="table">
+            <table className="table attendance-control-table">
               <thead>
                 <tr>
                   <th>Profile Name</th>
@@ -426,6 +482,36 @@ export default function AttendanceControl() {
       {/* ─────────────────────────────────────────────────────────────
           CREATE / EDIT PROFILE MODAL
       ───────────────────────────────────────────────────────────── */}
+      </>}
+
+      {activeTab === 'admins' && (
+        <div className="space-y-5">
+          <div className="card p-5">
+            <div className="flex items-start gap-3 mb-5">
+              <div className="p-2.5 rounded-xl bg-blue-50 text-blue-700"><UserPlus className="w-5 h-5" /></div>
+              <div>
+                <h2 className="font-bold text-gray-800 text-base" style={{ fontFamily: 'Outfit, sans-serif' }}>Create Admin Account</h2>
+                <p className="text-xs text-gray-500 mt-0.5">Create an administrator account with access to the administration portal.</p>
+              </div>
+            </div>
+            <form onSubmit={handleCreateAdmin} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="form-group"><label className="form-label">Full Name <span className="text-red-500">*</span></label><input className="form-input" value={adminForm.full_name} onChange={e => setAdminForm(f => ({ ...f, full_name: e.target.value }))} placeholder="e.g. Juan Dela Cruz" required /></div>
+              <div className="form-group"><label className="form-label">Username <span className="text-red-500">*</span></label><input className="form-input" value={adminForm.username} onChange={e => setAdminForm(f => ({ ...f, username: e.target.value }))} placeholder="e.g. juan.delacruz" required /></div>
+              <div className="form-group"><label className="form-label">Email Address <span className="text-red-500">*</span></label><input type="email" className="form-input" value={adminForm.email} onChange={e => setAdminForm(f => ({ ...f, email: e.target.value }))} placeholder="admin@example.com" required /></div>
+              <div className="form-group"><label className="form-label">Initial Password <span className="text-red-500">*</span></label><input type="password" minLength="8" className="form-input" value={adminForm.password} onChange={e => setAdminForm(f => ({ ...f, password: e.target.value }))} placeholder="At least 8 characters" required /></div>
+              <div className="form-group"><label className="form-label">Contact Number</label><input className="form-input" value={adminForm.phone} onChange={e => setAdminForm(f => ({ ...f, phone: e.target.value }))} placeholder="0917-XXX-XXXX" /></div>
+              <div className="form-group justify-end"><button type="submit" className="btn btn-primary bg-blue-700 hover:bg-blue-800 w-full sm:w-fit sm:self-end" disabled={adminSaving}><UserPlus className="w-4 h-4" /> {adminSaving ? 'Creating...' : 'Create Admin Account'}</button></div>
+            </form>
+          </div>
+          <div className="card overflow-hidden">
+            <div className="p-4 border-b border-gray-100 flex items-center justify-between"><div><h2 className="font-bold text-gray-800 text-base" style={{ fontFamily: 'Outfit, sans-serif' }}>Administrator Accounts</h2><p className="text-xs text-gray-400">{adminAccounts.length} admin account{adminAccounts.length === 1 ? '' : 's'} available.</p></div><span className="text-xs font-semibold px-2.5 py-1 bg-blue-50 text-blue-700 rounded-full">Admin Only</span></div>
+            {adminAccountsLoading ? <div className="py-10 text-center text-gray-500 text-sm">Loading admin accounts...</div> : adminAccounts.length === 0 ? <div className="py-10 text-center text-gray-400 text-sm">No admin accounts have been created yet.</div> : (
+              <div className="overflow-x-auto"><table className="table attendance-control-table"><thead><tr><th>Name</th><th>Username</th><th>Email</th><th>Contact</th><th>Status</th></tr></thead><tbody>{adminAccounts.map(account => <tr key={account.id}><td><p className="font-bold text-gray-800 text-sm">{account.full_name}</p><p className="text-[11px] text-gray-400">ID: #{account.id}</p></td><td className="text-sm text-gray-700">{account.username}</td><td className="text-sm text-gray-600">{account.email}</td><td className="text-sm text-gray-600">{account.phone || '—'}</td><td><span className={`badge ${account.status === 'active' ? 'badge-success' : 'badge-secondary'}`}>{account.status || 'active'}</span></td></tr>)}</tbody></table></div>
+            )}
+          </div>
+        </div>
+      )}
+
       <Modal
         isOpen={profileModalOpen}
         onClose={() => setProfileModalOpen(false)}

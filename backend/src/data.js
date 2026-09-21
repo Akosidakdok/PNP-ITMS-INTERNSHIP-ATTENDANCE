@@ -1553,6 +1553,57 @@ export async function getSupervisors({ search, page = 1, limit = 10, division_id
   return { supervisors: data || [], total: count || 0 };
 }
 
+export async function getAdminAccounts() {
+  const { data, error } = await supabase
+    .from('accounts')
+    .select('id, username, full_name, email, phone, status, role, created_at')
+    .eq('role', ADMIN_ROLE)
+    .order('full_name', { ascending: true });
+
+  if (error) throw error;
+  return data || [];
+}
+
+export async function createAdminAccount(payload = {}) {
+  const {
+    username,
+    password,
+    full_name,
+    email,
+    phone = null,
+    status = 'active',
+  } = payload;
+
+  if (!username?.trim() || !password || !full_name?.trim() || !email?.trim()) {
+    const validationError = new Error('Username, password, full name, and email are required');
+    validationError.statusCode = 400;
+    throw validationError;
+  }
+  if (password.length < 8) {
+    const validationError = new Error('Password must be at least 8 characters');
+    validationError.statusCode = 400;
+    throw validationError;
+  }
+
+  const password_hash = await bcrypt.hash(password, 10);
+  const { data, error } = await supabase
+    .from('accounts')
+    .insert([{
+      username: username.trim(),
+      password_hash,
+      full_name: full_name.trim(),
+      email: email.trim().toLowerCase(),
+      phone: phone?.trim() || null,
+      status,
+      role: ADMIN_ROLE,
+    }])
+    .select('id, username, full_name, email, phone, status, role, created_at')
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
 export async function getSupervisorById(id) {
   const { data, error } = await supabase
     .from('accounts')

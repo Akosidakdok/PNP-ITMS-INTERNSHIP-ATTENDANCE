@@ -1949,6 +1949,43 @@ body {
   min-width: 600px;
 }
 
+/* Superadmin attendance control has several compact status/action columns.
+   Keep the table readable at desktop widths and let the card scroll on smaller screens. */
+.attendance-control-table {
+  width: max-content;
+  min-width: 1180px;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+.attendance-control-table th {
+  padding: 0.7rem 0.75rem;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1.2;
+  text-align: left;
+  white-space: nowrap;
+  border-bottom: 1px solid #e8eef6;
+}
+.attendance-control-table td {
+  padding: 0.75rem;
+  vertical-align: middle;
+  white-space: nowrap;
+  border-bottom: 1px solid #f1f5f9;
+}
+.attendance-control-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+.attendance-control-table th:first-child,
+.attendance-control-table td:first-child {
+  padding-left: 1rem;
+}
+.attendance-control-table th:last-child,
+.attendance-control-table td:last-child {
+  padding-right: 1rem;
+}
+
 /* === Tablet (768px – 1023px) === */
 @media (min-width: 768px) and (max-width: 1023px) {
   /* Sidebar is still a drawer on tablet (Tailwind lg = 1024px) */

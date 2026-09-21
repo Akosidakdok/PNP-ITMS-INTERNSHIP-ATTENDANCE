@@ -70,6 +70,8 @@ import {
   updateCalendarEvent,
   deleteCalendarEvent,
   getSupervisors,
+  getAdminAccounts,
+  createAdminAccount,
   getSupervisorById,
   createSupervisor,
   updateSupervisor,
@@ -595,6 +597,25 @@ app.post('/supervisors', authMiddleware, adminOnlyMiddleware, async (req, res) =
   } catch (error) {
     console.error('Error creating supervisor:', error);
     return res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/admin/accounts', authMiddleware, superadminMiddleware, async (req, res) => {
+  try {
+    const accounts = await getAdminAccounts();
+    return res.json({ accounts });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message });
+  }
+});
+
+app.post('/admin/accounts', authMiddleware, superadminMiddleware, async (req, res) => {
+  try {
+    const account = await createAdminAccount(req.body);
+    return res.status(201).json({ account });
+  } catch (error) {
+    console.error('Error creating admin account:', error);
+    return res.status(error.statusCode || 500).json({ error: error.message });
   }
 });
 
