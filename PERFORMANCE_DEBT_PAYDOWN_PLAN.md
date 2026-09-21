@@ -45,6 +45,59 @@ The bundle-size warning is a risk indicator, not proof of a user-visible failure
 5. A repeatable report records bundle sizes, cold/warm navigation timing, and Face ID readiness on supported devices.
 6. Existing backend tests remain green and every frontend production build succeeds throughout the work.
 
+## Implementation Cycle — Required Execution Order
+
+### START HERE — Cycle 1: Measure Before Changing Code
+
+**First task:** `PERF-001 — Capture the cold/warm baseline and add bundle reporting.`
+
+This must be completed first. Without a recorded baseline, later bundle changes cannot demonstrate an improvement and regressions cannot be distinguished from pre-existing behavior.
+
+| Cycle | Work ID | Priority | Required work | Starts after | Exit gate |
+|---:|---|---|---|---|---|
+| **1 — FIRST** | **PERF-001** | **P0 for this initiative** | Capture bundle, route, Face ID, and device baselines; add non-blocking size reporting | Immediately | Baseline committed and reproducible |
+| **2 — SECOND** | **PERF-002** | **P1** | Convert application pages to lazy-loaded route boundaries | PERF-001 | Routes, refreshes, redirects, and build pass; initial bundle decreases |
+| **3 — THIRD** | **PERF-003** | **P1** | Isolate Face/QR, DTR/PDF, and calendar dependency graphs | PERF-002 | Heavy chunks are absent from unrelated navigation |
+| **4 — FOURTH** | **PERF-004** | **P1** | Add phased Face ID loading, cleanup, pinned asset delivery, and safe model caching | PERF-003 and device access | Cold/warm Face ID and recovery cases pass on Android and iPhone |
+| **5 — LAST** | **PERF-005** | **P1 release gate** | Set evidence-based CI budgets and close performance acceptance records | PERF-004 | CI budgets enforced and acceptance evidence approved |
+
+The execution path is:
+
+`PERF-001 Baseline` → `PERF-002 Routes` → `PERF-003 Heavy Features` → `PERF-004 Face Assets` → `PERF-005 Enforcement`
+
+### Cycle Operating Rules
+
+- Complete each cycle's exit gate before starting its dependent cycle.
+- Keep one implementation pull request per cycle; do not combine all bundle, routing, and service-worker changes.
+- Rebuild and attach a size comparison to every pull request.
+- Run affected workflow smoke tests before merging each cycle.
+- If a P0/P1 privacy, authorization, upload, or correctness defect conflicts with this work, the release-critical defect takes precedence.
+- `PERF-001` measurement work may run alongside unrelated security fixes because it is observational.
+- `PERF-002` and later must be rebased after overlapping application-shell, route, Face ID, DTR, or service-worker changes.
+
+### Suggested Cycle Board Labels
+
+Use these labels consistently in issues and pull requests:
+
+- `initiative:performance-paydown`
+- `cycle:1-baseline` through `cycle:5-enforcement`
+- `priority:perf-p0` for `PERF-001`
+- `priority:perf-p1` for `PERF-002` through `PERF-005`
+- `area:routing`, `area:face-id`, `area:dtr-export`, `area:calendar`, or `area:pwa-cache`
+- `gate:blocked`, `gate:ready`, or `gate:passed`
+
+### First Cycle Checklist — PERF-001
+
+- [ ] Run and save a clean production build report.
+- [ ] Add an analyzer or machine-readable build output.
+- [ ] Add a warning-only bundle-budget command.
+- [ ] Record cold and warm login, admin-home, and intern-home readiness.
+- [ ] Record cold and warm Scan Attendance-to-Face-ID-ready timing.
+- [ ] Record DTR print/export and calendar feature-load timing.
+- [ ] Capture one lower-spec Android result and one supported iPhone result.
+- [ ] Commit the baseline under `docs/performance/`.
+- [ ] Mark `PERF-001` `gate:passed` before beginning `PERF-002`.
+
 ## Delivery Plan
 
 ### PR 1 — Establish Measurements and Guardrails
@@ -193,4 +246,3 @@ Performance debt paydown is complete when:
 - Camera and model failures have recoverable user-facing states.
 - Performance work introduces no security, authorization, attendance, DTR, or report regression.
 - The defect register and acceptance matrix reflect current evidence.
-

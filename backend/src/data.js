@@ -427,11 +427,15 @@ export async function updateIntern(id, payload) {
     updates.password_hash = await bcrypt.hash(password, 10);
   }
 
-  if (department_id !== undefined) {
-    const deptId = department_id && department_id !== '' ? Number(department_id) : null;
-    const department = deptId ? await findDepartmentById(deptId) : null;
-    updates.department_id = deptId;
-    updates.department_name = department?.name || rest.department_name || null;
+  // `department_id` is kept as a request alias for older clients, but the
+  // current accounts schema uses division_id. Never send the legacy alias to
+  // Supabase: in some deployed schemas it is a generated/read-only column.
+  const rawDivisionId = division_id !== undefined ? division_id : department_id;
+  if (rawDivisionId !== undefined) {
+    const divisionId = rawDivisionId && rawDivisionId !== '' ? Number(rawDivisionId) : null;
+    const division = divisionId ? await findDivisionById(divisionId) : null;
+    updates.division_id = divisionId;
+    updates.division_name = division?.name || rest.division_name || rest.department_name || null;
   }
 
   if (school_id !== undefined) {

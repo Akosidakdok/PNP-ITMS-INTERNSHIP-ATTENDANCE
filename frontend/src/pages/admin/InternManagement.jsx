@@ -11,7 +11,7 @@ import FaceRegistrationModal from '../../components/face/FaceRegistrationModal.j
 const INIT_FORM = {
   username: '', password: '', first_name: '', middle_name: '', last_name: '', name_suffix: '', email: '', phone: '', 
   school_id: '',
-  course: '', year_level: '4th Year', department_id: '',
+  course: '', year_level: '4th Year', division_id: '',
   required_hours: 300, start_date: '', end_date: '', status: 'active',
   student_id: '', home_address: '', emergency_name: '', emergency_relation: '', emergency_phone: ''
 };
@@ -718,7 +718,7 @@ export default function InternManagement() {
               <select
                 className="form-input form-select bg-gray-50/50"
                 value={form.division_id || form.department_id || ''}
-                onChange={e => setForm(f => ({ ...f, division_id: e.target.value, department_id: e.target.value }))}
+                onChange={e => setForm(f => ({ ...f, division_id: e.target.value, department_id: undefined }))}
               >
                 <option value="">Select division</option>
                 {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
