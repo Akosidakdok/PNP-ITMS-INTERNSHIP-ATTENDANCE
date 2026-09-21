@@ -1040,41 +1040,48 @@ export async function getAttendanceReport({ month, year, division_id, department
 }
 
 export async function getDtrRecords(userId, { month, year, limit = 31, allTime = false } = {}) {
-  let query = supabase
-    .from('attendance_logs')
-    .select('id, intern_id, scan_time, scan_type, approval_status, remarks')
-    .eq('intern_id', userId)
-    .order('scan_time', { ascending: true });
+  const buildQuery = (selectFields) => {
+    let q = supabase
+      .from('attendance_logs')
+      .select(selectFields)
+      .eq('intern_id', userId)
+      .order('scan_time', { ascending: true });
 
-  if (month !== undefined || year !== undefined) {
-    const monthNumber = Number(month);
-    const yearNumber = Number(year);
-    if (
-      !Number.isInteger(monthNumber)
-      || monthNumber < 1
-      || monthNumber > 12
-      || !Number.isInteger(yearNumber)
-    ) {
-      const validationError = new Error('A valid DTR month and year are required');
-      validationError.statusCode = 400;
-      throw validationError;
+    if (month !== undefined || year !== undefined) {
+      const monthNumber = Number(month);
+      const yearNumber = Number(year);
+      if (
+        !Number.isInteger(monthNumber)
+        || monthNumber < 1
+        || monthNumber > 12
+        || !Number.isInteger(yearNumber)
+      ) {
+        const validationError = new Error('A valid DTR month and year are required');
+        validationError.statusCode = 400;
+        throw validationError;
+      }
+
+      const startKey = `${yearNumber}-${String(monthNumber).padStart(2, '0')}-01`;
+      const nextMonth = new Date(Date.UTC(yearNumber, monthNumber, 1));
+      const nextMonthKey = nextMonth.toISOString().slice(0, 10);
+      const { startIso } = getPhtDayBoundsUtc(startKey);
+      const { startIso: endExclusiveIso } = getPhtDayBoundsUtc(nextMonthKey);
+      q = q.gte('scan_time', startIso).lt('scan_time', endExclusiveIso);
+    } else if (!allTime) {
+      const normalizedLimit = Math.max(1, Math.floor(Number(limit) || 31));
+      const firstIncludedDay = new Date(Date.now() - (normalizedLimit - 1) * 24 * 60 * 60 * 1000);
+      const { startIso } = getPhtDayBoundsUtc(firstIncludedDay);
+      q = q.gte('scan_time', startIso);
     }
+    return q;
+  };
 
-    const startKey = `${yearNumber}-${String(monthNumber).padStart(2, '0')}-01`;
-    const nextMonth = new Date(Date.UTC(yearNumber, monthNumber, 1));
-    const nextMonthKey = nextMonth.toISOString().slice(0, 10);
-    const { startIso } = getPhtDayBoundsUtc(startKey);
-    const { startIso: endExclusiveIso } = getPhtDayBoundsUtc(nextMonthKey);
-    query = query.gte('scan_time', startIso).lt('scan_time', endExclusiveIso);
-  } else if (!allTime) {
-    const normalizedLimit = Math.max(1, Math.floor(Number(limit) || 31));
-    const firstIncludedDay = new Date(Date.now() - (normalizedLimit - 1) * 24 * 60 * 60 * 1000);
-    const { startIso } = getPhtDayBoundsUtc(firstIncludedDay);
-    query = query.gte('scan_time', startIso);
+  let { data: logs, error } = await buildQuery('id, intern_id, scan_time, actual_scan_time, scan_type, approval_status, remarks');
+  if (error) {
+    const fallback = await buildQuery('id, intern_id, scan_time, scan_type, approval_status, remarks');
+    if (fallback.error) throw fallback.error;
+    logs = fallback.data;
   }
-
-  const { data: logs, error } = await query;
-  if (error) throw error;
   return buildDtrRecords(logs || []);
 }
 

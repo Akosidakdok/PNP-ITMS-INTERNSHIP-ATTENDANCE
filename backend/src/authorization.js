@@ -154,7 +154,7 @@ export function getProjectAccessFlags(user, project, supervisorDivisionId = null
   const projectLeaderId = normalizePositiveId(project?.leader_id);
   const projectDivisionId = normalizePositiveId(project?.division_id);
   const role = user?.role;
-  const isAdmin = role === 'admin';
+  const isAdmin = role === 'admin' || role === 'superadmin';
   const isSupervisor = role === 'supervisor';
   const isLeader = role === 'intern' && userId !== null && projectLeaderId === userId;
   const isMember = role === 'intern' && userId !== null && projectMemberIds(project).has(userId);
@@ -191,7 +191,7 @@ export function getProjectAccessFlags(user, project, supervisorDivisionId = null
 
 export async function getCurrentAuthorizedAccount(user) {
   const accountId = normalizePositiveId(user?.id);
-  if (!accountId || !['admin', 'supervisor', 'intern'].includes(user?.role)) {
+  if (!accountId || !['superadmin', 'admin', 'supervisor', 'intern'].includes(user?.role)) {
     throw authorizationError('Account is not authorized');
   }
 
@@ -269,7 +269,7 @@ function requireProjectPermission(access, permission, message) {
 
 export async function authorizeProjectCreation(user, payload = {}) {
   const account = await getCurrentAuthorizedAccount(user);
-  if (account.role === 'admin') {
+  if (account.role === 'admin' || account.role === 'superadmin') {
     const leaderId = normalizePositiveId(payload.leader_id);
     if (!leaderId) {
       throw authorizationError('An intern project leader is required', 400);

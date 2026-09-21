@@ -15,7 +15,18 @@ import {
   getEnrollmentHistoryForStaff,
   validateEnrollmentReason
 } from './services/faceEnrollmentWorkflowService.js';
-import { authMiddleware, adminMiddleware, adminOnlyMiddleware } from './middleware.js';
+import { authMiddleware, adminMiddleware, adminOnlyMiddleware, superadminMiddleware } from './middleware.js';
+import {
+  listAttendanceProfiles,
+  createAttendanceProfile,
+  updateAttendanceProfile,
+  toggleAttendanceProfileStatus,
+  getAccountsWithProfiles,
+  assignProfileToAccounts,
+  removeAccountProfileAssignment,
+  editDtrRecord,
+  getDtrEditHistory,
+} from './services/attendanceControlService.js';
 import {
   getAdminDashboardStats,
   getDivisions,
@@ -621,11 +632,13 @@ app.post('/supervisors/:id/reset-password', authMiddleware, adminOnlyMiddleware,
 
 app.get('/dtr', authMiddleware, async (req, res) => {
   try {
-    const records = await getDtrRecords(req.user.id, {
+    const rawRecords = await getDtrRecords(req.user.id, {
       month: req.query.month ? Number(req.query.month) : undefined,
       year: req.query.year ? Number(req.query.year) : undefined,
       limit: req.query.limit ? Number(req.query.limit) : 31,
     });
+    // Regular users never receive actual scan times or audit details
+    const records = (rawRecords || []).map(({ actual_time_in, actual_time_out, ...rec }) => rec);
     return res.json({ records, summary: getDtrSummary(records) });
   } catch (error) {
     return res.status(error.statusCode || 500).json({ error: error.message });
@@ -640,14 +653,21 @@ app.get('/admin/dtr/:internId', authMiddleware, adminMiddleware, async (req, res
     const mNum = month ? Number(month) : undefined;
     const yNum = year ? Number(year) : undefined;
 
-    const dtr = await getDtrRecords(internId, { month: mNum, year: yNum });
+    const rawDtr = await getDtrRecords(internId, { month: mNum, year: yNum });
+    const isSuperadmin = req.user?.role === 'superadmin';
+    // Only superadmin can see actual scan times
+    const dtr = isSuperadmin
+      ? rawDtr
+      : (rawDtr || []).map(({ actual_time_in, actual_time_out, ...rec }) => rec);
+
     return res.json({ records: dtr, summary: getDtrSummary(dtr) });
   } catch (error) {
     return res.status(error.statusCode || 500).json({ error: error.message });
   }
 });
 
-app.post('/admin/dtr/:internId/override', authMiddleware, adminMiddleware, async (req, res) => {
+// Manual DTR override routes - strictly restricted to Superadmin
+app.post('/admin/dtr/:internId/override', authMiddleware, superadminMiddleware, async (req, res) => {
   try {
     const internId = Number(req.params.internId);
     await assertSupervisorCanAccessIntern(req.user, internId, 'DTR records');
@@ -658,7 +678,7 @@ app.post('/admin/dtr/:internId/override', authMiddleware, adminMiddleware, async
   }
 });
 
-app.post('/admin/dtr/bulk-override', authMiddleware, adminMiddleware, async (req, res) => {
+app.post('/admin/dtr/bulk-override', authMiddleware, superadminMiddleware, async (req, res) => {
   try {
     let internIds = Array.isArray(req.body?.internIds)
       ? req.body.internIds.map(Number).filter(Number.isInteger)
@@ -691,9 +711,129 @@ app.post('/admin/dtr/bulk-override', authMiddleware, adminMiddleware, async (req
   }
 });
 
+// ─────────────────────────────────────────────────────────────
+// SUPERADMIN-ONLY: DTR MANUAL EDITING & AUDIT HISTORY
+// ─────────────────────────────────────────────────────────────
+
+app.put('/admin/dtr/:internId/edit', authMiddleware, superadminMiddleware, async (req, res) => {
+  try {
+    const internId = Number(req.params.internId);
+    const result = await editDtrRecord({
+      internId,
+      date: req.body.date,
+      time_in: req.body.time_in,
+      time_out: req.body.time_out,
+      status: req.body.status,
+      reason: req.body.reason,
+      modified_by: req.user.id,
+    });
+    return res.json(result);
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message });
+  }
+});
+
+app.get('/admin/dtr/:internId/history', authMiddleware, superadminMiddleware, async (req, res) => {
+  try {
+    const internId = Number(req.params.internId);
+    const history = await getDtrEditHistory({
+      internId,
+      date: req.query.date,
+      limit: req.query.limit ? Number(req.query.limit) : 100,
+    });
+    return res.json({ history });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message });
+  }
+});
+
+app.get('/admin/dtr-history', authMiddleware, superadminMiddleware, async (req, res) => {
+  try {
+    const history = await getDtrEditHistory({
+      limit: req.query.limit ? Number(req.query.limit) : 100,
+    });
+    return res.json({ history });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────
+// SUPERADMIN-ONLY: ATTENDANCE CONTROL & PARAMETERS
+// ─────────────────────────────────────────────────────────────
+
+app.get('/admin/attendance-control/profiles', authMiddleware, superadminMiddleware, async (req, res) => {
+  try {
+    const profiles = await listAttendanceProfiles();
+    return res.json({ profiles });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message });
+  }
+});
+
+app.post('/admin/attendance-control/profiles', authMiddleware, superadminMiddleware, async (req, res) => {
+  try {
+    const profile = await createAttendanceProfile(req.body);
+    return res.json({ profile });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message });
+  }
+});
+
+app.put('/admin/attendance-control/profiles/:id', authMiddleware, superadminMiddleware, async (req, res) => {
+  try {
+    const profile = await updateAttendanceProfile(Number(req.params.id), req.body);
+    return res.json({ profile });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message });
+  }
+});
+
+app.patch('/admin/attendance-control/profiles/:id/status', authMiddleware, superadminMiddleware, async (req, res) => {
+  try {
+    const profile = await toggleAttendanceProfileStatus(Number(req.params.id), req.body.status);
+    return res.json({ profile });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message });
+  }
+});
+
+app.get('/admin/attendance-control/accounts', authMiddleware, superadminMiddleware, async (req, res) => {
+  try {
+    const accounts = await getAccountsWithProfiles();
+    return res.json({ accounts });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message });
+  }
+});
+
+app.post('/admin/attendance-control/assignments', authMiddleware, superadminMiddleware, async (req, res) => {
+  try {
+    const { account_ids, attendance_profile_id } = req.body;
+    const assignments = await assignProfileToAccounts({
+      account_ids,
+      attendance_profile_id,
+      assigned_by: req.user.id,
+    });
+    return res.json({ success: true, assignments });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message });
+  }
+});
+
+app.delete('/admin/attendance-control/assignments/:accountId', authMiddleware, superadminMiddleware, async (req, res) => {
+  try {
+    const result = await removeAccountProfileAssignment(Number(req.params.accountId));
+    return res.json(result);
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message });
+  }
+});
+
 app.get('/notifications', authMiddleware, async (req, res) => {
   try {
-    const notifications = await getNotifications(req.user.id, req.user.role === 'admin' || req.user.role === 'supervisor');
+    const isStaff = ['admin', 'supervisor', 'superadmin'].includes(req.user.role);
+    const notifications = await getNotifications(req.user.id, isStaff);
     return res.json(notifications);
   } catch (error) {
     return res.status(500).json({ error: error.message });
@@ -702,7 +842,8 @@ app.get('/notifications', authMiddleware, async (req, res) => {
 
 app.patch('/notifications/:id/read', authMiddleware, async (req, res) => {
   try {
-    const result = await markNotificationRead(Number(req.params.id), req.user.id, req.user.role === 'admin' || req.user.role === 'supervisor');
+    const isStaff = ['admin', 'supervisor', 'superadmin'].includes(req.user.role);
+    const result = await markNotificationRead(Number(req.params.id), req.user.id, isStaff);
     return res.json(result);
   } catch (error) {
     return res.status(500).json({ error: error.message });
@@ -711,7 +852,8 @@ app.patch('/notifications/:id/read', authMiddleware, async (req, res) => {
 
 app.patch('/notifications/read-all', authMiddleware, async (req, res) => {
   try {
-    const result = await markAllNotificationsRead(req.user.id, req.user.role === 'admin' || req.user.role === 'supervisor');
+    const isStaff = ['admin', 'supervisor', 'superadmin'].includes(req.user.role);
+    const result = await markAllNotificationsRead(req.user.id, isStaff);
     return res.json(result);
   } catch (error) {
     return res.status(500).json({ error: error.message });
@@ -724,7 +866,8 @@ app.get('/evaluations', authMiddleware, async (req, res) => {
     if (req.user.role === 'supervisor') {
       divId = await getCurrentSupervisorDivisionId(req.user);
     }
-    const evaluations = await getEvaluations(req.user.id, req.user.role === 'admin' || req.user.role === 'supervisor', divId);
+    const isStaff = ['admin', 'supervisor', 'superadmin'].includes(req.user.role);
+    const evaluations = await getEvaluations(req.user.id, isStaff, divId);
     return res.json({ evaluations });
   } catch (error) {
     console.error('Error in GET /evaluations:', error);
@@ -763,7 +906,7 @@ app.put('/evaluations/:id', authMiddleware, adminMiddleware, async (req, res) =>
 
 app.get('/documents', authMiddleware, async (req, res) => {
   try {
-    const isAdmin = req.user.role === 'admin' || req.user.role === 'supervisor';
+    const isAdmin = ['admin', 'supervisor', 'superadmin'].includes(req.user.role);
     let divId = undefined;
     if (req.user.role === 'supervisor') {
       divId = await getCurrentSupervisorDivisionId(req.user);
@@ -819,7 +962,8 @@ app.delete('/documents/:id', authMiddleware, async (req, res) => {
       documentId,
       'intern documents'
     );
-    const result = await deleteDocument(documentId, req.user.id, req.user.role === 'admin' || req.user.role === 'supervisor');
+    const isStaff = ['admin', 'supervisor', 'superadmin'].includes(req.user.role);
+    const result = await deleteDocument(documentId, req.user.id, isStaff);
     return res.json(result);
   } catch (error) {
     return res.status(error.statusCode || 500).json({ error: error.message });
@@ -840,7 +984,7 @@ app.get('/calendar-events', authMiddleware, async (req, res) => {
 });
 
 app.post('/calendar-events', authMiddleware, async (req, res) => {
-  if (!['admin', 'supervisor'].includes(req.user.role)) {
+  if (!['admin', 'supervisor', 'superadmin'].includes(req.user.role)) {
     return res.status(403).json({ error: 'Permission denied' });
   }
   try {
@@ -852,7 +996,7 @@ app.post('/calendar-events', authMiddleware, async (req, res) => {
 });
 
 app.put('/calendar-events/:id', authMiddleware, async (req, res) => {
-  if (!['admin', 'supervisor'].includes(req.user.role)) {
+  if (!['admin', 'supervisor', 'superadmin'].includes(req.user.role)) {
     return res.status(403).json({ error: 'Permission denied' });
   }
   try {
@@ -864,7 +1008,7 @@ app.put('/calendar-events/:id', authMiddleware, async (req, res) => {
 });
 
 app.delete('/calendar-events/:id', authMiddleware, async (req, res) => {
-  if (!['admin', 'supervisor'].includes(req.user.role)) {
+  if (!['admin', 'supervisor', 'superadmin'].includes(req.user.role)) {
     return res.status(403).json({ error: 'Permission denied' });
   }
   try {

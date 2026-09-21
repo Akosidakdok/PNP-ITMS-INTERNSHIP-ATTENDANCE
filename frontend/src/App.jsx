@@ -25,6 +25,7 @@ import Reports from './pages/admin/Reports.jsx';
 import AdminCalendar from './pages/admin/Calendar.jsx';
 import AdminDTRViewer from './pages/admin/AdminDTRViewer.jsx';
 import ProjectDirectory from './pages/admin/ProjectDirectory.jsx';
+import AttendanceControl from './pages/admin/AttendanceControl.jsx';
 
 // Intern pages
 import InternDashboard from './pages/intern/InternDashboard.jsx';
@@ -37,7 +38,7 @@ import Profile from './pages/Profile.jsx';
 import InternCalendar from './pages/intern/Calendar.jsx';
 
 function isAdminLike(role) {
-  return role === 'admin' || role === 'supervisor';
+  return role === 'superadmin' || role === 'admin' || role === 'supervisor';
 }
 
 function getHomePath(role) {
@@ -65,31 +66,33 @@ function AppRoutes() {
       <Route path="/legal" element={<LegalDocuments />} />
       <Route path="/login" element={user ? <Navigate to={getHomePath(user.role)} replace /> : <Login />} />
 
-      {/* Admin & Supervisor Routes */}
-      <Route path="/admin" element={<ProtectedRoute roles={['admin', 'supervisor']}><Layout /></ProtectedRoute>}>
+      {/* Admin, Supervisor & Superadmin Routes */}
+      <Route path="/admin" element={<ProtectedRoute roles={['superadmin', 'admin', 'supervisor']}><Layout /></ProtectedRoute>}>
         <Route 
           index 
           element={
-            <ProtectedRoute roles={['admin', 'supervisor']}>
+            <ProtectedRoute roles={['superadmin', 'admin', 'supervisor']}>
               {isAdminLike(user?.role) && user.role === 'supervisor' 
                 ? <SupervisorDashboard /> 
                 : <AdminDashboard />
               }
             </ProtectedRoute>
           } />
+        <Route path="attendance-control" element={<ProtectedRoute roles={['superadmin']}><AttendanceControl /></ProtectedRoute>} />
+        <Route path="attendance-parameters" element={<Navigate to="/admin/attendance-control" replace />} />
         <Route path="interns" element={<InternManagement />} />
-        <Route path="supervisors" element={<ProtectedRoute roles={['admin']}><SupervisorManagement /></ProtectedRoute>} />
+        <Route path="supervisors" element={<ProtectedRoute roles={['superadmin', 'admin']}><SupervisorManagement /></ProtectedRoute>} />
         <Route path="attendance" element={<AttendanceApproval />} />
         <Route path="documents" element={<DocumentReview />} />
         <Route path="evaluations" element={<PerformanceEvalWrapper />} />
         <Route path="calendar" element={<AdminCalendar />} />
-        <Route path="divisions" element={<ProtectedRoute roles={['admin']}><Divisions /></ProtectedRoute>} />
+        <Route path="divisions" element={<ProtectedRoute roles={['superadmin', 'admin']}><Divisions /></ProtectedRoute>} />
         <Route path="departments" element={<Navigate to="/admin/divisions" replace />} />
-        <Route path="schools" element={<ProtectedRoute roles={['admin']}><Schools /></ProtectedRoute>} />
+        <Route path="schools" element={<ProtectedRoute roles={['superadmin', 'admin']}><Schools /></ProtectedRoute>} />
         <Route path="reports" element={<Reports />} />
         <Route path="dtr" element={<AdminDTRViewer />} />
         <Route path="projects" element={<ProjectDirectory />} />
-        <Route path="profile" element={<Profile role="admin" />} />
+        <Route path="profile" element={<Profile role={user?.role === 'superadmin' ? 'superadmin' : 'admin'} />} />
       </Route>
 
       {/* Intern Routes */}

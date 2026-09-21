@@ -40,15 +40,23 @@ export async function authMiddleware(req, res, next) {
 }
 
 export function adminMiddleware(req, res, next) {
-  if (!req.user || (req.user.role !== 'admin' && req.user.role !== 'supervisor')) {
+  if (!req.user || (req.user.role !== 'admin' && req.user.role !== 'supervisor' && req.user.role !== 'superadmin')) {
     return res.status(403).json({ error: 'Admin or Supervisor access required' });
   }
   return next();
 }
 
 export function adminOnlyMiddleware(req, res, next) {
-  if (!req.user || req.user.role !== 'admin') {
-    return res.status(403).json({ error: 'Admin-only access required' });
+  if (!req.user || (req.user.role !== 'admin' && req.user.role !== 'superadmin')) {
+    return res.status(403).json({ error: 'Admin access required' });
   }
   return next();
 }
+
+export function superadminMiddleware(req, res, next) {
+  if (!req.user || req.user.role !== 'superadmin') {
+    return res.status(403).json({ error: 'Superadmin access required' });
+  }
+  return next();
+}
+

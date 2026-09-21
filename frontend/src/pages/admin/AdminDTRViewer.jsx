@@ -1,8 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Clock, Filter, AlertCircle, Edit, Calendar } from 'lucide-react';
+import { Clock, Filter, AlertCircle, Edit, Calendar, History, Shield, ShieldCheck } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext.jsx';
 import api from '../../utils/api.js';
 import DTRPrint from '../../components/dtr/DTRPrint.jsx';
 import Modal from '../../components/common/Modal.jsx';
+import DTREditModal from '../../components/dtr/DTREditModal.jsx';
+import DTRHistoryModal from '../../components/dtr/DTRHistoryModal.jsx';
 import toast from 'react-hot-toast';
 
 const getPhtTodayKey = () => {
@@ -17,6 +20,9 @@ const getPhtTodayKey = () => {
 };
 
 export default function AdminDTRViewer() {
+  const { user } = useAuth();
+  const isSuperadmin = user?.role === 'superadmin';
+
   const [interns, setInterns] = useState([]);
   const [selectedInternId, setSelectedInternId] = useState('');
   const [internSearch, setInternSearch] = useState('');
@@ -27,6 +33,14 @@ export default function AdminDTRViewer() {
   const [dtrRecords, setDtrRecords] = useState([]);
   const [loading, setLoading] = useState(false);
   const [selectedInternData, setSelectedInternData] = useState(null);
+
+  // Superadmin DTR manual edit modal state
+  const [dtrEditModalOpen, setDtrEditModalOpen] = useState(false);
+  const [selectedRecordForEdit, setSelectedRecordForEdit] = useState(null);
+  const [selectedDateForEdit, setSelectedDateForEdit] = useState(null);
+
+  // Superadmin modification audit history modal state
+  const [historyModalOpen, setHistoryModalOpen] = useState(false);
 
   // Single override dialog state
   const [overrideModalOpen, setOverrideModalOpen] = useState(false);
@@ -84,22 +98,12 @@ export default function AdminDTRViewer() {
   }, [selectedInternId, loadDTR]);
 
   const handleRowClick = (day, record) => {
-    // Populate form based on current record override status
-    if (record?.is_override) {
-      setOverrideForm({
-        type: record.override_type || 'none',
-        hours: record.override_hours || 8,
-        remarks: record.override_remarks || record.remarks || '',
-      });
-    } else {
-      setOverrideForm({
-        type: 'none',
-        hours: 8,
-        remarks: '',
-      });
-    }
+    if (!isSuperadmin) return;
+    const dateStr = `${filters.year}-${String(filters.month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     setSelectedDay(day);
-    setOverrideModalOpen(true);
+    setSelectedDateForEdit(dateStr);
+    setSelectedRecordForEdit(record || { date: dateStr });
+    setDtrEditModalOpen(true);
   };
 
   const handleSaveOverride = async () => {
@@ -161,22 +165,37 @@ export default function AdminDTRViewer() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold text-gray-800" style={{ fontFamily: 'Outfit, sans-serif' }}>Intern DTR Management</h1>
-          <p className="text-gray-500 text-sm">View, manage, and override or excuse attendance sheets for trainees</p>
+          <p className="text-gray-500 text-sm">
+            {isSuperadmin
+              ? 'Superadmin DTR management, manual corrections with audit logging, and schedule overrides'
+              : 'View Daily Time Records for personnel under your supervision'}
+          </p>
         </div>
-        <button
-          className="btn btn-secondary flex items-center gap-1.5 w-full sm:w-auto"
-          onClick={() => {
-            setBulkForm({
-              date: getPhtTodayKey(),
-              type: 'suspended',
-              hours: 8,
-              remarks: ''
-            });
-            setBulkModalOpen(true);
-          }}
-        >
-          <Calendar className="w-4 h-4" /> Bulk DTR Override
-        </button>
+        {isSuperadmin && (
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+            <button
+              className="btn btn-secondary flex items-center gap-1.5 text-xs"
+              onClick={() => setHistoryModalOpen(true)}
+            >
+              <History className="w-4 h-4 text-blue-600" />
+              Modification History
+            </button>
+            <button
+              className="btn btn-secondary flex items-center gap-1.5 text-xs"
+              onClick={() => {
+                setBulkForm({
+                  date: getPhtTodayKey(),
+                  type: 'suspended',
+                  hours: 8,
+                  remarks: ''
+                });
+                setBulkModalOpen(true);
+              }}
+            >
+              <Calendar className="w-4 h-4" /> Bulk DTR Override
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Trainee & Period Selectors */}
@@ -248,17 +267,28 @@ export default function AdminDTRViewer() {
           
           {/* Instructions Box */}
           <div className="xl:col-span-1 space-y-4">
-            <div className="card p-5 bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-100 space-y-3">
-              <h3 className="font-bold text-sm text-blue-900 flex items-center gap-1.5">
-                <AlertCircle className="w-4 h-4" /> DTR Editing Instructions
-              </h3>
-              <ul className="text-xs text-blue-800 space-y-2 list-disc list-inside">
-                <li>Click on **any date row** in the table to modify that day&apos;s log configuration.</li>
-                <li>You can mark days as **Suspended** (suspension overrides like typhoons) or **Excused** (credits standard 8 hours).</li>
-                <li>You can select **Others** to write any custom label (e.g. *SEMINAR*) and credit any custom hours.</li>
-                <li>Overrides apply immediately and recalculate reports and dashboard indicators.</li>
-              </ul>
-            </div>
+            {isSuperadmin ? (
+              <div className="card p-5 bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-100 space-y-3">
+                <h3 className="font-bold text-sm text-blue-900 flex items-center gap-1.5">
+                  <ShieldCheck className="w-4 h-4 text-blue-700" /> Superadmin DTR Control
+                </h3>
+                <ul className="text-xs text-blue-800 space-y-2 list-disc list-inside">
+                  <li>Click on **any date row** in the table to correct Time In, Time Out, or attendance status.</li>
+                  <li>Every manual correction requires a **reason** and is permanently recorded in the audit trail.</li>
+                  <li>View the full audit trail anytime via **Modification History**.</li>
+                  <li>Schedule overrides (Suspended/Excused) remain supported.</li>
+                </ul>
+              </div>
+            ) : (
+              <div className="card p-5 bg-gray-50 border border-gray-200 space-y-2">
+                <h3 className="font-bold text-sm text-gray-700 flex items-center gap-1.5">
+                  <AlertCircle className="w-4 h-4 text-gray-500" /> View-Only Access
+                </h3>
+                <p className="text-xs text-gray-600">
+                  You have view-only access to this trainee&apos;s Daily Time Record. Manual adjustments and schedule overrides are restricted to Superadmin.
+                </p>
+              </div>
+            )}
 
             {selectedInternData && (
               <div className="card p-4 border border-gray-150 space-y-2.5">
@@ -281,7 +311,7 @@ export default function AdminDTRViewer() {
                 records={dtrRecords}
                 month={filters.month}
                 year={filters.year}
-                onRowClick={handleRowClick}
+                onRowClick={isSuperadmin ? handleRowClick : null}
               />
             </div>
           </div>
@@ -427,6 +457,28 @@ export default function AdminDTRViewer() {
             </div>
           </div>
         </Modal>
+      )}
+
+      {/* Superadmin DTR Manual Edit Modal */}
+      {isSuperadmin && (
+        <DTREditModal
+          isOpen={dtrEditModalOpen}
+          onClose={() => setDtrEditModalOpen(false)}
+          intern={selectedInternData}
+          date={selectedDateForEdit}
+          record={selectedRecordForEdit}
+          onSaveSuccess={loadDTR}
+        />
+      )}
+
+      {/* Superadmin DTR Modification Audit History Modal */}
+      {isSuperadmin && (
+        <DTRHistoryModal
+          isOpen={historyModalOpen}
+          onClose={() => setHistoryModalOpen(false)}
+          internId={selectedInternId || null}
+          internName={selectedInternData?.full_name || null}
+        />
       )}
     </div>
   );

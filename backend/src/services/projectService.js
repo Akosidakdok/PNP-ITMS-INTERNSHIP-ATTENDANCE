@@ -270,7 +270,7 @@ export async function getProjectDirectoryStats(filters = {}, user) {
     totalFiles = result.count || 0;
   }
   return {
-    scope: account.role === 'admin' ? 'organization' : account.role === 'supervisor' ? 'division' : 'assigned',
+    scope: (account.role === 'admin' || account.role === 'superadmin') ? 'organization' : account.role === 'supervisor' ? 'division' : 'assigned',
     total_projects: projects.length,
     completed_projects: projects.filter(project => project.status === 'completed' || project.progress === 100).length,
     in_progress_projects: projects.filter(project => project.status === 'in_progress').length,
@@ -283,7 +283,7 @@ export async function getProjectDirectoryStats(filters = {}, user) {
 export async function getProjectMemberList(user, requestedDivisionId = null) {
   const account = await getCurrentAuthorizedAccount(user);
   let divisionId = null;
-  if (account.role === 'admin') {
+  if (account.role === 'admin' || account.role === 'superadmin') {
     divisionId = requestedDivisionId ? positiveId(requestedDivisionId, 'division ID') : null;
   } else {
     divisionId = positiveId(account.division_id, 'assigned division ID');

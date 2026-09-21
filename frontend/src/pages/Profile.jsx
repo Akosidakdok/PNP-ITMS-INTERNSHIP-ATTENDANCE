@@ -69,11 +69,12 @@ export default function Profile({ role }) {
           setFaceWorkflow({ active_request: null, requests: [], history: [] });
         }
       } else {
-        // Admin profile
+        // Admin or Superadmin profile
+        const isSuperadminRole = role === 'superadmin' || user?.role === 'superadmin';
         setProfile({
-          full_name: 'Administrator',
-          username: user.username,
-          role: 'Administrator'
+          full_name: user?.full_name || (isSuperadminRole ? 'Super Administrator' : 'Administrator'),
+          username: user?.username,
+          role: isSuperadminRole ? 'Super Administrator' : 'Administrator'
         });
       }
     } catch {

@@ -4,8 +4,25 @@ import {
   LayoutDashboard, Users, CalendarCheck, FileText, Star,
   Building2, BarChart3, QrCode, Clock, Upload, Award, Calendar,
   Shield, ChevronLeft, LogOut, X, User, Briefcase, GraduationCap,
-  FolderGit2, FolderKanban
+  FolderGit2, FolderKanban, Sliders
 } from 'lucide-react';
+
+const superadminNav = [
+  { to: '/admin', icon: LayoutDashboard, label: 'Dashboard', end: true },
+  { to: '/admin/attendance-control', icon: Sliders, label: 'Attendance Control' },
+  { to: '/admin/interns', icon: Users, label: 'Interns' },
+  { to: '/admin/supervisors', icon: Briefcase, label: 'Supervisors' },
+  { to: '/admin/attendance', icon: CalendarCheck, label: 'Attendance' },
+  { to: '/admin/dtr', icon: Clock, label: 'Intern DTRs' },
+  { to: '/admin/projects', icon: FolderGit2, label: 'Projects Directory' },
+  { to: '/admin/documents', icon: FileText, label: 'Documents' },
+  { to: '/admin/evaluations', icon: Star, label: 'Evaluations' },
+  { to: '/admin/divisions', icon: Building2, label: 'Divisions' },
+  { to: '/admin/schools', icon: GraduationCap, label: 'Schools' },
+  { to: '/admin/calendar', icon: Calendar, label: 'Calendar' },
+  { to: '/admin/reports', icon: BarChart3, label: 'Reports' },
+  { to: '/admin/profile', icon: User, label: 'My Profile' },
+];
 
 const adminNav = [
   { to: '/admin', icon: LayoutDashboard, label: 'Dashboard', end: true },
@@ -49,7 +66,7 @@ const supervisorNav = [
 export default function Sidebar({ isOpen, onClose }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
-  const navItems = user?.role === 'admin' ? adminNav : user?.role === 'supervisor' ? supervisorNav : internNav;
+  const navItems = user?.role === 'superadmin' ? superadminNav : user?.role === 'admin' ? adminNav : user?.role === 'supervisor' ? supervisorNav : internNav;
 
   const handleLogout = async () => {
     await logout();
@@ -92,7 +109,7 @@ export default function Sidebar({ isOpen, onClose }) {
             </div>
             <div className="min-w-0 flex-1">
               <p className="text-white text-sm font-semibold truncate">{user?.full_name || user?.username}</p>
-              <p className="text-blue-300 text-xs capitalize">{user?.role}</p>
+              <p className="text-blue-300 text-xs capitalize">{user?.role === 'superadmin' ? 'Superadmin' : user?.role}</p>
             </div>
           </div>
         </div>
@@ -100,7 +117,7 @@ export default function Sidebar({ isOpen, onClose }) {
         {/* Navigation */}
         <nav className="flex-1 py-2 overflow-y-auto">
           <p className="text-blue-400 text-xs font-bold uppercase tracking-widest px-4 mb-2">
-            {user?.role === 'admin' ? 'Administration' : user?.role === 'supervisor' ? 'Supervision' : 'My Internship'}
+            {user?.role === 'superadmin' ? 'Superadmin Control' : user?.role === 'admin' ? 'Administration' : user?.role === 'supervisor' ? 'Supervision' : 'My Internship'}
           </p>
           {navItems.map(({ to, icon: Icon, label, end }) => (
             <NavLink
