@@ -29,6 +29,8 @@ export default function Profile({ role }) {
 
   const [savingPersonal, setSavingPersonal] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
+  const [username, setUsername] = useState('');
+  const [savingUsername, setSavingUsername] = useState(false);
   const [faceWorkflow, setFaceWorkflow] = useState({ active_request: null, requests: [], history: [] });
   const [renewalRequestOpen, setRenewalRequestOpen] = useState(false);
   const [renewalReason, setRenewalReason] = useState('');
@@ -76,11 +78,27 @@ export default function Profile({ role }) {
           username: user?.username,
           role: isSuperadminRole ? 'Super Administrator' : 'Administrator'
         });
+        setUsername(user?.username || '');
       }
     } catch {
       toast.error('Failed to load profile details');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleUsernameSubmit = async (e) => {
+    e.preventDefault();
+    if (role !== 'superadmin') return;
+    setSavingUsername(true);
+    try {
+      await api.patch('/auth/username', { username });
+      await refreshUser();
+      toast.success('Username updated successfully!');
+    } catch (err) {
+      toast.error(err?.response?.data?.error || 'Failed to update username');
+    } finally {
+      setSavingUsername(false);
     }
   };
 
@@ -191,7 +209,9 @@ export default function Profile({ role }) {
         <p className="text-gray-500 text-sm">
           {role === 'intern' 
             ? 'View your official school profile parameters, edit personal details, and update your portal password.'
-            : 'Update your administrator portal secure password and view system parameters.'}
+            : role === 'superadmin'
+              ? 'Update your administrator username, secure password, and view system parameters.'
+              : 'Update your administrator portal secure password and view system parameters.'}
         </p>
       </div>
 
@@ -308,7 +328,7 @@ export default function Profile({ role }) {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="p-4 bg-gray-50 rounded-xl">
                     <p className="text-xs text-gray-400">Username</p>
-                    <p className="font-semibold text-gray-800 mt-1">{user.username}</p>
+                    <p className="font-semibold text-gray-800 mt-1">{user?.username}</p>
                   </div>
                   <div className="p-4 bg-gray-50 rounded-xl">
                     <p className="text-xs text-gray-400">Role</p>
@@ -319,6 +339,32 @@ export default function Profile({ role }) {
                   <p className="text-xs text-blue-700 font-semibold mb-1">Administrative Privileges</p>
                   <p className="text-xs text-blue-600">Full system read/write credentials, intern account creation, attendance approval, and system parameter management.</p>
                 </div>
+                {role === 'superadmin' && (
+                  <form onSubmit={handleUsernameSubmit} className="pt-4 border-t border-gray-100 space-y-3">
+                    <div className="form-group">
+                      <label className="form-label text-[11px] text-gray-500 uppercase font-bold tracking-wider">Update Username</label>
+                      <input
+                        type="text"
+                        className="form-input bg-gray-50/50"
+                        value={username}
+                        onChange={e => setUsername(e.target.value)}
+                        minLength={3}
+                        maxLength={50}
+                        pattern="[a-zA-Z0-9._-]+"
+                        autoComplete="username"
+                        required
+                      />
+                      <p className="text-[11px] text-gray-500 mt-1">Use 3–50 letters, numbers, dots, underscores, or hyphens.</p>
+                    </div>
+                    <button
+                      type="submit"
+                      className="btn btn-primary bg-pnp-900 hover:bg-pnp-950 font-bold px-6 py-2.5 rounded-lg shadow-sm"
+                      disabled={savingUsername}
+                    >
+                      {savingUsername ? 'Saving username...' : 'Save Username'}
+                    </button>
+                  </form>
+                )}
               </div>
             </div>
           )}

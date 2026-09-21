@@ -44,6 +44,7 @@ import {
   createIntern,
   updateIntern,
   updateInternUsername,
+  updateCurrentUserUsername,
   deleteIntern,
   resetInternPassword,
   changePassword,
@@ -184,6 +185,15 @@ app.post('/auth/change-password', authMiddleware, async (req, res) => {
     return res.json({ success: true });
   } catch (error) {
     return res.status(400).json({ error: error.message });
+  }
+});
+
+app.patch('/auth/username', authMiddleware, superadminMiddleware, async (req, res) => {
+  try {
+    const user = await updateCurrentUserUsername(req.user.id, req.body?.username);
+    return res.json({ user });
+  } catch (error) {
+    return res.status(error.statusCode || 400).json({ error: error.message });
   }
 });
 
