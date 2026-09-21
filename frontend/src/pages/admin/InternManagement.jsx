@@ -11,12 +11,17 @@ import FaceRegistrationModal from '../../components/face/FaceRegistrationModal.j
 const INIT_FORM = {
   username: '', password: '', first_name: '', middle_name: '', last_name: '', name_suffix: '', email: '', phone: '', 
   school_id: '',
-  course: '', year_level: '4th Year', department_id: '',
+  course: '', year_level: '4th Year', division_id: '',
   required_hours: 300, start_date: '', end_date: '', status: 'active',
   student_id: '', home_address: '', emergency_name: '', emergency_relation: '', emergency_phone: ''
 };
 
 const SENTINEL_NEW_SCHOOL = '__new__';
+
+const formatRenderedMinutes = minutes => {
+  const value = Math.max(0, Math.round(Number(minutes) || 0));
+  return `${Math.floor(value / 60)}h ${String(value % 60).padStart(2, '0')}m`;
+};
 
 const generateUsername = (firstName, lastName) => {
   const cleanFirst = (firstName || '').trim().toLowerCase().split(/\s+/)[0] || '';
@@ -286,6 +291,9 @@ export default function InternManagement() {
         toast.error('Email Address is required');
         return;
       }
+    } else if (!form.username || !form.username.trim()) {
+      toast.error('Username is required');
+      return;
     }
 
     setSaving(true);
@@ -320,7 +328,13 @@ export default function InternManagement() {
         await api.post('/interns', payload);
         toast.success('Intern created successfully');
       } else {
-        await api.put(`/interns/${selected.id}`, payload);
+        const currentUsername = (selected.username || '').trim().toLowerCase();
+        const nextUsername = (form.username || '').trim().toLowerCase();
+        if (nextUsername !== currentUsername) {
+          await api.patch(`/interns/${selected.id}/username`, { username: nextUsername });
+        }
+        const { username: _username, ...profilePayload } = payload;
+        await api.put(`/interns/${selected.id}`, profilePayload);
         toast.success('Intern updated successfully');
       }
       setModal(null);
@@ -389,11 +403,15 @@ export default function InternManagement() {
     {
       key: 'rendered_hours', label: 'Progress',
       render: (v, row) => {
-        const pct = Math.min(100, ((v || 0) / (row.required_hours || 486)) * 100);
+        const renderedMinutes = Number.isFinite(Number(row.rendered_minutes))
+          ? Math.max(0, Math.round(Number(row.rendered_minutes)))
+          : Math.max(0, Math.round((Number(v) || 0) * 60));
+        const requiredMinutes = (Number(row.required_hours) || 486) * 60;
+        const pct = Math.min(100, requiredMinutes > 0 ? (renderedMinutes / requiredMinutes) * 100 : 0);
         return (
-          <div className="w-28">
+          <div className="w-32">
             <div className="flex justify-between text-xs mb-1">
-              <span>{(v || 0).toFixed(0)}h</span>
+              <span>{formatRenderedMinutes(renderedMinutes)}</span>
               <span className="text-gray-400">{row.required_hours}h</span>
             </div>
             <div className="progress-bar"><div className="progress-fill" style={{ width: `${pct}%` }} /></div>
@@ -461,7 +479,7 @@ export default function InternManagement() {
   const formFields = (
     <div className="space-y-6">
       {/* 1. Portal Authentication Credentials */}
-      {modal === 'create' && (
+      {(modal === 'create' || modal === 'edit') && (
         <div className="space-y-3">
           <p className="text-[10px] uppercase font-extrabold tracking-widest text-blue-500">
             Portal Authentication Credentials
@@ -472,11 +490,12 @@ export default function InternManagement() {
               <input
                 className="form-input bg-gray-50/50"
                 placeholder="e.g. john.doe"
-                value={form.username}
+                value={form.username || ''}
+                disabled={modal === 'edit' && useAuth().user?.role !== 'admin'}
                 onChange={e => setForm(f => ({ ...f, username: e.target.value }))}
               />
             </div>
-            <div className="form-group">
+            {modal === 'create' && <div className="form-group">
               <label className="form-label text-[11px] text-gray-500 uppercase font-bold tracking-wider">Initial Password <span className="text-red-500">*</span></label>
               <input
                 type="text"
@@ -485,7 +504,7 @@ export default function InternManagement() {
                 value={form.password}
                 onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
               />
-            </div>
+            </div>}
           </div>
         </div>
       )}
@@ -709,7 +728,7 @@ export default function InternManagement() {
               <select
                 className="form-input form-select bg-gray-50/50"
                 value={form.division_id || form.department_id || ''}
-                onChange={e => setForm(f => ({ ...f, division_id: e.target.value, department_id: e.target.value }))}
+                onChange={e => setForm(f => ({ ...f, division_id: e.target.value, department_id: undefined }))}
               >
                 <option value="">Select division</option>
                 {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}

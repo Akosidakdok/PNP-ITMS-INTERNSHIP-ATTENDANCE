@@ -1,10 +1,39 @@
-import { useState } from 'react';
 import { format, getDaysInMonth, parseISO } from 'date-fns';
 
 const MONTH_NAMES = [
   'January','February','March','April','May','June',
   'July','August','September','October','November','December'
 ];
+
+const toNonNegativeMinutes = (value) => {
+  if (value === null || value === undefined || value === '') return null;
+  const minutes = Number(value);
+  return Number.isFinite(minutes) ? Math.max(0, Math.round(minutes)) : null;
+};
+
+const getRecordMinutes = (record) => {
+  const fallbackMinutes = record?.total_hours === null
+    || record?.total_hours === undefined
+    || record?.total_hours === ''
+    ? null
+    : toNonNegativeMinutes(Number(record.total_hours) * 60);
+
+  return toNonNegativeMinutes(record?.total_minutes) ?? fallbackMinutes ?? 0;
+};
+
+const getWorkedMinutes = record => (
+  toNonNegativeMinutes(record?.worked_minutes) ?? getRecordMinutes(record)
+);
+
+const getApprovedMinutes = record => (
+  toNonNegativeMinutes(record?.approved_minutes)
+  ?? (record?.approval_status === 'approved' ? getRecordMinutes(record) : 0)
+);
+
+const formatDuration = (value) => {
+  const minutes = toNonNegativeMinutes(value) ?? 0;
+  return `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, '0')}m`;
+};
 
 function getHolidayName(year, month, day) {
   // Fixed dates
@@ -71,7 +100,7 @@ function StatusBadge({ status, large = false }) {
   );
 }
 
-export default function DTRTable({ records, intern, month, year, onRowClick }) {
+export default function DTRTable({ records = [], intern, month, year, onRowClick }) {
   const daysInMonth = month && year ? getDaysInMonth(new Date(year, month - 1, 1)) : 31;
 
   // Build lookup: Manila calendar day → record
@@ -85,16 +114,12 @@ export default function DTRTable({ records, intern, month, year, onRowClick }) {
     } catch { /* skip malformed dates */ }
   });
 
-  // Totals from all records in month
-  const totalMinutes = records.reduce((sum, r) => sum + Math.round((r.total_hours || 0) * 60), 0);
-  const totalHrs = Math.floor(totalMinutes / 60);
-  const totalMin = totalMinutes % 60;
-
-  // Overall status across all records
-  const allStatuses = records.map(r => r.approval_status).filter(Boolean);
-  let overallStatus = 'pending';
-  if (allStatuses.length && allStatuses.every(s => s === 'approved')) overallStatus = 'approved';
-  if (allStatuses.some(s => s === 'rejected')) overallStatus = 'rejected';
+  // Keep aggregation in integer minutes. Official rendered time includes only
+  // approved records; all-status worked time remains visible for reconciliation.
+  const workedMinutes = records.reduce((sum, record) => sum + getWorkedMinutes(record), 0);
+  const approvedMinutes = records.reduce((sum, record) => sum + getApprovedMinutes(record), 0);
+  const approvedHrs = Math.floor(approvedMinutes / 60);
+  const approvedMin = approvedMinutes % 60;
 
   // Fallback to splitName if the new distinct columns are empty (for existing interns before migration)
   let lastName = intern?.last_name || '';
@@ -134,7 +159,11 @@ export default function DTRTable({ records, intern, month, year, onRowClick }) {
             <p className="text-xs text-gray-500">{month && year ? format(new Date(year, month - 1, 1), 'MMMM yyyy') : ''}</p>
           </div>
           <div className="text-right">
-            <span className="font-black text-blue-700 text-lg">{totalHrs}h {totalMin}m</span>
+            <span className="font-black text-blue-700 text-lg">{formatDuration(approvedMinutes)}</span>
+            <p className="text-[9px] font-semibold uppercase text-gray-400">Approved rendered</p>
+            {workedMinutes !== approvedMinutes && (
+              <p className="text-[9px] text-gray-400">{formatDuration(workedMinutes)} worked</p>
+            )}
           </div>
         </div>
 
@@ -151,7 +180,7 @@ export default function DTRTable({ records, intern, month, year, onRowClick }) {
             <div 
               key={day} 
               className={`p-3 rounded-xl border ${rec ? 'bg-white border-gray-200 shadow-sm cursor-pointer active:bg-gray-50' : 'bg-gray-100/40 border-gray-100'}`}
-              onClick={() => rec && onRowClick && onRowClick(rec)}
+              onClick={() => onRowClick && onRowClick(day, rec)}
             >
               <div className="flex justify-between items-center mb-1.5">
                 <span className={`font-bold text-xs ${isWeekend ? 'text-gray-400' : 'text-gray-700'}`}>{dateStr}</span>
@@ -160,10 +189,10 @@ export default function DTRTable({ records, intern, month, year, onRowClick }) {
               
               {holiday ? (
                 <div className="text-xs font-semibold text-red-500 italic">{holiday}</div>
-              ) : rec?.remarks && String(rec.remarks).startsWith('OVERRIDE:') ? (
+              ) : rec?.is_override ? (
                 <div className="text-[11px] font-semibold text-purple-600 bg-purple-50 p-1.5 rounded inline-block mt-1">
-                  {String(rec.remarks).split(':')[3] || 'Overridden'} 
-                  <span className="opacity-75 ml-1">({Number(String(rec.remarks).split(':')[2] || 0).toFixed(2)}h)</span>
+                  {rec.remarks || rec.override_type || 'Overridden'}
+                  <span className="opacity-75 ml-1">({formatDuration(getRecordMinutes(rec))})</span>
                 </div>
               ) : rec ? (
                 <div className="grid grid-cols-3 gap-2 text-[11px] mt-2">
@@ -176,8 +205,10 @@ export default function DTRTable({ records, intern, month, year, onRowClick }) {
                     <span className="font-semibold text-gray-800">{formatTime(rec.time_out) || '--:--'}</span>
                   </div>
                   <div className="bg-gray-50 p-1.5 rounded text-right">
-                    <span className="text-gray-400 block mb-0.5 text-[9px] uppercase font-bold">Hours</span>
-                    <span className="font-black text-blue-600">{Number(rec.total_hours || 0).toFixed(2)}</span>
+                    <span className="text-gray-400 block mb-0.5 text-[9px] uppercase font-bold">Duration</span>
+                    <span className="font-black text-blue-600">
+                      {rec.is_complete ? formatDuration(getRecordMinutes(rec)) : 'Incomplete'}
+                    </span>
                   </div>
                 </div>
               ) : (
@@ -422,7 +453,7 @@ export default function DTRTable({ records, intern, month, year, onRowClick }) {
                       EXCUSED: {rec.remarks || 'Excused'}
                     </td>
                     <td style={tdStyle({ textAlign: 'center', borderRight: '1px solid #000', fontSize: '9px', fontWeight: 'bold', color: '#0d9488' })}>
-                      8.00
+                      {formatDuration(getRecordMinutes(rec))}
                     </td>
                     <td style={tdStyle({ textAlign: 'center' })}>
                       <StatusBadge status="approved" />
@@ -455,7 +486,7 @@ export default function DTRTable({ records, intern, month, year, onRowClick }) {
                       {rec.remarks ? rec.remarks.toUpperCase() : 'OTHERS'}
                     </td>
                     <td style={tdStyle({ textAlign: 'center', borderRight: '1px solid #000', fontSize: '9px', fontWeight: 'bold', color: '#7e22ce' })}>
-                      {(rec.total_hours || 0).toFixed(2)}
+                      {formatDuration(getRecordMinutes(rec))}
                     </td>
                     <td style={tdStyle({ textAlign: 'center' })}>
                       <StatusBadge status="approved" />
@@ -538,7 +569,7 @@ export default function DTRTable({ records, intern, month, year, onRowClick }) {
                   fontWeight: rec?.is_override ? 'bold' : 'normal',
                   color: rec?.is_override ? '#2563eb' : 'inherit'
                 })}>
-                  {rec && rec.total_hours ? rec.total_hours.toFixed(2) : ''}
+                  {rec ? (rec.is_complete ? formatDuration(getRecordMinutes(rec)) : 'Incomplete') : ''}
                   {rec?.is_override && <span style={{ fontSize: '7px', display: 'block', color: '#2563eb', fontWeight: 'bold' }}>Override</span>}
                 </td>
 
@@ -560,15 +591,20 @@ export default function DTRTable({ records, intern, month, year, onRowClick }) {
 
       {/* ── TOTAL ROW ── */}
       <div style={{ textAlign: 'right', marginTop: '4px', fontSize: '11px', fontWeight: 'bold' }}>
-        Total:&nbsp;
+        Approved Rendered Total:&nbsp;
         <span style={{ borderBottom: '1px solid #000', minWidth: '40px', display: 'inline-block', textAlign: 'center', paddingBottom: '1px' }}>
-          {totalHrs}
+          {approvedHrs}
         </span>
         &nbsp;Hrs.&nbsp;
         <span style={{ borderBottom: '1px solid #000', minWidth: '40px', display: 'inline-block', textAlign: 'center', paddingBottom: '1px' }}>
-          {String(totalMin).padStart(2, '0')}
+          {String(approvedMin).padStart(2, '0')}
         </span>
         &nbsp;min.
+        {workedMinutes !== approvedMinutes && (
+          <div style={{ fontSize: '9px', fontWeight: 'normal', color: '#555', marginTop: '2px' }}>
+            Worked time across all statuses: {formatDuration(workedMinutes)}
+          </div>
+        )}
       </div>
 
       {/* ── SIGNATURE + OVERALL STATUS BLOCK ── */}

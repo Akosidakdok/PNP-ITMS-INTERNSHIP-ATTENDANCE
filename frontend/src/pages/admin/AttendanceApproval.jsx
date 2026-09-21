@@ -4,7 +4,21 @@ import api from '../../utils/api.js';
 import DataTable from '../../components/common/DataTable.jsx';
 import Modal from '../../components/common/Modal.jsx';
 import toast from 'react-hot-toast';
-import { format } from 'date-fns';
+
+const formatPhtDate = value => new Intl.DateTimeFormat('en-US', {
+  timeZone: 'Asia/Manila',
+  month: 'short',
+  day: '2-digit',
+  year: 'numeric',
+}).format(new Date(value));
+
+const formatPhtTime = (value, includeSeconds = false) => new Intl.DateTimeFormat('en-US', {
+  timeZone: 'Asia/Manila',
+  hour: '2-digit',
+  minute: '2-digit',
+  ...(includeSeconds ? { second: '2-digit' } : {}),
+  hour12: true,
+}).format(new Date(value));
 
 const ACTION_DETAILS = {
   approve: {
@@ -119,8 +133,8 @@ export default function AttendanceApproval() {
       key: 'scan_time', label: 'Date & Time',
       render: v => (
         <div>
-          <p className="text-sm font-medium">{format(new Date(v), 'MMM dd, yyyy')}</p>
-          <p className="text-xs text-gray-400">{format(new Date(v), 'hh:mm:ss a')}</p>
+          <p className="text-sm font-medium">{formatPhtDate(v)}</p>
+          <p className="text-xs text-gray-400">{formatPhtTime(v, true)}</p>
         </div>
       )
     },
@@ -234,7 +248,7 @@ export default function AttendanceApproval() {
                 </div>
                 <div>
                   <span>Date &amp; time</span>
-                  <strong>{selected.scan_time ? format(new Date(selected.scan_time), 'MMM dd, yyyy · hh:mm a') : '—'}</strong>
+                  <strong>{selected.scan_time ? `${formatPhtDate(selected.scan_time)} · ${formatPhtTime(selected.scan_time)}` : '—'}</strong>
                 </div>
               </div>
             </div>

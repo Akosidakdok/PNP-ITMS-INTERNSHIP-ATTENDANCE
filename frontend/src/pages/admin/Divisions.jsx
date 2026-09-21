@@ -126,7 +126,6 @@ export default function Divisions() {
     setInternForm({
       ...INIT_INTERN_FORM,
       division_id: selected.id,
-      department_id: selected.id
     });
     setSelectedIntern(null);
     setModal('intern-form');

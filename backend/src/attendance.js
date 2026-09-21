@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { supabase } from './supabaseClient.js';
+import { getPhtDayBoundsUtc } from './utils/attendanceTime.js';
 
 const QR_EXPIRY_MINUTES = 60;
 
@@ -46,24 +47,24 @@ export async function getTodayScanStatus(internId) {
     return { next_scan_label: 'Unknown intern', scan_count: 0 };
   }
 
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
-  const todayEnd = new Date();
-  todayEnd.setHours(23, 59, 59, 999);
+  const { startIso, endExclusiveIso } = getPhtDayBoundsUtc();
 
   const { data: todayLogs, error: logsError } = await supabase
     .from('attendance_logs')
-    .select('scan_type, scan_time')
+    .select('scan_type, scan_time, remarks')
     .eq('intern_id', internId)
-    .gte('scan_time', todayStart.toISOString())
-    .lte('scan_time', todayEnd.toISOString())
+    .gte('scan_time', startIso)
+    .lt('scan_time', endExclusiveIso)
     .order('scan_time', { ascending: true });
 
   if (logsError) {
     throw new Error('Failed to retrieve today\'s attendance status');
   }
 
-  const scanCount = Array.isArray(todayLogs) ? todayLogs.length : 0;
+  const attendanceLogs = (todayLogs || []).filter(
+    log => typeof log.remarks !== 'string' || !log.remarks.startsWith('OVERRIDE:')
+  );
+  const scanCount = attendanceLogs.length;
   const nextScanLabel = scanCount >= 2
     ? 'All scans completed for today'
     : ['Time In', 'Time Out'][scanCount];
@@ -127,35 +128,39 @@ export async function scanAttendance({ qr_code, user, photo, face_embedding } = 
     const recentThreshold = new Date(Date.now() - 10000).toISOString();
     const { data: recentScan, error: recentScanError } = await supabase
       .from('attendance_logs')
-      .select('id')
+      .select('id, remarks')
       .eq('intern_id', internId)
       .gte('scan_time', recentThreshold)
       .order('scan_time', { ascending: false })
       .limit(1)
       .single();
 
-    if (!recentScanError && recentScan) {
+    if (
+      !recentScanError
+      && recentScan
+      && (typeof recentScan.remarks !== 'string' || !recentScan.remarks.startsWith('OVERRIDE:'))
+    ) {
       throw new Error('A recent scan was already recorded. Please wait a few seconds before scanning again.');
     }
 
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
-    const todayEnd = new Date();
-    todayEnd.setHours(23, 59, 59, 999);
+    const { startIso, endExclusiveIso } = getPhtDayBoundsUtc();
 
     const { data: todayLogs, error: logsError } = await supabase
       .from('attendance_logs')
-      .select('scan_type, scan_time')
+      .select('scan_type, scan_time, remarks')
       .eq('intern_id', internId)
-      .gte('scan_time', todayStart.toISOString())
-      .lte('scan_time', todayEnd.toISOString())
+      .gte('scan_time', startIso)
+      .lt('scan_time', endExclusiveIso)
       .order('scan_time', { ascending: true });
 
     if (logsError) {
       throw new Error('Failed to retrieve today\'s attendance logs');
     }
 
-    const scanCount = Array.isArray(todayLogs) ? todayLogs.length : 0;
+    const attendanceLogs = (todayLogs || []).filter(
+      log => typeof log.remarks !== 'string' || !log.remarks.startsWith('OVERRIDE:')
+    );
+    const scanCount = attendanceLogs.length;
     if (scanCount >= 2) {
       throw new Error('You have already completed 2 attendance scans (Time In - Time Out) today. Please try again tomorrow.');
     }

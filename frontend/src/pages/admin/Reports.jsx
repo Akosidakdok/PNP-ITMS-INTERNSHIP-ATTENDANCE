@@ -4,6 +4,17 @@ import api from '../../utils/api.js';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 
+const toMinutes = (minutes, hours) => Number.isFinite(Number(minutes))
+  ? Math.max(0, Math.round(Number(minutes)))
+  : Math.max(0, Math.round((Number(hours) || 0) * 60));
+
+const formatDuration = minutes => {
+  const value = Math.max(0, Math.round(Number(minutes) || 0));
+  return `${Math.floor(value / 60)}h ${String(value % 60).padStart(2, '0')}m`;
+};
+
+const csvCell = value => `"${String(value ?? '').replaceAll('"', '""')}"`;
+
 export default function Reports() {
   const [report, setReport] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -29,8 +40,16 @@ export default function Reports() {
 
   const exportCSV = () => {
     const headers = ['Full Name', 'School', 'Department', 'Days Present', 'Total Hours', 'Required Hours', 'Rendered Hours'];
-    const rows = report.map(r => [r.full_name, r.school || '', r.department_name || '', r.days_present, Number(r.total_hours).toFixed(2), r.required_hours, Number(r.rendered_hours).toFixed(2)]);
-    const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
+    const rows = report.map(r => [
+      r.full_name,
+      r.school || '',
+      r.department_name || '',
+      r.days_present,
+      (toMinutes(r.total_minutes, r.total_hours) / 60).toFixed(2),
+      r.required_hours,
+      (toMinutes(r.rendered_minutes, r.rendered_hours) / 60).toFixed(2),
+    ]);
+    const csv = `\uFEFF${[headers, ...rows].map(row => row.map(csvCell).join(',')).join('\n')}`;
     const blob = new Blob([csv], { type: 'text/csv' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
@@ -107,20 +126,22 @@ export default function Reports() {
                 <tr><td colSpan={6} className="text-center py-8 text-gray-400">No data for this period</td></tr>
               ) : (
                 report.map((r, i) => {
-                  const pct = Math.min(100, ((r.rendered_hours || 0) / (r.required_hours || 486)) * 100);
+                  const renderedMinutes = toMinutes(r.rendered_minutes, r.rendered_hours);
+                  const requiredMinutes = (Number(r.required_hours) || 486) * 60;
+                  const pct = Math.min(100, requiredMinutes > 0 ? (renderedMinutes / requiredMinutes) * 100 : 0);
                   return (
                     <tr key={i}>
                       <td className="font-medium text-gray-800">{r.full_name}</td>
                       <td className="text-xs text-gray-500">{r.department_name || '—'}</td>
                       <td className="text-center font-semibold">{r.days_present}</td>
-                      <td className="text-center font-semibold">{Number(r.total_hours).toFixed(2)}h</td>
+                      <td className="text-center font-semibold">{formatDuration(toMinutes(r.total_minutes, r.total_hours))}</td>
                       <td className="text-center text-gray-500">{r.required_hours}h</td>
                       <td>
                         <div className="flex items-center gap-2 min-w-28">
                           <div className="progress-bar flex-1">
                             <div className="progress-fill" style={{ width: `${pct}%` }} />
                           </div>
-                          <span className="text-xs font-medium text-blue-600">{pct.toFixed(0)}%</span>
+                          <span className="text-xs font-medium text-blue-600">{pct.toFixed(1)}%</span>
                         </div>
                       </td>
                     </tr>
