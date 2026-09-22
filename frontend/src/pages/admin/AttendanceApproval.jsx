@@ -9,9 +9,11 @@ import DTREditModal from '../../components/dtr/DTREditModal.jsx';
 import DTRPreviewModal from '../../components/dtr/DTRPreviewModal.jsx';
 import BulkDTROverrideModal from '../../components/dtr/BulkDTROverrideModal.jsx';
 
-function WatermarkedSelfie({ photoUrl, recordDate, recordTime }) {
+function WatermarkedSelfie({ photoUrl, recordDate, recordTime, isSuperadmin }) {
   const [mode, setMode] = useState('official'); // 'official' | 'audit'
   const [renderedUrl, setRenderedUrl] = useState(photoUrl);
+
+  const activeMode = isSuperadmin ? mode : 'official';
 
   const officialStamp = useMemo(() => {
     if (!recordDate || !recordTime) return '';
@@ -32,7 +34,7 @@ function WatermarkedSelfie({ photoUrl, recordDate, recordTime }) {
 
   useEffect(() => {
     if (!photoUrl) return;
-    if (mode === 'audit') {
+    if (activeMode === 'audit') {
       setRenderedUrl(photoUrl);
       return;
     }
@@ -77,42 +79,46 @@ function WatermarkedSelfie({ photoUrl, recordDate, recordTime }) {
 
       setRenderedUrl(canvas.toDataURL('image/jpeg', 0.9));
     };
-  }, [photoUrl, mode, officialStamp]);
+  }, [photoUrl, activeMode, officialStamp]);
 
   const handleDownload = () => {
     const link = document.createElement('a');
     link.href = renderedUrl;
-    link.download = `selfie_${recordDate}_${mode}.jpg`;
+    link.download = `selfie_${recordDate}_${activeMode}.jpg`;
     link.click();
   };
 
   return (
     <div className="space-y-2.5 w-full flex flex-col items-center">
       <div className="flex items-center justify-between w-full px-1 text-xs">
-        <div className="inline-flex rounded-lg bg-slate-100 p-0.5 border border-slate-200">
-          <button
-            type="button"
-            className={`px-2.5 py-1 rounded font-medium transition-all ${
-              mode === 'official'
-                ? 'bg-blue-600 text-white shadow-sm'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-            onClick={() => setMode('official')}
-          >
-            Official Watermark
-          </button>
-          <button
-            type="button"
-            className={`px-2.5 py-1 rounded font-medium transition-all ${
-              mode === 'audit'
-                ? 'bg-slate-700 text-white shadow-sm'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-            onClick={() => setMode('audit')}
-          >
-            Original Camera Watermark
-          </button>
-        </div>
+        {isSuperadmin ? (
+          <div className="inline-flex rounded-lg bg-slate-100 p-0.5 border border-slate-200">
+            <button
+              type="button"
+              className={`px-2.5 py-1 rounded font-medium transition-all ${
+                activeMode === 'official'
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+              onClick={() => setMode('official')}
+            >
+              Official Watermark
+            </button>
+            <button
+              type="button"
+              className={`px-2.5 py-1 rounded font-medium transition-all ${
+                activeMode === 'audit'
+                  ? 'bg-slate-700 text-white shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+              onClick={() => setMode('audit')}
+            >
+              Original Camera Watermark
+            </button>
+          </div>
+        ) : (
+          <span className="text-xs font-semibold text-slate-700">Official Attendance Watermark</span>
+        )}
 
         <button
           type="button"
@@ -539,6 +545,7 @@ export default function AttendanceApproval() {
               photoUrl={previewRecord.photo}
               recordDate={getPhtDateStr(previewRecord.scan_time)}
               recordTime={formatPhtTime(previewRecord.scan_time, false)}
+              isSuperadmin={isSuperadmin}
             />
           ) : (
             <p className="text-gray-500 text-center py-6">No photo available</p>
@@ -567,16 +574,18 @@ export default function AttendanceApproval() {
                 </div>
               </div>
 
-              <div className="bg-amber-50 border border-amber-200 rounded p-2 text-amber-900 flex items-start gap-1.5">
-                <ShieldCheck className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                <div>
-                  <span className="font-semibold">Camera Biometric Scan (Audit): </span>
-                  <span className="font-mono font-medium">{previewRecord.actual_scan_time ? formatPhtTime(previewRecord.actual_scan_time, true) : formatPhtTime(previewRecord.scan_time, true)}</span>
-                  <p className="text-[11px] text-amber-700 mt-0.5">
-                    The camera watermark timestamp is permanently retained for biometric audit integrity. Superadmins can modify the official DTR Date and Time above at any time without rescanning.
-                  </p>
+              {isSuperadmin && (
+                <div className="bg-amber-50 border border-amber-200 rounded p-2 text-amber-900 flex items-start gap-1.5">
+                  <ShieldCheck className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-semibold">Camera Biometric Scan (Audit): </span>
+                    <span className="font-mono font-medium">{previewRecord.actual_scan_time ? formatPhtTime(previewRecord.actual_scan_time, true) : formatPhtTime(previewRecord.scan_time, true)}</span>
+                    <p className="text-[11px] text-amber-700 mt-0.5">
+                      The camera watermark timestamp is permanently retained for biometric audit integrity. Superadmins can modify the official DTR Date and Time above at any time without rescanning.
+                    </p>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           )}
         </div>
