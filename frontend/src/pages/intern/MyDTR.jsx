@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import api from '../../utils/api.js';
 import DTRPrint from '../../components/dtr/DTRPrint.jsx';
-import { Clock } from 'lucide-react';
+import DTRPreviewModal from '../../components/dtr/DTRPreviewModal.jsx';
+import { useAuth } from '../../context/AuthContext.jsx';
+import { Clock, Image as ImageIcon } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const toNonNegativeMinutes = (value) => {
@@ -30,14 +32,34 @@ const formatDuration = (value) => {
 };
 
 export default function MyDTR() {
+  const { user } = useAuth();
   const [records, setRecords] = useState([]);
   const [summary, setSummary] = useState(null);
   const [intern, setIntern] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [previewModalOpen, setPreviewModalOpen] = useState(false);
+  const [selectedRecordForPreview, setSelectedRecordForPreview] = useState(null);
   const [filters, setFilters] = useState({
     month: new Date().getMonth() + 1,
     year: new Date().getFullYear(),
   });
+
+  const handleRowClick = (day, record) => {
+    const dateStr = `${filters.year}-${String(filters.month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    const defaultTimeIn = intern?.assigned_profile?.time_in ? intern.assigned_profile.time_in.slice(0, 5) : '08:00';
+    const defaultTimeOut = intern?.assigned_profile?.time_out ? intern.assigned_profile.time_out.slice(0, 5) : '17:00';
+    const targetRec = record || {
+      date: dateStr,
+      attendance_date: dateStr,
+      time_in: defaultTimeIn,
+      am_time_in: defaultTimeIn,
+      time_out: defaultTimeOut,
+      pm_time_out: defaultTimeOut,
+      approval_status: 'approved',
+    };
+    setSelectedRecordForPreview(targetRec);
+    setPreviewModalOpen(true);
+  };
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -88,19 +110,48 @@ export default function MyDTR() {
         </div>
       </div>
 
-      {/* Filters */}
-      <div className="card p-4 flex flex-col sm:flex-row flex-wrap gap-3 items-start sm:items-end">
-        <div className="form-group">
-          <label className="form-label">Month</label>
-          <select className="form-input form-select text-sm w-full sm:w-auto" value={filters.month} onChange={e => setFilters(f => ({ ...f, month: Number(e.target.value) }))}>
-            {months.map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
-          </select>
+      {/* Filters & Actions */}
+      <div className="card p-4 flex flex-col sm:flex-row flex-wrap gap-3 items-start sm:items-end justify-between">
+        <div className="flex flex-wrap gap-3 items-end">
+          <div className="form-group">
+            <label className="form-label">Month</label>
+            <select className="form-input form-select text-sm w-full sm:w-auto" value={filters.month} onChange={e => setFilters(f => ({ ...f, month: Number(e.target.value) }))}>
+              {months.map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
+            </select>
+          </div>
+          <div className="form-group">
+            <label className="form-label">Year</label>
+            <select className="form-input form-select text-sm w-full sm:w-auto" value={filters.year} onChange={e => setFilters(f => ({ ...f, year: Number(e.target.value) }))}>
+              {years.map(y => <option key={y} value={y}>{y}</option>)}
+            </select>
+          </div>
         </div>
-        <div className="form-group">
-          <label className="form-label">Year</label>
-          <select className="form-input form-select text-sm w-full sm:w-auto" value={filters.year} onChange={e => setFilters(f => ({ ...f, year: Number(e.target.value) }))}>
-            {years.map(y => <option key={y} value={y}>{y}</option>)}
-          </select>
+
+        <div>
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm flex items-center gap-1.5"
+            onClick={() => {
+              const today = new Date();
+              const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+              const existing = records.find(r => r.date === todayStr);
+              const defaultTimeIn = intern?.assigned_profile?.time_in ? intern.assigned_profile.time_in.slice(0, 5) : '08:00';
+              const defaultTimeOut = intern?.assigned_profile?.time_out ? intern.assigned_profile.time_out.slice(0, 5) : '17:00';
+              setSelectedRecordForPreview(existing || {
+                date: todayStr,
+                attendance_date: todayStr,
+                time_in: defaultTimeIn,
+                am_time_in: defaultTimeIn,
+                time_out: defaultTimeOut,
+                pm_time_out: defaultTimeOut,
+                approval_status: 'approved',
+              });
+              setPreviewModalOpen(true);
+            }}
+          >
+            <ImageIcon className="w-4 h-4 text-blue-600" />
+            Preview DTR Image
+          </button>
         </div>
       </div>
 
@@ -112,8 +163,25 @@ export default function MyDTR() {
         </div>
       ) : (
         <div className="table-responsive">
-          <DTRPrint records={records} intern={intern} month={filters.month} year={filters.year} />
+          <DTRPrint
+            records={records}
+            intern={intern}
+            month={filters.month}
+            year={filters.year}
+            onRowClick={handleRowClick}
+          />
         </div>
+      )}
+
+      {/* Official DTR Attendance Preview Modal (Read-Only for Interns) */}
+      {previewModalOpen && selectedRecordForPreview && (
+        <DTRPreviewModal
+          isOpen={previewModalOpen}
+          onClose={() => setPreviewModalOpen(false)}
+          record={selectedRecordForPreview}
+          intern={intern}
+          currentUser={user}
+        />
       )}
     </div>
   );

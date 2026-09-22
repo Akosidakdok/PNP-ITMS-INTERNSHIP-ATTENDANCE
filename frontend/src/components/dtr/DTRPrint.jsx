@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import DTRTable from './DTRTable.jsx';
-import { FileDown, Printer } from 'lucide-react';
+import { FileDown, Printer, Download } from 'lucide-react';
 import toast from 'react-hot-toast';
 import domtoimage from 'dom-to-image-more';
 import { jsPDF } from 'jspdf';
@@ -102,12 +102,74 @@ export default function DTRPrint({ records, intern, month, year, onRowClick }) {
     }
   };
 
+  const handleExportImage = async () => {
+    const el = printRef.current;
+    if (!el) return;
+
+    setIsExporting(true);
+    const toastId = toast.loading('Generating DTR sheet image...');
+
+    try {
+      const noPrintElements = el.querySelectorAll('.no-print');
+      const originalDisplays = [];
+      noPrintElements.forEach(node => {
+        originalDisplays.push(node.style.display);
+        node.style.display = 'none';
+      });
+
+      const scrollableElements = el.querySelectorAll('.overflow-x-auto');
+      const originalOverflows = [];
+      scrollableElements.forEach(node => {
+        originalOverflows.push(node.style.overflowX);
+        node.style.overflowX = 'visible';
+      });
+
+      const imgData = await domtoimage.toPng(el, {
+        bgcolor: '#ffffff',
+        scale: 2,
+        style: {
+          transform: 'scale(1)',
+          transformOrigin: 'top left'
+        }
+      });
+
+      noPrintElements.forEach((node, idx) => {
+        node.style.display = originalDisplays[idx];
+      });
+      scrollableElements.forEach((node, idx) => {
+        node.style.overflowX = originalOverflows[idx];
+      });
+
+      const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      const fname = intern
+        ? `DTR_${intern.full_name.replace(/\s+/g, '_')}_${year}-${monthNames[(month || 1) - 1]}.png`
+        : 'DTR_Export.png';
+
+      const link = document.createElement('a');
+      link.download = fname;
+      link.href = imgData;
+      link.click();
+
+      toast.dismiss(toastId);
+      toast.success('DTR image successfully downloaded!');
+    } catch (err) {
+      console.error("Image Export Error:", err);
+      toast.dismiss(toastId);
+      toast.error(`Failed to export image: ${err.message || 'Unknown error'}`);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   return (
     <div>
       {/* Action buttons — hidden during print */}
       <div className="flex flex-col sm:flex-row gap-2 mb-4 no-print">
         <button className="btn btn-secondary btn-sm w-full sm:w-auto" onClick={handlePrint} disabled={isExporting}>
           <Printer className="w-4 h-4" /> Print
+        </button>
+        <button className="btn btn-secondary btn-sm w-full sm:w-auto" onClick={handleExportImage} disabled={isExporting}>
+          <Download className="w-4 h-4" /> {isExporting ? 'Exporting...' : 'Export Image'}
         </button>
         <button className="btn btn-primary btn-sm w-full sm:w-auto" onClick={handleExportPDF} disabled={isExporting}>
           <FileDown className="w-4 h-4" /> {isExporting ? 'Exporting...' : 'Export PDF'}

@@ -752,6 +752,7 @@ app.put('/admin/dtr/:internId/edit', authMiddleware, superadminMiddleware, async
     const result = await editDtrRecord({
       internId,
       date: req.body.date,
+      new_date: req.body.new_date,
       time_in: req.body.time_in,
       time_out: req.body.time_out,
       status: req.body.status,

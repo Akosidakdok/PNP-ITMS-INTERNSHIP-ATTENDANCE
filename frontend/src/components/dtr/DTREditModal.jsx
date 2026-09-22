@@ -12,6 +12,7 @@ export default function DTREditModal({
   record,
   onSaveSuccess,
 }) {
+  const [dateInput, setDateInput] = useState('');
   const [timeIn, setTimeIn] = useState('');
   const [timeOut, setTimeOut] = useState('');
   const [status, setStatus] = useState('approved');
@@ -21,8 +22,10 @@ export default function DTREditModal({
 
   useEffect(() => {
     if (isOpen) {
+      const origDate = date || record?.date || record?.attendance_date || '';
       const origIn = record?.time_in || record?.am_time_in || '';
       const origOut = record?.time_out || record?.pm_time_out || '';
+      setDateInput(origDate);
       setTimeIn(origIn);
       setTimeOut(origOut);
       setStatus(record?.approval_status || 'approved');
@@ -46,6 +49,7 @@ export default function DTREditModal({
     try {
       await api.put(`/admin/dtr/${intern.id}/edit`, {
         date,
+        new_date: dateInput !== date ? dateInput : undefined,
         time_in: timeIn,
         time_out: timeOut,
         status,
@@ -151,6 +155,18 @@ export default function DTREditModal({
         </div>
 
         {/* Editable Fields */}
+        <div className="form-group">
+          <label className="form-label font-semibold text-gray-700">Official Attendance Date</label>
+          <input
+            type="date"
+            className="form-input text-sm font-medium"
+            value={dateInput}
+            onChange={(e) => setDateInput(e.target.value)}
+            required
+          />
+          <span className="text-[11px] text-gray-400">Controls the date displayed on the official DTR preview</span>
+        </div>
+
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="form-group">
             <label className="form-label font-semibold text-gray-700">New Time In (HH:MM)</label>

@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Clock, Filter, AlertCircle, Edit, Calendar, History, Shield, ShieldCheck } from 'lucide-react';
+import { Clock, Filter, AlertCircle, Edit, Calendar, History, Shield, ShieldCheck, Image as ImageIcon } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext.jsx';
 import api from '../../utils/api.js';
 import DTRPrint from '../../components/dtr/DTRPrint.jsx';
 import Modal from '../../components/common/Modal.jsx';
 import DTREditModal from '../../components/dtr/DTREditModal.jsx';
 import DTRHistoryModal from '../../components/dtr/DTRHistoryModal.jsx';
+import DTRPreviewModal from '../../components/dtr/DTRPreviewModal.jsx';
 import toast from 'react-hot-toast';
 
 const getPhtTodayKey = () => {
@@ -38,6 +39,10 @@ export default function AdminDTRViewer() {
   const [dtrEditModalOpen, setDtrEditModalOpen] = useState(false);
   const [selectedRecordForEdit, setSelectedRecordForEdit] = useState(null);
   const [selectedDateForEdit, setSelectedDateForEdit] = useState(null);
+
+  // DTR Preview Modal state
+  const [previewModalOpen, setPreviewModalOpen] = useState(false);
+  const [selectedRecordForPreview, setSelectedRecordForPreview] = useState(null);
 
   // Superadmin modification audit history modal state
   const [historyModalOpen, setHistoryModalOpen] = useState(false);
@@ -98,12 +103,23 @@ export default function AdminDTRViewer() {
   }, [selectedInternId, loadDTR]);
 
   const handleRowClick = (day, record) => {
-    if (!isSuperadmin) return;
     const dateStr = `${filters.year}-${String(filters.month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    const defaultTimeIn = selectedInternData?.assigned_profile?.time_in ? selectedInternData.assigned_profile.time_in.slice(0, 5) : '08:00';
+    const defaultTimeOut = selectedInternData?.assigned_profile?.time_out ? selectedInternData.assigned_profile.time_out.slice(0, 5) : '17:00';
+    const targetRec = record || {
+      date: dateStr,
+      attendance_date: dateStr,
+      time_in: defaultTimeIn,
+      am_time_in: defaultTimeIn,
+      time_out: defaultTimeOut,
+      pm_time_out: defaultTimeOut,
+      approval_status: 'approved',
+    };
     setSelectedDay(day);
     setSelectedDateForEdit(dateStr);
-    setSelectedRecordForEdit(record || { date: dateStr });
-    setDtrEditModalOpen(true);
+    setSelectedRecordForEdit(targetRec);
+    setSelectedRecordForPreview(targetRec);
+    setPreviewModalOpen(true);
   };
 
   const handleSaveOverride = async () => {
@@ -171,31 +187,58 @@ export default function AdminDTRViewer() {
               : 'View Daily Time Records for personnel under your supervision'}
           </p>
         </div>
-        {isSuperadmin && (
-          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-            <button
-              className="btn btn-secondary flex items-center gap-1.5 text-xs"
-              onClick={() => setHistoryModalOpen(true)}
-            >
-              <History className="w-4 h-4 text-blue-600" />
-              Modification History
-            </button>
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+          {selectedInternId && (
             <button
               className="btn btn-secondary flex items-center gap-1.5 text-xs"
               onClick={() => {
-                setBulkForm({
-                  date: getPhtTodayKey(),
-                  type: 'suspended',
-                  hours: 8,
-                  remarks: ''
-                });
-                setBulkModalOpen(true);
+                const todayStr = getPhtTodayKey();
+                const existing = dtrRecords.find(r => r.date === todayStr);
+                const defaultTimeIn = selectedInternData?.assigned_profile?.time_in ? selectedInternData.assigned_profile.time_in.slice(0, 5) : '08:00';
+                const defaultTimeOut = selectedInternData?.assigned_profile?.time_out ? selectedInternData.assigned_profile.time_out.slice(0, 5) : '17:00';
+                const rec = existing || {
+                  date: todayStr,
+                  attendance_date: todayStr,
+                  time_in: defaultTimeIn,
+                  am_time_in: defaultTimeIn,
+                  time_out: defaultTimeOut,
+                  pm_time_out: defaultTimeOut,
+                  approval_status: 'approved',
+                };
+                setSelectedRecordForPreview(rec);
+                setPreviewModalOpen(true);
               }}
             >
-              <Calendar className="w-4 h-4" /> Bulk DTR Override
+              <ImageIcon className="w-4 h-4 text-blue-600" />
+              Preview DTR Image
             </button>
-          </div>
-        )}
+          )}
+          {isSuperadmin && (
+            <>
+              <button
+                className="btn btn-secondary flex items-center gap-1.5 text-xs"
+                onClick={() => setHistoryModalOpen(true)}
+              >
+                <History className="w-4 h-4 text-blue-600" />
+                Modification History
+              </button>
+              <button
+                className="btn btn-secondary flex items-center gap-1.5 text-xs"
+                onClick={() => {
+                  setBulkForm({
+                    date: getPhtTodayKey(),
+                    type: 'suspended',
+                    hours: 8,
+                    remarks: ''
+                  });
+                  setBulkModalOpen(true);
+                }}
+              >
+                <Calendar className="w-4 h-4" /> Bulk DTR Override
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Trainee & Period Selectors */}
@@ -311,7 +354,7 @@ export default function AdminDTRViewer() {
                 records={dtrRecords}
                 month={filters.month}
                 year={filters.year}
-                onRowClick={isSuperadmin ? handleRowClick : null}
+                onRowClick={handleRowClick}
               />
             </div>
           </div>
@@ -478,6 +521,23 @@ export default function AdminDTRViewer() {
           onClose={() => setHistoryModalOpen(false)}
           internId={selectedInternId || null}
           internName={selectedInternData?.full_name || null}
+        />
+      )}
+
+      {/* Official DTR Attendance Preview Modal */}
+      {previewModalOpen && selectedRecordForPreview && (
+        <DTRPreviewModal
+          isOpen={previewModalOpen}
+          onClose={() => setPreviewModalOpen(false)}
+          record={selectedRecordForPreview}
+          intern={selectedInternData}
+          currentUser={user}
+          onSaveSuccess={(updatedRecord) => {
+            loadDTR();
+            if (updatedRecord) {
+              setSelectedRecordForPreview(updatedRecord);
+            }
+          }}
         />
       )}
     </div>

@@ -3,6 +3,7 @@ import { QrCode, CheckCircle, AlertCircle, Clock, Shield, Camera, RotateCcw, Use
 import QRScanner from '../../components/qr/QRScanner.jsx';
 import backendApi from '../../utils/backendApi.js';
 import toast from 'react-hot-toast';
+import { useAuth } from '../../context/AuthContext.jsx';
 import { format } from 'date-fns';
 import { analyzeFaceQuality, initializeFaceModels } from '../../utils/mediapipeService.js';
 import {
@@ -24,6 +25,7 @@ const safeFormatDate = (dateVal, fmtStr) => {
 };
 
 export default function ScanAttendance() {
+  const { user } = useAuth();
   const [scanResult, setScanResult] = useState(null);
   const [scanning, setScanning] = useState(false);
   const [scannerActive, setScannerActive] = useState(true);
@@ -245,7 +247,32 @@ export default function ScanAttendance() {
       });
       const parts = formatter.formatToParts(new Date());
       const getP = type => parts.find(p => p.type === type)?.value || '';
-      const stamp = `${getP('year')}-${getP('month')}-${getP('day')} ${getP('hour')}:${getP('minute')}:${getP('second')} ${getP('dayPeriod')}`;
+
+      // Check if official scheduled profile time should be watermarked
+      const profile = user?.assigned_profile;
+      const isTimeIn = !nextScanHint || nextScanHint.toLowerCase().includes('in') || nextScanHint.toLowerCase().includes('first');
+      const isTimeOut = Boolean(nextScanHint && nextScanHint.toLowerCase().includes('out'));
+      let targetTimeStr = null;
+
+      if (isTimeIn && profile?.first_scan_enabled && profile?.time_in) {
+        targetTimeStr = profile.time_in;
+      } else if (isTimeOut && profile?.second_scan_enabled && profile?.time_out) {
+        targetTimeStr = profile.time_out;
+      }
+
+      let stamp = '';
+      if (targetTimeStr) {
+        const [hStr, mStr, sStr] = targetTimeStr.split(':');
+        let h = parseInt(hStr, 10);
+        const m = mStr || '00';
+        const s = sStr || '00';
+        const ampm = h >= 12 ? 'PM' : 'AM';
+        h = h % 12 || 12;
+        const timePart = `${String(h).padStart(2, '0')}:${m}:${s} ${ampm}`;
+        stamp = `${getP('year')}-${getP('month')}-${getP('day')} ${timePart}`;
+      } else {
+        stamp = `${getP('year')}-${getP('month')}-${getP('day')} ${getP('hour')}:${getP('minute')}:${getP('second')} ${getP('dayPeriod')}`;
+      }
 
       ctx.font = 'bold 18px sans-serif';
       ctx.shadowColor = 'black';

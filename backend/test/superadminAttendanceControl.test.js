@@ -12,6 +12,8 @@ const {
   normalizeTimeString,
   buildPhtTimestamp,
   formatPhtTime,
+  format12HourTime,
+  formatDateDisplay,
   editDtrRecord,
 } = await import('../src/services/attendanceControlService.js');
 const {
@@ -176,3 +178,34 @@ test('database migration file defines all required tables and constraints', () =
   assert.match(sql, /Regular 8AM–5PM/);
   assert.match(sql, /'superadmin'/);
 });
+
+test('format12HourTime converts 24h and 12h times to standard 12-hour AM/PM format', () => {
+  assert.equal(format12HourTime('08:00'), '08:00 AM');
+  assert.equal(format12HourTime('08:15:00'), '08:15 AM');
+  assert.equal(format12HourTime('17:00'), '05:00 PM');
+  assert.equal(format12HourTime('12:00'), '12:00 PM');
+  assert.equal(format12HourTime('00:00'), '12:00 AM');
+  assert.equal(format12HourTime('8:00 AM'), '08:00 AM');
+  assert.equal(format12HourTime('5:00 PM'), '05:00 PM');
+});
+
+test('formatDateDisplay converts YYYY-MM-DD to MMMM dd, yyyy format', () => {
+  assert.equal(formatDateDisplay('2026-09-22'), 'September 22, 2026');
+  assert.equal(formatDateDisplay('2026-01-01'), 'January 1, 2026');
+  assert.equal(formatDateDisplay('2026-12-25'), 'December 25, 2026');
+  assert.equal(formatDateDisplay(''), '');
+});
+
+test('editDtrRecord rejects invalid new_date', async () => {
+  await assert.rejects(
+    () => editDtrRecord({
+      internId: 1,
+      date: '2026-09-21',
+      new_date: 'invalid-date',
+      time_in: '08:15',
+      reason: 'Valid correction reason',
+    }),
+    /valid new attendance date is required/
+  );
+});
+

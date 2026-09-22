@@ -47,6 +47,36 @@ export function buildPhtTimestamp(dateStr, timeStr) {
 }
 
 /**
+ * Formats a timestamp or time string into 12-hour AM/PM format (e.g. "08:00 AM", "05:00 PM")
+ */
+export function format12HourTime(timeStr) {
+  if (!timeStr) return '';
+  const normalized = normalizeTimeString(timeStr);
+  if (!normalized) return timeStr;
+  const [h, m] = normalized.split(':').map(Number);
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  const displayHours = h % 12 || 12;
+  return `${String(displayHours).padStart(2, '0')}:${String(m).padStart(2, '0')} ${ampm}`;
+}
+
+/**
+ * Formats a YYYY-MM-DD string into "MMMM dd, yyyy" (e.g. "September 22, 2026")
+ */
+export function formatDateDisplay(dateStr) {
+  if (!dateStr || typeof dateStr !== 'string') return '';
+  const match = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return dateStr;
+  const year = Number(match[1]);
+  const monthIndex = Number(match[2]) - 1;
+  const day = Number(match[3]);
+  const monthNames = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
+  ];
+  return `${monthNames[monthIndex]} ${day}, ${year}`;
+}
+
+/**
  * Formats a timestamp into PHT HH:MM (e.g. "08:00")
  */
 export function formatPhtTime(timestamp) {
@@ -224,17 +254,27 @@ export async function getAssignedProfileForAccount(accountId) {
     .eq('account_id', accountId)
     .maybeSingle();
 
-  if (assignError || !assignment) return null;
+  if (!assignError && assignment) {
+    const { data: profile, error: profError } = await supabase
+      .from('attendance_profiles')
+      .select('*')
+      .eq('id', assignment.attendance_profile_id)
+      .eq('status', 'active')
+      .maybeSingle();
 
-  const { data: profile, error: profError } = await supabase
+    if (!profError && profile) return profile;
+  }
+
+  // Fallback to active "Regular 8AM–5PM" or first active profile
+  const { data: defaultProfile } = await supabase
     .from('attendance_profiles')
     .select('*')
-    .eq('id', assignment.attendance_profile_id)
     .eq('status', 'active')
+    .order('id', { ascending: true })
+    .limit(1)
     .maybeSingle();
 
-  if (profError || !profile) return null;
-  return profile;
+  return defaultProfile || null;
 }
 
 export async function getAccountsWithProfiles() {
@@ -341,6 +381,7 @@ export async function removeAccountProfileAssignment(accountId) {
 export async function editDtrRecord({
   internId,
   date,
+  new_date,
   time_in,
   time_out,
   status,
@@ -361,6 +402,36 @@ export async function editDtrRecord({
     const err = new Error('A modification reason is strictly required before saving');
     err.statusCode = 400;
     throw err;
+  }
+
+  // Validate new_date if provided
+  let effectiveDate = date;
+  let dateChanged = false;
+  if (new_date && new_date !== date) {
+    try {
+      getPhtDayBoundsUtc(new_date);
+    } catch {
+      const err = new Error('A valid new attendance date is required (YYYY-MM-DD)');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    // Check if a record already exists on the new date
+    const { data: existingOnNewDate } = await supabase
+      .from('attendance_records')
+      .select('id')
+      .eq('account_id', internId)
+      .eq('attendance_date', new_date)
+      .maybeSingle();
+
+    if (existingOnNewDate) {
+      const err = new Error(`An attendance record already exists for date ${new_date}`);
+      err.statusCode = 400;
+      throw err;
+    }
+
+    effectiveDate = new_date;
+    dateChanged = true;
   }
 
   const { startIso, endExclusiveIso } = getPhtDayBoundsUtc(date);
@@ -405,9 +476,14 @@ export async function editDtrRecord({
 
   const newStatus = status ? status.toLowerCase() : origStatus;
 
-  // Build timestamps for new recorded times
-  const newTimeInIso = newTimeInNormalized ? buildPhtTimestamp(date, newTimeInNormalized) : null;
-  const newTimeOutIso = newTimeOutNormalized ? buildPhtTimestamp(date, newTimeOutNormalized) : null;
+  // Build timestamps for new recorded times (using effectiveDate)
+  const newTimeInIso = newTimeInNormalized
+    ? buildPhtTimestamp(effectiveDate, newTimeInNormalized)
+    : (dateChanged && origTimeInStr ? buildPhtTimestamp(effectiveDate, origTimeInStr) : null);
+
+  const newTimeOutIso = newTimeOutNormalized
+    ? buildPhtTimestamp(effectiveDate, newTimeOutNormalized)
+    : (dateChanged && origTimeOutStr ? buildPhtTimestamp(effectiveDate, origTimeOutStr) : null);
 
   // Ensure record exists in attendance_records
   if (!record) {
@@ -416,7 +492,7 @@ export async function editDtrRecord({
       .insert([
         {
           account_id: internId,
-          attendance_date: date,
+          attendance_date: effectiveDate,
           actual_time_in: timeInLog?.actual_scan_time || timeInLog?.scan_time || null,
           recorded_time_in: newTimeInIso || timeInLog?.scan_time || null,
           actual_time_out: timeOutLog?.actual_scan_time || timeOutLog?.scan_time || null,
@@ -440,33 +516,53 @@ export async function editDtrRecord({
   const historyEntries = [];
   const modifiedAt = new Date().toISOString();
 
-  // Check differences and prepare history entries
-  if (newTimeInDisplay && origTimeInStr !== newTimeInDisplay) {
+  // Audit: Attendance Date change
+  if (dateChanged) {
+    historyEntries.push({
+      attendance_record_id: recordId,
+      account_id: internId,
+      field_name: 'Attendance Date',
+      original_value: formatDateDisplay(date),
+      new_value: formatDateDisplay(effectiveDate),
+      modified_by: modified_by || null,
+      modified_at: modifiedAt,
+      reason: reason.trim(),
+    });
+  }
+
+  // Audit: Time In change (formatted as 12-hour AM/PM e.g. 08:00 AM -> 08:15 AM)
+  const origTimeIn12H = origTimeInStr ? format12HourTime(origTimeInStr) : 'None';
+  const newTimeIn12H = newTimeInDisplay ? format12HourTime(newTimeInDisplay) : null;
+  if (newTimeIn12H && origTimeIn12H !== newTimeIn12H) {
     historyEntries.push({
       attendance_record_id: recordId,
       account_id: internId,
       field_name: 'Time In',
-      original_value: origTimeInStr || 'None',
-      new_value: newTimeInDisplay,
+      original_value: origTimeIn12H,
+      new_value: newTimeIn12H,
       modified_by: modified_by || null,
       modified_at: modifiedAt,
       reason: reason.trim(),
     });
   }
 
-  if (newTimeOutDisplay && origTimeOutStr !== newTimeOutDisplay) {
+  // Audit: Time Out change (formatted as 12-hour AM/PM e.g. 05:00 PM)
+  const origTimeOut12H = origTimeOutStr ? format12HourTime(origTimeOutStr) : 'None';
+  const newTimeOut12H = newTimeOutDisplay ? format12HourTime(newTimeOutDisplay) : null;
+  if (newTimeOut12H && origTimeOut12H !== newTimeOut12H) {
     historyEntries.push({
       attendance_record_id: recordId,
       account_id: internId,
       field_name: 'Time Out',
-      original_value: origTimeOutStr || 'None',
-      new_value: newTimeOutDisplay,
+      original_value: origTimeOut12H,
+      new_value: newTimeOut12H,
       modified_by: modified_by || null,
       modified_at: modifiedAt,
       reason: reason.trim(),
     });
   }
 
+  // Audit: Status change
   if (status && origStatus !== newStatus) {
     historyEntries.push({
       attendance_record_id: recordId,
@@ -491,11 +587,12 @@ export async function editDtrRecord({
     }
   }
 
-  // Update attendance_records
+  // Update attendance_records (preserving actual_time_in and actual_time_out!)
   const recordUpdates = {
     updated_at: modifiedAt,
     status: newStatus,
   };
+  if (dateChanged) recordUpdates.attendance_date = effectiveDate;
   if (newTimeInIso) recordUpdates.recorded_time_in = newTimeInIso;
   if (newTimeOutIso) recordUpdates.recorded_time_out = newTimeOutIso;
 
@@ -506,7 +603,7 @@ export async function editDtrRecord({
       .eq('id', recordId);
   }
 
-  // Synchronize attendance_logs so calculations and reports stay consistent
+  // Synchronize attendance_logs (keeping actual_scan_time preserved!)
   if (newTimeInIso) {
     if (timeInLog) {
       await supabase
@@ -526,7 +623,7 @@ export async function editDtrRecord({
             scan_type: 'time_in',
             scan_time: newTimeInIso,
             recorded_scan_time: newTimeInIso,
-            actual_scan_time: newTimeInIso,
+            actual_scan_time: null, // No actual scan took place
             approval_status: newStatus,
             attendance_record_id: recordId,
           },
@@ -553,7 +650,7 @@ export async function editDtrRecord({
             scan_type: 'time_out',
             scan_time: newTimeOutIso,
             recorded_scan_time: newTimeOutIso,
-            actual_scan_time: newTimeOutIso,
+            actual_scan_time: null, // No actual scan took place
             approval_status: newStatus,
             attendance_record_id: recordId,
           },
@@ -564,6 +661,7 @@ export async function editDtrRecord({
   return {
     success: true,
     modified_fields_count: historyEntries.length,
+    attendance_date: effectiveDate,
     recorded_time_in: newTimeInDisplay || origTimeInStr,
     recorded_time_out: newTimeOutDisplay || origTimeOutStr,
     status: newStatus,

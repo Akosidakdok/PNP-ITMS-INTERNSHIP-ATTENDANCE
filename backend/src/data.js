@@ -4,6 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { supabase } from './supabaseClient.js';
 import { getPhtDateKey, getPhtDayBoundsUtc } from './utils/attendanceTime.js';
 import { buildDtrRecords, summarizeDtrRecords } from './utils/dtrRecords.js';
+import { getAssignedProfileForAccount } from './services/attendanceControlService.js';
 
 const INTERN_ROLE = 'intern';
 const ADMIN_ROLE = 'admin';
@@ -318,6 +319,13 @@ export async function getInternById(id) {
       .single();
     if (error) throw error;
     const [intern] = await addCalculatedRenderedHours([data]);
+    if (intern) {
+      try {
+        intern.assigned_profile = await getAssignedProfileForAccount(intern.id);
+      } catch {
+        intern.assigned_profile = null;
+      }
+    }
     return intern;
   } catch (err) {
     const { data, error } = await supabase
@@ -333,6 +341,13 @@ export async function getInternById(id) {
       face_registered_at: null,
       self_face_enrollment_available: false,
     }]);
+    if (intern) {
+      try {
+        intern.assigned_profile = await getAssignedProfileForAccount(intern.id);
+      } catch {
+        intern.assigned_profile = null;
+      }
+    }
     return intern;
   }
 }
@@ -580,6 +595,13 @@ export async function getCurrentUserProfile(userId) {
       throw error;
     }
     const [intern] = await addCalculatedRenderedHours([data]);
+    if (intern) {
+      try {
+        intern.assigned_profile = await getAssignedProfileForAccount(intern.id);
+      } catch {
+        intern.assigned_profile = null;
+      }
+    }
     return intern;
   } catch (err) {
     const { data, error } = await supabase
@@ -598,6 +620,13 @@ export async function getCurrentUserProfile(userId) {
       face_registered_at: null,
       self_face_enrollment_available: false,
     }]);
+    if (intern) {
+      try {
+        intern.assigned_profile = await getAssignedProfileForAccount(intern.id);
+      } catch {
+        intern.assigned_profile = null;
+      }
+    }
     return intern;
   }
 }
