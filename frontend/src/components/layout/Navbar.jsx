@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Menu, Bell, Sun, Moon, Search, ChevronDown, Check, CheckCheck } from 'lucide-react';
+import { Menu, Bell, Sun, Moon, Search, ChevronDown, Check, CheckCheck, Trash2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useNotifications } from '../../context/NotificationContext.jsx';
 import { formatDistanceToNow } from 'date-fns';
@@ -21,7 +21,7 @@ const safeFormatDistanceToNow = (dateStr) => {
 
 export default function Navbar({ onMenuClick }) {
   const { user } = useAuth();
-  const { notifications, unreadCount, markAsRead, markAllRead } = useNotifications();
+  const { notifications, unreadCount, markAsRead, markAllRead, clearAllNotifications } = useNotifications();
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('theme') === 'dark');
   const [notifOpen, setNotifOpen] = useState(false);
   const notifRef = useRef(null);
@@ -96,11 +96,18 @@ export default function Navbar({ onMenuClick }) {
             <div className="absolute right-0 top-full mt-2 w-80 card animate-scale-in z-50 overflow-hidden notif-dropdown">
               <div className="p-4 border-b border-gray-100 flex items-center justify-between">
                 <h3 className="font-semibold text-sm text-gray-800">Notifications</h3>
-                {unreadCount > 0 && (
-                  <button onClick={markAllRead} className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1">
-                    <CheckCheck className="w-3 h-3" /> Mark all read
-                  </button>
-                )}
+                <div className="flex items-center gap-2">
+                  {unreadCount > 0 && (
+                    <button onClick={markAllRead} className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1">
+                      <CheckCheck className="w-3 h-3" /> Mark all read
+                    </button>
+                  )}
+                  {notifications.length > 0 && (
+                    <button onClick={clearAllNotifications} className="text-xs text-gray-400 hover:text-red-600 flex items-center gap-1">
+                      <Trash2 className="w-3 h-3" /> Clear
+                    </button>
+                  )}
+                </div>
               </div>
               <div className="max-h-80 overflow-y-auto divide-y divide-gray-50">
                 {notifications.length === 0 ? (

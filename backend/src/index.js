@@ -58,6 +58,7 @@ import {
   getNotifications,
   markNotificationRead,
   markAllNotificationsRead,
+  clearNotifications,
   getEvaluations,
   createEvaluation,
   updateEvaluation,
@@ -886,6 +887,16 @@ app.patch('/notifications/read-all', authMiddleware, async (req, res) => {
   try {
     const isStaff = ['admin', 'supervisor', 'superadmin'].includes(req.user.role);
     const result = await markAllNotificationsRead(req.user.id, isStaff);
+    return res.json(result);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/notifications/clear', authMiddleware, async (req, res) => {
+  try {
+    const isStaff = ['admin', 'supervisor', 'superadmin'].includes(req.user.role);
+    const result = await clearNotifications(req.user.id, isStaff);
     return res.json(result);
   } catch (error) {
     return res.status(500).json({ error: error.message });
