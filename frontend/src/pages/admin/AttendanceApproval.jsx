@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { CheckCircle, XCircle, Camera, Trash2, Settings2, RotateCcw, ChevronRight, AlertTriangle, Edit3, Eye, ShieldCheck, Download } from 'lucide-react';
+import { CheckCircle, XCircle, Camera, Trash2, Settings2, RotateCcw, ChevronRight, AlertTriangle, Edit3, Eye, ShieldCheck, Download, Calendar } from 'lucide-react';
 import api from '../../utils/api.js';
 import DataTable from '../../components/common/DataTable.jsx';
 import Modal from '../../components/common/Modal.jsx';
@@ -7,6 +7,7 @@ import toast from 'react-hot-toast';
 import { useAuth } from '../../context/AuthContext.jsx';
 import DTREditModal from '../../components/dtr/DTREditModal.jsx';
 import DTRPreviewModal from '../../components/dtr/DTRPreviewModal.jsx';
+import BulkDTROverrideModal from '../../components/dtr/BulkDTROverrideModal.jsx';
 
 function WatermarkedSelfie({ photoUrl, recordDate, recordTime }) {
   const [mode, setMode] = useState('official'); // 'official' | 'audit'
@@ -209,6 +210,7 @@ export default function AttendanceApproval() {
   const [previewRecord, setPreviewRecord] = useState(null);
   const [dtrPreviewOpen, setDtrPreviewOpen] = useState(false);
   const [dtrEditOpen, setDtrEditOpen] = useState(false);
+  const [bulkModalOpen, setBulkModalOpen] = useState(false);
 
   const fetchLogs = useCallback(async () => {
     setLoading(true);
@@ -320,9 +322,19 @@ export default function AttendanceApproval() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div>
-        <h1 className="text-xl sm:text-2xl font-bold text-gray-800" style={{ fontFamily: 'Outfit, sans-serif' }}>Attendance Approval</h1>
-        <p className="text-gray-500 text-sm">Review attendance and reopen a rejected scan slot when correction is needed</p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-800" style={{ fontFamily: 'Outfit, sans-serif' }}>Attendance Approval</h1>
+          <p className="text-gray-500 text-sm">Review attendance and reopen a rejected scan slot when correction is needed</p>
+        </div>
+        <button
+          type="button"
+          id="attendance-bulk-override-btn"
+          className="btn btn-secondary flex items-center gap-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-50 self-start sm:self-auto"
+          onClick={() => setBulkModalOpen(true)}
+        >
+          <Calendar className="w-4 h-4 text-blue-600" /> Bulk DTR Override
+        </button>
       </div>
 
       {/* Filters */}
@@ -612,6 +624,12 @@ export default function AttendanceApproval() {
           }}
         />
       )}
+      {/* Bulk Override Modal */}
+      <BulkDTROverrideModal
+        isOpen={bulkModalOpen}
+        onClose={() => setBulkModalOpen(false)}
+        onSuccess={fetchLogs}
+      />
     </div>
   );
 }
