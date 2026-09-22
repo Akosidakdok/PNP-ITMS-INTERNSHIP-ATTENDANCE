@@ -1641,14 +1641,16 @@ export async function deleteDocument(id, userId, isAdmin) {
 export async function getCalendarEvents({ year, month }) {
   if (!year || !month) throw new Error('Year and month are required');
 
-  const startDate = new Date(year, month - 1, 1);
-  const endDate = new Date(year, month, 0);
+  const pad = (n) => String(n).padStart(2, '0');
+  const startStr = `${year}-${pad(month)}-01`;
+  const lastDay = new Date(Date.UTC(Number(year), Number(month), 0)).getUTCDate();
+  const endStr = `${year}-${pad(month)}-${pad(lastDay)}`;
 
   const { data, error } = await supabase
     .from('calendar_events')
     .select(`*, creator:accounts(full_name)`)
-    .gte('event_date', startDate.toISOString().slice(0, 10))
-    .lte('event_date', endDate.toISOString().slice(0, 10))
+    .gte('event_date', startStr)
+    .lte('event_date', endStr)
     .order('event_date', { ascending: true });
 
   if (error) throw error;

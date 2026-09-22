@@ -47,6 +47,10 @@ export default function InternCalendar() {
     return () => { active = false; };
   }, [currentDate.month, currentDate.year, isMobile, loadEvents]);
 
+  useEffect(() => {
+    calendarRef.current?.getApi()?.refetchEvents();
+  }, []);
+
   const openDetails = (event) => {
     setSelectedEvent(event.extendedProps || event);
   };
@@ -58,18 +62,21 @@ export default function InternCalendar() {
     if (part === 'year') newDate.setFullYear(numericValue);
     setCurrentDate({ month: newDate.getMonth(), year: newDate.getFullYear() });
     calendarRef.current?.getApi().gotoDate(newDate);
+    calendarRef.current?.getApi().refetchEvents();
   };
 
   const moveMonth = (offset) => {
     const target = new Date(currentDate.year, currentDate.month + offset, 1);
     setCurrentDate({ month: target.getMonth(), year: target.getFullYear() });
     calendarRef.current?.getApi().gotoDate(target);
+    calendarRef.current?.getApi().refetchEvents();
   };
 
   const goToToday = () => {
     const today = new Date();
     setCurrentDate({ month: today.getMonth(), year: today.getFullYear() });
     calendarRef.current?.getApi().today();
+    calendarRef.current?.getApi().refetchEvents();
   };
 
   const handleDatesSet = (arg) => {

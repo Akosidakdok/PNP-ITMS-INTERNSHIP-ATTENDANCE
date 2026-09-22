@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import interactionPlugin from '@fullcalendar/interaction'; // <-- Import the interaction plugin
@@ -23,6 +23,10 @@ export default function AdminCalendar() {
 
   // Use the custom hook
   const { fetchEvents } = useCalendar(calendarRef);
+
+  useEffect(() => {
+    calendarRef.current?.getApi()?.refetchEvents();
+  }, []);
 
   const openCreate = (date) => {
     setSelectedEvent(null);
@@ -117,6 +121,7 @@ export default function AdminCalendar() {
     if (part === 'month') newDate.setMonth(value);
     if (part === 'year') newDate.setFullYear(value);
     calendarRef.current?.getApi().gotoDate(newDate);
+    calendarRef.current?.getApi().refetchEvents();
   };
 
   const handleDatesSet = (arg) => {
