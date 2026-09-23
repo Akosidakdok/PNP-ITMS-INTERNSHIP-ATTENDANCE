@@ -25,6 +25,7 @@ import {
   assignProfileToAccounts,
   removeAccountProfileAssignment,
   editDtrRecord,
+  deleteDtrAttendance,
   getDtrEditHistory,
 } from './services/attendanceControlService.js';
 import {
@@ -779,6 +780,7 @@ app.put('/admin/dtr/:internId/batch-alter', authMiddleware, superadminMiddleware
       hours = 0,
       remarks = '',
       reason,
+      clear_target = 'attendance',
     } = req.body;
 
     if (!Array.isArray(dates) || dates.length === 0) {
@@ -810,22 +812,14 @@ app.put('/admin/dtr/:internId/batch-alter', authMiddleware, superadminMiddleware
             reason: reason.trim(),
           }]);
           results.push({ date: d, success: true, result: resOverride });
-        } else if (mode === 'clear') {
-          const resClear = await setDtrOverride(internId, {
+        } else if (mode === 'clear' || mode === 'delete') {
+          const resClear = await deleteDtrAttendance({
+            internId,
             date: d,
-            type: 'NONE',
-            hours: 0,
-            remarks: '',
-          });
-          await supabase.from('dtr_edit_history').insert([{
-            account_id: internId,
-            field_name: 'Clear Record/Override',
-            original_value: 'Active Record/Override',
-            new_value: 'Cleared',
-            modified_by: req.user.id,
-            modified_at: new Date().toISOString(),
             reason: reason.trim(),
-          }]);
+            modified_by: req.user.id,
+            target: clear_target || 'attendance',
+          });
           results.push({ date: d, success: true, result: resClear });
         } else {
           // mode === 'time'

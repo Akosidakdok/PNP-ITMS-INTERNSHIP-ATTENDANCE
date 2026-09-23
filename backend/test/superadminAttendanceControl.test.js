@@ -15,6 +15,7 @@ const {
   format12HourTime,
   formatDateDisplay,
   editDtrRecord,
+  deleteDtrAttendance,
 } = await import('../src/services/attendanceControlService.js');
 const {
   superadminMiddleware,
@@ -207,3 +208,55 @@ test('editDtrRecord rejects invalid new_date', async () => {
     /valid new attendance date is required/
   );
 });
+
+test('deleteDtrAttendance strictly requires a non-empty reason', async () => {
+  await assert.rejects(
+    () => deleteDtrAttendance({
+      internId: 1,
+      date: '2026-09-21',
+      reason: '',
+    }),
+    /modification reason is strictly required/
+  );
+
+  await assert.rejects(
+    () => deleteDtrAttendance({
+      internId: 1,
+      date: '2026-09-21',
+      reason: '   ',
+    }),
+    /modification reason is strictly required/
+  );
+});
+
+test('deleteDtrAttendance strictly requires internId and date', async () => {
+  await assert.rejects(
+    () => deleteDtrAttendance({
+      internId: null,
+      date: '2026-09-21',
+      reason: 'Valid reason',
+    }),
+    /Intern ID is required/
+  );
+
+  await assert.rejects(
+    () => deleteDtrAttendance({
+      internId: 1,
+      date: '',
+      reason: 'Valid reason',
+    }),
+    /Attendance date is required/
+  );
+});
+
+test('deleteDtrAttendance rejects invalid date format', async () => {
+  await assert.rejects(
+    () => deleteDtrAttendance({
+      internId: 1,
+      date: 'invalid-date-format',
+      reason: 'Valid reason',
+    }),
+    /valid attendance date is required/
+  );
+});
+

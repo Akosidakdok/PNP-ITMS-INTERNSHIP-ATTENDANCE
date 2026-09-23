@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Clock, Calendar, RotateCcw, ShieldCheck, AlertCircle, Check, Info } from 'lucide-react';
+import { Clock, Calendar, RotateCcw, ShieldCheck, AlertCircle, Check, Info, Trash2, AlertTriangle } from 'lucide-react';
 import Modal from '../common/Modal.jsx';
 import api from '../../utils/api.js';
 import toast from 'react-hot-toast';
@@ -42,6 +42,9 @@ export default function DTRBatchAlterModal({
   const [overrideHours, setOverrideHours] = useState(8);
   const [overrideRemarks, setOverrideRemarks] = useState('');
 
+  // Clear / Delete options
+  const [clearTarget, setClearTarget] = useState('attendance'); // 'attendance' | 'override' | 'all'
+
   const [reason, setReason] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -58,17 +61,20 @@ export default function DTRBatchAlterModal({
             setOverrideType(existing.override_type || 'suspended');
             setOverrideHours(existing.total_hours || 8);
             setOverrideRemarks(existing.remarks || '');
+            setClearTarget('override');
           } else {
             setActiveTab('time');
             setTimeIn(existing.time_in ? existing.time_in.slice(0, 5) : '08:00');
             setTimeOut(existing.time_out ? existing.time_out.slice(0, 5) : '17:00');
             setStatus(existing.approval_status || 'approved');
+            setClearTarget('attendance');
           }
         } else {
           setActiveTab('time');
           setTimeIn('08:00');
           setTimeOut('17:00');
           setStatus('approved');
+          setClearTarget('attendance');
         }
       } else {
         // Multi-date default
@@ -79,6 +85,7 @@ export default function DTRBatchAlterModal({
         setOverrideType('suspended');
         setOverrideHours(8);
         setOverrideRemarks('');
+        setClearTarget('attendance');
       }
     }
   }, [isOpen, selectedDates, existingRecords]);
@@ -115,15 +122,33 @@ export default function DTRBatchAlterModal({
         payload.hours = (overrideType === 'hours' || overrideType === 'others') ? Number(overrideHours) : (overrideType === 'excused' ? 8 : 0);
         payload.remarks = overrideRemarks.trim();
       } else if (activeTab === 'clear') {
-        payload.override_type = 'NONE';
+        payload.clear_target = clearTarget;
       }
 
       await api.put(`/admin/dtr/${intern.id}/batch-alter`, payload);
-      toast.success(
-        selectedDates.length === 1
+
+      let successMsg = '';
+      if (activeTab === 'clear') {
+        if (clearTarget === 'attendance') {
+          successMsg = selectedDates.length === 1
+            ? `Attendance record deleted for ${selectedDates[0]}.`
+            : `Attendance records deleted for ${selectedDates.length} dates.`;
+        } else if (clearTarget === 'override') {
+          successMsg = selectedDates.length === 1
+            ? `Schedule override reset for ${selectedDates[0]}.`
+            : `Schedule overrides reset for ${selectedDates.length} dates.`;
+        } else {
+          successMsg = selectedDates.length === 1
+            ? `Attendance and overrides cleared for ${selectedDates[0]}.`
+            : `Attendance and overrides cleared for ${selectedDates.length} dates.`;
+        }
+      } else {
+        successMsg = selectedDates.length === 1
           ? `DTR updated for ${selectedDates[0]} with audit log.`
-          : `Successfully altered ${selectedDates.length} attendance dates!`
-      );
+          : `Successfully altered ${selectedDates.length} attendance dates!`;
+      }
+
+      toast.success(successMsg);
       if (onSaveSuccess) onSaveSuccess();
       onClose();
     } catch (err) {
@@ -163,12 +188,34 @@ export default function DTRBatchAlterModal({
           </button>
           <button
             type="button"
-            className="btn btn-primary text-xs flex items-center gap-1.5"
+            className={`btn text-xs flex items-center gap-1.5 ${
+              activeTab === 'clear' && clearTarget !== 'override'
+                ? 'bg-red-600 hover:bg-red-700 text-white shadow-xs'
+                : activeTab === 'clear' && clearTarget === 'override'
+                ? 'bg-amber-600 hover:bg-amber-700 text-white shadow-xs'
+                : 'btn-primary'
+            }`}
             onClick={handleSubmit}
             disabled={saving}
           >
-            <Check className="w-3.5 h-3.5" />
-            {saving ? 'Applying Changes...' : `Apply to ${count} Date${count > 1 ? 's' : ''}`}
+            {activeTab === 'clear' ? (
+              clearTarget === 'override' ? (
+                <>
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  {saving ? 'Resetting...' : `Reset Overrides (${count} Date${count > 1 ? 's' : ''})`}
+                </>
+              ) : (
+                <>
+                  <Trash2 className="w-3.5 h-3.5" />
+                  {saving ? 'Deleting Attendance...' : `Delete Attendance (${count} Date${count > 1 ? 's' : ''})`}
+                </>
+              )
+            ) : (
+              <>
+                <Check className="w-3.5 h-3.5" />
+                {saving ? 'Applying Changes...' : `Apply to ${count} Date${count > 1 ? 's' : ''}`}
+              </>
+            )}
           </button>
         </div>
       }
@@ -226,12 +273,12 @@ export default function DTRBatchAlterModal({
             type="button"
             className={`py-2 px-3 rounded-lg font-semibold flex items-center justify-center gap-1.5 transition-all ${
               activeTab === 'clear'
-                ? 'bg-white text-amber-700 shadow-sm'
+                ? 'bg-white text-red-700 shadow-sm'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
             onClick={() => setActiveTab('clear')}
           >
-            <RotateCcw className="w-3.5 h-3.5" /> Reset / Clear
+            <RotateCcw className="w-3.5 h-3.5" /> Delete / Reset
           </button>
         </div>
 
@@ -355,16 +402,85 @@ export default function DTRBatchAlterModal({
           </div>
         )}
 
-        {/* Tab 3: Clear / Reset */}
+        {/* Tab 3: Delete / Reset */}
         {activeTab === 'clear' && (
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 space-y-2 text-amber-900">
-            <div className="flex items-center gap-1.5 font-bold">
-              <AlertCircle className="w-4 h-4 text-amber-600" />
-              Reset Overrides for Selected Dates
+          <div className="space-y-3 bg-white p-3 rounded-xl border border-slate-200">
+            <div className="form-group">
+              <label className="form-label font-bold text-slate-700">Action to Perform</label>
+              <div className="space-y-2 mt-1">
+                <label className={`flex items-start gap-2.5 p-2.5 rounded-lg border cursor-pointer transition-colors ${
+                  clearTarget === 'attendance'
+                    ? 'border-red-300 bg-red-50/60 text-red-950'
+                    : 'border-slate-200 hover:bg-slate-50 text-slate-700'
+                }`}>
+                  <input
+                    type="radio"
+                    name="clearTarget"
+                    value="attendance"
+                    checked={clearTarget === 'attendance'}
+                    onChange={() => setClearTarget('attendance')}
+                    className="mt-0.5 text-red-600 focus:ring-red-500"
+                  />
+                  <div>
+                    <div className="font-bold flex items-center gap-1.5 text-xs text-red-700">
+                      <Trash2 className="w-3.5 h-3.5 text-red-600" />
+                      Delete Attendance Record
+                    </div>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Permanently removes official time entries, biometric scans, and photos for the {count} selected date(s). The date(s) will be cleared and marked as absent/unrecorded.
+                    </p>
+                  </div>
+                </label>
+
+                <label className={`flex items-start gap-2.5 p-2.5 rounded-lg border cursor-pointer transition-colors ${
+                  clearTarget === 'override'
+                    ? 'border-amber-300 bg-amber-50/60 text-amber-950'
+                    : 'border-slate-200 hover:bg-slate-50 text-slate-700'
+                }`}>
+                  <input
+                    type="radio"
+                    name="clearTarget"
+                    value="override"
+                    checked={clearTarget === 'override'}
+                    onChange={() => setClearTarget('override')}
+                    className="mt-0.5 text-amber-600 focus:ring-amber-500"
+                  />
+                  <div>
+                    <div className="font-bold flex items-center gap-1.5 text-xs text-amber-700">
+                      <RotateCcw className="w-3.5 h-3.5 text-amber-600" />
+                      Reset Schedule Override Only
+                    </div>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Removes any active Schedule Overrides (Suspended/Excused/Custom Hours). Regular biometric scans and normal DTR calculations will apply.
+                    </p>
+                  </div>
+                </label>
+
+                <label className={`flex items-start gap-2.5 p-2.5 rounded-lg border cursor-pointer transition-colors ${
+                  clearTarget === 'all'
+                    ? 'border-red-300 bg-red-50/60 text-red-950'
+                    : 'border-slate-200 hover:bg-slate-50 text-slate-700'
+                }`}>
+                  <input
+                    type="radio"
+                    name="clearTarget"
+                    value="all"
+                    checked={clearTarget === 'all'}
+                    onChange={() => setClearTarget('all')}
+                    className="mt-0.5 text-red-600 focus:ring-red-500"
+                  />
+                  <div>
+                    <div className="font-bold flex items-center gap-1.5 text-xs text-red-800">
+                      <AlertTriangle className="w-3.5 h-3.5 text-red-600" />
+                      Full Reset (Delete Attendance & Clear Overrides)
+                    </div>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Completely wipes all attendance logs, records, photos, and schedule overrides for the {count} selected date(s).
+                    </p>
+                  </div>
+                </label>
+              </div>
             </div>
-            <p className="text-xs text-amber-800">
-              This will remove any active Schedule Overrides (Suspended/Excused/Custom Hours) on the {count} selected date(s). Regular biometric scans and normal DTR calculations will apply.
-            </p>
           </div>
         )}
 
