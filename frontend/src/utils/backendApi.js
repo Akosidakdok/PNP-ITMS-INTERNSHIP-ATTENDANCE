@@ -1,6 +1,16 @@
 import axios from 'axios';
 
-const rawBaseUrl = import.meta.env.DEV ? '/api' : (import.meta.env.VITE_BACKEND_URL || window.location.origin);
+const configuredBackendUrl = import.meta.env.VITE_BACKEND_URL;
+const networkBackendUrl = import.meta.env.VITE_API_BASE_URL;
+const isLoopbackUrl = value => /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/?$/i.test(String(value || '').trim());
+
+// Keep the Vite proxy for local development. For a phone or deployed webview,
+// never send API calls to its own localhost when a reachable backend URL was
+// provided separately.
+const productionBackendUrl = isLoopbackUrl(configuredBackendUrl) && networkBackendUrl
+  ? networkBackendUrl
+  : (configuredBackendUrl || networkBackendUrl || window.location.origin);
+const rawBaseUrl = import.meta.env.DEV ? '/api' : productionBackendUrl;
 const API_BASE_URL = rawBaseUrl.endsWith('/') ? rawBaseUrl.slice(0, -1) : rawBaseUrl;
 
 const backendApi = axios.create({

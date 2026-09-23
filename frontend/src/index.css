@@ -1288,6 +1288,23 @@ body {
 .stat-gradient-teal {
   background: linear-gradient(135deg, #0f766e 0%, #14b8a6 100%);
 }
+.stat-card-link {
+  display: block;
+  color: #ffffff !important;
+  text-decoration: none;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease;
+}
+.stat-card-link:visited,
+.stat-card-link:hover {
+  color: #ffffff !important;
+  filter: saturate(1.08);
+  transform: translateY(-2px);
+  box-shadow: 0 12px 24px rgba(0, 32, 96, 0.2);
+}
+.stat-card-link:focus-visible {
+  outline: 3px solid #f5ce6a;
+  outline-offset: 3px;
+}
 
 /* === Sidebar === */
 .sidebar {
@@ -1944,6 +1961,81 @@ body {
   -webkit-overflow-scrolling: touch;
 }
 
+/* Admin calendar keeps the full month grid for desktop and exposes a compact
+   event agenda on phones without changing the existing desktop view. */
+.admin-calendar-mobile { display: none; }
+.admin-calendar-mobile__heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.25rem 0.25rem 0.75rem;
+  color: #475569;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.admin-calendar-mobile__heading span:last-child {
+  min-width: 1.5rem;
+  padding: 0.2rem 0.45rem;
+  border-radius: 999px;
+  color: #1d4ed8;
+  background: #eff6ff;
+  text-align: center;
+}
+.admin-calendar-mobile__events { display: grid; gap: 0.5rem; }
+.admin-calendar-mobile__event {
+  display: flex;
+  align-items: stretch;
+  gap: 0.5rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.75rem;
+  background: #fff;
+  overflow: hidden;
+}
+.admin-calendar-mobile__event-main {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  flex: 1;
+  gap: 0.75rem;
+  padding: 0.7rem;
+  color: inherit;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+.admin-calendar-mobile__date {
+  display: grid;
+  flex: 0 0 2.75rem;
+  place-items: center;
+  padding: 0.35rem 0.2rem;
+  border-radius: 0.55rem;
+  color: #1d4ed8;
+  background: #eff6ff;
+}
+.admin-calendar-mobile__date strong { font-size: 1.05rem; line-height: 1; }
+.admin-calendar-mobile__date small { margin-top: 0.2rem; font-size: 0.6rem; font-weight: 700; text-transform: uppercase; }
+.admin-calendar-mobile__details { min-width: 0; }
+.admin-calendar-mobile__details strong,
+.admin-calendar-mobile__details small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.admin-calendar-mobile__details strong { color: #1e293b; font-size: 0.85rem; }
+.admin-calendar-mobile__details small { margin-top: 0.2rem; color: #64748b; font-size: 0.7rem; }
+.admin-calendar-mobile__delete {
+  display: grid;
+  flex: 0 0 2.75rem;
+  place-items: center;
+  color: #94a3b8;
+  background: transparent;
+  border: 0;
+  border-left: 1px solid #e2e8f0;
+  cursor: pointer;
+}
+.admin-calendar-mobile__delete:hover { color: #dc2626; background: #fef2f2; }
+.admin-calendar-mobile__empty { padding: 1.25rem 0.5rem; color: #94a3b8; font-size: 0.8rem; text-align: center; }
+
 /* Ensure all tables inside overflow wrappers scroll horizontally instead of squishing text */
 .overflow-x-auto table, .table-responsive table {
   min-width: 600px;
@@ -2178,6 +2270,132 @@ body {
   .notif-dropdown > .max-h-80 {
     max-height: calc(100dvh - 9.5rem);
   }
+
+  /* Give shared modals predictable phone-sized geometry and full-width actions. */
+  .modal-overlay {
+    align-items: flex-end !important;
+    padding: 0 !important;
+  }
+  .modal-panel {
+    width: 100% !important;
+    max-width: none !important;
+    max-height: 96dvh !important;
+    border-radius: 1rem 1rem 0 0;
+  }
+  .modal-panel > .modal-footer {
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
+  .modal-panel > .modal-footer .btn {
+    width: 100%;
+    justify-content: center;
+  }
+  .modal-panel > .modal-footer .mr-auto { margin-right: 0; }
+
+  /* The month grid is too dense on a phone; the agenda exposes the same
+     events and keeps create/edit/delete actions available. */
+  .admin-calendar-desktop { display: none; }
+  .admin-calendar-mobile { display: block; }
+  .admin-calendar-page .card.p-3 { padding: 0.75rem; }
+
+  /* Keep action-heavy attendance tables readable via deliberate horizontal
+     scrolling instead of allowing their columns to collapse. */
+  .attendance-control-table,
+  .overflow-x-auto .attendance-control-table {
+    width: max-content !important;
+    min-width: 1180px !important;
+  }
+
+  /* Detailed evaluation sheets become labeled cards in the view modal. */
+  .admin-evaluation-detail-table {
+    display: block !important;
+    min-width: 0 !important;
+    width: 100% !important;
+  }
+  .admin-evaluation-detail-table thead { display: none !important; }
+  .admin-evaluation-detail-table tbody,
+  .admin-evaluation-detail-table tr { display: block !important; width: 100% !important; }
+  .admin-evaluation-detail-table tr {
+    margin-bottom: 0.75rem;
+    border: 1px solid #d1d5db;
+    border-radius: 0.5rem;
+  }
+  .admin-evaluation-detail-table td {
+    display: flex !important;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    min-width: 0;
+    padding: 0.6rem 0.65rem !important;
+    border-right: 0 !important;
+    border-bottom: 1px dashed #d1d5db;
+    text-align: right !important;
+  }
+  .admin-evaluation-detail-table td:last-child { border-bottom: 0; }
+  .admin-evaluation-detail-table td::before {
+    content: attr(data-label);
+    flex: 0 0 auto;
+    color: #64748b;
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-align: left;
+    text-transform: uppercase;
+  }
+  .admin-evaluation-detail-table td:first-child { text-align: left !important; }
+
+  /* Project Directory has its own outer padding in addition to page padding. */
+  .admin-project-directory { padding: 0.25rem !important; }
+  .admin-project-directory > .bg-slate-900 { padding: 1rem !important; border-radius: 1rem; }
+  .admin-project-directory > .bg-slate-900 h1 { font-size: 1.35rem; line-height: 1.25; }
+  .admin-project-stats { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 0.6rem; }
+  .admin-project-stats > div { min-width: 0; padding: 0.75rem; }
+  .admin-project-stats > div p:first-child { overflow-wrap: anywhere; font-size: 0.62rem; }
+  .admin-project-stats > div p:last-child { font-size: 1.35rem; }
+
+  /* Attendance approval: give the controls and empty state a clearer mobile
+     hierarchy without changing the desktop table presentation. */
+  .attendance-approval-page { gap: 0.9rem; }
+  .attendance-approval-page > div:first-child { padding-inline: 0.2rem; }
+  .attendance-approval-page > div:first-child p { max-width: 20rem; line-height: 1.4; }
+  .attendance-approval-filters {
+    gap: 0.7rem;
+    padding: 0.9rem;
+    border: 1px solid #e0e9f5;
+    border-radius: 1rem;
+    background: linear-gradient(145deg, #ffffff 0%, #f8fbff 100%);
+    box-shadow: 0 8px 22px rgba(24, 63, 112, 0.08);
+  }
+  .attendance-approval-filters .form-group { gap: 0.3rem; }
+  .attendance-approval-filters .form-label { color: #526176; font-size: 0.7rem; }
+  .attendance-approval-filters .form-input,
+  .attendance-approval-filters .btn { min-height: 2.65rem; }
+  .attendance-approval-filters .btn { margin-top: 0.05rem; }
+  .attendance-approval-results .card {
+    border: 1px solid #e0e9f5;
+    border-radius: 1rem;
+    box-shadow: 0 8px 22px rgba(24, 63, 112, 0.06);
+  }
+  .attendance-approval-results .data-table tbody tr:has(td[colspan]) {
+    margin: 0 !important;
+    border: 0 !important;
+    background: transparent !important;
+  }
+  .attendance-approval-results .data-table tbody tr:has(td[colspan]) td {
+    display: flex !important;
+    min-height: 6.5rem;
+    align-items: center;
+    justify-content: center;
+    border: 0 !important;
+    text-align: center !important;
+  }
+  .attendance-approval-results .data-table tbody tr:has(td[colspan]) td::before { display: none; }
+}
+
+@media (max-width: 374px) {
+  .admin-project-stats { grid-template-columns: 1fr !important; }
+  .admin-project-stats > div:last-child { grid-column: auto; }
+  .admin-calendar-mobile__event-main { gap: 0.5rem; padding-inline: 0.5rem; }
+  .admin-calendar-mobile__date { flex-basis: 2.5rem; }
 }
 
 /* === Print / DTR Export === */

@@ -202,7 +202,7 @@ export default function ProjectDirectory() {
   };
 
   return (
-    <div className="p-6 space-y-6 max-w-7xl mx-auto">
+    <div className="p-6 space-y-6 max-w-7xl mx-auto admin-project-directory">
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-900 p-6 rounded-2xl text-white shadow-xl">
         <div>
@@ -217,7 +217,7 @@ export default function ProjectDirectory() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 admin-project-stats">
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between">
           <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Total Projects</p>
           <p className="text-2xl font-bold text-slate-900 mt-2">{stats?.total_projects ?? 0}</p>

@@ -131,12 +131,12 @@ export default function Reports() {
                   const pct = Math.min(100, requiredMinutes > 0 ? (renderedMinutes / requiredMinutes) * 100 : 0);
                   return (
                     <tr key={i}>
-                      <td className="font-medium text-gray-800">{r.full_name}</td>
-                      <td className="text-xs text-gray-500">{r.department_name || '—'}</td>
-                      <td className="text-center font-semibold">{r.days_present}</td>
-                      <td className="text-center font-semibold">{formatDuration(toMinutes(r.total_minutes, r.total_hours))}</td>
-                      <td className="text-center text-gray-500">{r.required_hours}h</td>
-                      <td>
+                      <td data-label="Intern Name" className="font-medium text-gray-800">{r.full_name}</td>
+                      <td data-label="Department" className="text-xs text-gray-500">{r.department_name || '—'}</td>
+                      <td data-label="Days Present" className="text-center font-semibold">{r.days_present}</td>
+                      <td data-label="Total Hours" className="text-center font-semibold">{formatDuration(toMinutes(r.total_minutes, r.total_hours))}</td>
+                      <td data-label="Required" className="text-center text-gray-500">{r.required_hours}h</td>
+                      <td data-label="Progress">
                         <div className="flex items-center gap-2 min-w-28">
                           <div className="progress-bar flex-1">
                             <div className="progress-fill" style={{ width: `${pct}%` }} />

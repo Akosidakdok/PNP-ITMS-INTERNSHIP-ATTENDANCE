@@ -69,7 +69,12 @@ export default function AttendanceApproval() {
       const res = await api.get('/attendance/logs', { params: { ...filters, page, limit: 15 } });
       setLogs(res.data.logs);
       setTotal(res.data.total);
-    } catch { toast.error('Failed to load attendance'); }
+    } catch (error) {
+      toast.error(
+        error?.response?.data?.error
+          || (error?.request ? 'Unable to reach the attendance service' : 'Failed to load attendance')
+      );
+    }
     finally { setLoading(false); }
   }, [filters, page]);
 
@@ -172,14 +177,14 @@ export default function AttendanceApproval() {
   ];
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-6 animate-fade-in attendance-approval-page">
       <div>
         <h1 className="text-xl sm:text-2xl font-bold text-gray-800" style={{ fontFamily: 'Outfit, sans-serif' }}>Attendance Approval</h1>
         <p className="text-gray-500 text-sm">Review attendance and reopen a rejected scan slot when correction is needed</p>
       </div>
 
       {/* Filters */}
-      <div className="card p-4 flex flex-col sm:flex-row sm:flex-wrap gap-3 sm:items-end">
+      <div className="card p-4 flex flex-col sm:flex-row sm:flex-wrap gap-3 sm:items-end attendance-approval-filters">
         <div className="form-group w-full sm:w-auto">
           <label className="form-label">Status</label>
           <select className="form-input form-select text-sm w-full sm:w-auto" value={filters.status} onChange={e => setFilters(f => ({ ...f, status: e.target.value }))}>
@@ -196,7 +201,7 @@ export default function AttendanceApproval() {
         <button className="btn btn-secondary btn-sm w-full sm:w-auto" onClick={() => setFilters({ status: 'pending', date: '' })}>Reset</button>
       </div>
 
-      <div className="table-responsive">
+      <div className="table-responsive attendance-approval-results">
         <DataTable
           columns={columns}
           data={logs}

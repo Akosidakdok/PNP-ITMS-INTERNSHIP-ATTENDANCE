@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { Users, UserCheck, Clock, CheckCircle, Building2, FileText, Star, TrendingUp, Calendar, AlertCircle } from 'lucide-react';
 import api from '../../utils/api.js';
 import { formatDistanceToNow } from 'date-fns';
 import QRDisplay from '../../components/qr/QRDisplay.jsx';
+import { useAuth } from '../../context/AuthContext.jsx';
 
-function StatCard({ icon: Icon, label, value, gradient, trend }) {
-  return (
-    <div className={`rounded-2xl p-5 text-white ${gradient} shadow-lg animate-fade-in`}>
+function StatCard({ icon: Icon, label, value, gradient, trend, to }) {
+  const content = (
+    <>
       <div className="flex items-center justify-between mb-3">
         <div className="p-2 rounded-xl bg-white/20">
           <Icon className="w-5 h-5" />
@@ -19,7 +21,21 @@ function StatCard({ icon: Icon, label, value, gradient, trend }) {
       </div>
       <p className="text-3xl font-bold mb-1">{value}</p>
       <p className="text-sm opacity-80">{label}</p>
-    </div>
+    </>
+  );
+
+  if (!to) {
+    return <div className={`rounded-2xl p-5 text-white ${gradient} shadow-lg animate-fade-in`}>{content}</div>;
+  }
+
+  return (
+    <Link
+      to={to}
+      className={`stat-card-link rounded-2xl p-5 text-white ${gradient} shadow-lg animate-fade-in`}
+      aria-label={`Open ${label}`}
+    >
+      {content}
+    </Link>
   );
 }
 
@@ -38,6 +54,7 @@ const safeFormatDistanceToNow = (dateStr) => {
 };
 
 export default function AdminDashboard() {
+  const { user } = useAuth();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -51,6 +68,7 @@ export default function AdminDashboard() {
   }, []);
 
   const stats = data?.stats || {};
+  const canManageDivisions = user?.role === 'admin' || user?.role === 'superadmin';
 
   return (
     <div className="space-y-6 animate-fade-in dashboard-module">
@@ -66,12 +84,12 @@ export default function AdminDashboard() {
 
       {/* Stats Grid */}
       <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3 sm:gap-4">
-        <StatCard icon={Users} label="Total Interns" value={loading ? '—' : stats.total_interns || 0} gradient="stat-gradient-blue" />
-        <StatCard icon={UserCheck} label="Present Today" value={loading ? '—' : stats.present_today || 0} gradient="stat-gradient-green" />
-        <StatCard icon={Clock} label="Pending Attendance" value={loading ? '—' : stats.pending_attendance || 0} gradient="stat-gradient-gold" />
-        <StatCard icon={CheckCircle} label="Approved Today" value={loading ? '—' : stats.approved_today || 0} gradient="stat-gradient-teal" />
-        <StatCard icon={Building2} label="Divisions" value={loading ? '—' : (stats.total_divisions ?? stats.total_departments ?? 0)} gradient="stat-gradient-purple" />
-        <StatCard icon={FileText} label="Pending Docs" value={loading ? '—' : stats.pending_documents || 0} gradient="stat-gradient-red" />
+        <StatCard to="/admin/interns" icon={Users} label="Total Interns" value={loading ? '—' : stats.total_interns || 0} gradient="stat-gradient-blue" />
+        <StatCard to="/admin/attendance" icon={UserCheck} label="Present Today" value={loading ? '—' : stats.present_today || 0} gradient="stat-gradient-green" />
+        <StatCard to="/admin/attendance" icon={Clock} label="Pending Attendance" value={loading ? '—' : stats.pending_attendance || 0} gradient="stat-gradient-gold" />
+        <StatCard to="/admin/attendance" icon={CheckCircle} label="Approved Today" value={loading ? '—' : stats.approved_today || 0} gradient="stat-gradient-teal" />
+        <StatCard to={canManageDivisions ? '/admin/divisions' : undefined} icon={Building2} label="Divisions" value={loading ? '—' : (stats.total_divisions ?? stats.total_departments ?? 0)} gradient="stat-gradient-purple" />
+        <StatCard to="/admin/documents" icon={FileText} label="Pending Docs" value={loading ? '—' : stats.pending_documents || 0} gradient="stat-gradient-red" />
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 sm:gap-6">

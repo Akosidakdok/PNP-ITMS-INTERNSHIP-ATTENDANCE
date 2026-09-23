@@ -671,7 +671,7 @@ export default function PerformanceEval() {
               <div>
                 <h3 className="font-extrabold text-xs text-gray-900 mb-2">A. Project Evaluation (60% of Total Grade)</h3>
                 <div className="overflow-x-auto">
-                <table className="w-full text-left border border-collapse border-gray-300 text-xs">
+                <table className="w-full text-left border border-collapse border-gray-300 text-xs admin-evaluation-detail-table">
                   <thead>
                     <tr className="bg-gray-100 font-bold border-b border-gray-300 text-gray-700">
                       <th className="p-2.5 border-r border-gray-300 w-[55%]">Competency</th>
@@ -686,18 +686,18 @@ export default function PerformanceEval() {
                       const weighted = (score * c.weight) / 100;
                       return (
                         <tr key={c.key}>
-                          <td className="p-2 border-r border-gray-300 font-medium text-gray-800">{c.label}</td>
-                          <td className="p-2 border-r border-gray-300 text-center">{c.weight}%</td>
-                          <td className="p-2 border-r border-gray-300 text-center font-semibold">{score}</td>
-                          <td className="p-2 text-right font-bold text-gray-900">{weighted.toFixed(2)}</td>
+                          <td data-label="Competency" className="p-2 border-r border-gray-300 font-medium text-gray-800">{c.label}</td>
+                          <td data-label="Weight" className="p-2 border-r border-gray-300 text-center">{c.weight}%</td>
+                          <td data-label="Percentage Achieved" className="p-2 border-r border-gray-300 text-center font-semibold">{score}</td>
+                          <td data-label="Weighted Score" className="p-2 text-right font-bold text-gray-900">{weighted.toFixed(2)}</td>
                         </tr>
                       );
                     })}
                     <tr className="bg-gray-50/80 font-bold border-t-2 border-gray-400">
-                      <td className="p-2.5 border-r border-gray-300 text-gray-900">Project Score (Total)</td>
-                      <td className="p-2.5 border-r border-gray-300 text-center">60%</td>
-                      <td className="p-2.5 border-r border-gray-300 text-center"></td>
-                      <td className="p-2.5 text-right font-black text-blue-900 text-sm">{projectScore.toFixed(2)}</td>
+                      <td data-label="Competency" className="p-2.5 border-r border-gray-300 text-gray-900">Project Score (Total)</td>
+                      <td data-label="Weight" className="p-2.5 border-r border-gray-300 text-center">60%</td>
+                      <td data-label="Percentage Achieved" className="p-2.5 border-r border-gray-300 text-center"></td>
+                      <td data-label="Weighted Score" className="p-2.5 text-right font-black text-blue-900 text-sm">{projectScore.toFixed(2)}</td>
                     </tr>
                   </tbody>
                 </table>
@@ -714,7 +714,7 @@ export default function PerformanceEval() {
               <div>
                 <h3 className="font-extrabold text-xs text-gray-900 mb-2">B. OJT Performance Evaluation (40% of Total Grade)</h3>
                 <div className="overflow-x-auto">
-                <table className="w-full text-left border border-collapse border-gray-300 text-xs">
+                <table className="w-full text-left border border-collapse border-gray-300 text-xs admin-evaluation-detail-table">
                   <thead>
                     <tr className="bg-gray-100 font-bold border-b border-gray-300 text-gray-700">
                       <th className="p-2.5 border-r border-gray-300 w-[55%]">Competency</th>
@@ -729,18 +729,18 @@ export default function PerformanceEval() {
                       const weighted = (score * c.weight) / 100;
                       return (
                         <tr key={c.key}>
-                          <td className="p-2 border-r border-gray-300 font-medium text-gray-800">{c.label}</td>
-                          <td className="p-2 border-r border-gray-300 text-center">{c.weight}%</td>
-                          <td className="p-2 border-r border-gray-300 text-center font-semibold">{score}</td>
-                          <td className="p-2 text-right font-bold text-gray-900">{weighted.toFixed(2)}</td>
+                          <td data-label="Competency" className="p-2 border-r border-gray-300 font-medium text-gray-800">{c.label}</td>
+                          <td data-label="Weight" className="p-2 border-r border-gray-300 text-center">{c.weight}%</td>
+                          <td data-label="Percentage Achieved" className="p-2 border-r border-gray-300 text-center font-semibold">{score}</td>
+                          <td data-label="Weighted Score" className="p-2 text-right font-bold text-gray-900">{weighted.toFixed(2)}</td>
                         </tr>
                       );
                     })}
                     <tr className="bg-gray-50/80 font-bold border-t-2 border-gray-400">
-                      <td className="p-2.5 border-r border-gray-300 text-gray-900">Performance Score (Total)</td>
-                      <td className="p-2.5 border-r border-gray-300 text-center">40%</td>
-                      <td className="p-2.5 border-r border-gray-300 text-center"></td>
-                      <td className="p-2.5 text-right font-black text-blue-900 text-sm">{performanceScore.toFixed(2)}</td>
+                      <td data-label="Competency" className="p-2.5 border-r border-gray-300 text-gray-900">Performance Score (Total)</td>
+                      <td data-label="Weight" className="p-2.5 border-r border-gray-300 text-center">40%</td>
+                      <td data-label="Percentage Achieved" className="p-2.5 border-r border-gray-300 text-center"></td>
+                      <td data-label="Weighted Score" className="p-2.5 text-right font-black text-blue-900 text-sm">{performanceScore.toFixed(2)}</td>
                     </tr>
                   </tbody>
                 </table>

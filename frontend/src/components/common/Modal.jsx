@@ -52,10 +52,11 @@ export default function Modal({ isOpen, onClose, title, children, size = 'md', f
         background: 'rgba(0,18,64,0.6)',
         backdropFilter: 'blur(4px)',
       }}
+      className="modal-overlay"
       onClick={e => { if (e.target === overlayRef.current) onClose(); }}
     >
       <div
-        className={`card w-full ${sizeClass} animate-scale-in flex flex-col`}
+        className={`card w-full ${sizeClass} animate-scale-in flex flex-col modal-panel`}
         style={{ maxHeight: 'calc(100vh - 2rem)' }}
         onClick={e => e.stopPropagation()}
       >
@@ -81,7 +82,7 @@ export default function Modal({ isOpen, onClose, title, children, size = 'md', f
 
         {/* Footer */}
         {footer && (
-          <div className="p-4 sm:p-5 border-t border-gray-100 flex flex-wrap justify-end gap-2 sm:gap-3 flex-shrink-0">
+          <div className="p-4 sm:p-5 border-t border-gray-100 flex flex-wrap justify-end gap-2 sm:gap-3 flex-shrink-0 modal-footer">
             {footer}
           </div>
         )}

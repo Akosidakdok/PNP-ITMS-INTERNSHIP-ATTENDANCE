@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import interactionPlugin from '@fullcalendar/interaction'; // <-- Import the interaction plugin
@@ -22,7 +22,30 @@ export default function AdminCalendar() {
   });
 
   // Use the custom hook
-  const { fetchEvents } = useCalendar(calendarRef);
+  const { fetchEvents, loadEvents } = useCalendar(calendarRef);
+  const [mobileEvents, setMobileEvents] = useState([]);
+  const [isMobile, setIsMobile] = useState(() => (
+    typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches
+  ));
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(max-width: 767px)');
+    const handleMediaChange = event => setIsMobile(event.matches);
+    mediaQuery.addEventListener?.('change', handleMediaChange);
+    return () => mediaQuery.removeEventListener?.('change', handleMediaChange);
+  }, []);
+
+  useEffect(() => {
+    if (!isMobile) {
+      setMobileEvents([]);
+      return undefined;
+    }
+    let active = true;
+    loadEvents(currentDate.year, currentDate.month + 1)
+      .then(events => { if (active) setMobileEvents(events); })
+      .catch(() => { if (active) setMobileEvents([]); });
+    return () => { active = false; };
+  }, [currentDate.month, currentDate.year, isMobile, loadEvents]);
 
   const openCreate = (date) => {
     setSelectedEvent(null);
@@ -127,7 +150,7 @@ export default function AdminCalendar() {
   };
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-6 animate-fade-in admin-calendar-page">
       <div>
         <h1 className="text-xl sm:text-2xl font-bold text-gray-800" style={{ fontFamily: 'Outfit, sans-serif' }}>Program Calendar</h1>
         <p className="text-gray-500 text-sm">Manage holidays, announcements, and memos.</p>
@@ -152,7 +175,7 @@ export default function AdminCalendar() {
         </button>
       </div>
 
-      <div className="card p-4 overflow-x-auto">
+      <div className="card p-4 overflow-x-auto admin-calendar-desktop">
         <FullCalendar
           ref={calendarRef}
           plugins={[dayGridPlugin, interactionPlugin]}
@@ -186,6 +209,39 @@ export default function AdminCalendar() {
           eventContent={renderEventContent}
           droppable={true}
         />
+      </div>
+
+      <div className="card p-3 admin-calendar-mobile" aria-label="Calendar events for the selected month">
+        <div className="admin-calendar-mobile__heading">
+          <span>Events this month</span>
+          <span>{mobileEvents.length}</span>
+        </div>
+        {mobileEvents.length === 0 ? (
+          <div className="admin-calendar-mobile__empty">No events scheduled for this month.</div>
+        ) : (
+          <div className="admin-calendar-mobile__events">
+            {mobileEvents
+              .slice()
+              .sort((a, b) => String(a.start).localeCompare(String(b.start)))
+              .map(event => (
+                <div className="admin-calendar-mobile__event" key={event.id}>
+                  <button type="button" className="admin-calendar-mobile__event-main" onClick={() => openEdit(event)}>
+                    <span className="admin-calendar-mobile__date">
+                      <strong>{new Date(`${event.start}T00:00:00`).getDate()}</strong>
+                      <small>{new Date(`${event.start}T00:00:00`).toLocaleDateString(undefined, { month: 'short' })}</small>
+                    </span>
+                    <span className="admin-calendar-mobile__details">
+                      <strong>{event.title}</strong>
+                      <small>{EVENT_TYPES.find(type => type.key === event.extendedProps.event_type)?.label || 'Event'}</small>
+                    </span>
+                  </button>
+                  <button type="button" className="admin-calendar-mobile__delete" aria-label={`Delete ${event.title}`} onClick={() => openDelete(event)}>
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+          </div>
+        )}
       </div>
 
       {/* Form Modal */}
