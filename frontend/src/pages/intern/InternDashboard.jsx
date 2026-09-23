@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext.jsx';
-import { Clock, CheckCircle, FileText, Award, QrCode, TrendingUp, Calendar, Bell, AlertCircle, ShieldCheck, UserCheck } from 'lucide-react';
+import { Clock, CheckCircle, FileText, Award, QrCode, TrendingUp, Calendar, Bell, AlertCircle, ShieldCheck, UserCheck, Megaphone, Trash2 } from 'lucide-react';
 import api from '../../utils/api.js';
 import { formatDistanceToNow } from 'date-fns';
 import { useNotifications } from '../../context/NotificationContext.jsx';
+import Modal from '../../components/common/Modal.jsx';
 
 const safeFormatDistanceToNow = (dateStr) => {
   try {
@@ -46,13 +47,35 @@ const formatDuration = (value) => {
 
 export default function InternDashboard() {
   const { user } = useAuth();
-  const { notifications } = useNotifications();
+  const { notifications, markAsRead, clearAllNotifications } = useNotifications();
   const [profile, setProfile] = useState(null);
   const [dtrRecords, setDtrRecords] = useState([]);
   const [dtrSummary, setDtrSummary] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [selectedNotification, setSelectedNotification] = useState(null);
+  const [confirmClearOpen, setConfirmClearOpen] = useState(false);
+  const [clearing, setClearing] = useState(false);
   const navigate = useNavigate();
+
+  const handleNotificationClick = (n) => {
+    setSelectedNotification(n);
+    if (!n.is_read && n.id) {
+      markAsRead(n.id);
+    }
+  };
+
+  const handleConfirmClear = async () => {
+    try {
+      setClearing(true);
+      await clearAllNotifications();
+      setConfirmClearOpen(false);
+    } catch (err) {
+      console.error('Failed to clear notifications:', err);
+    } finally {
+      setClearing(false);
+    }
+  };
 
   useEffect(() => {
     setLoading(true);
@@ -91,7 +114,8 @@ export default function InternDashboard() {
   const remainingMinutes = Math.max(0, requiredMinutes - approvedMinutes);
   const requiredDisplay = Number.isInteger(requiredHours) ? `${requiredHours}h` : formatDuration(requiredMinutes);
 
-  const recentNotifs = notifications.filter(n => !n.is_read).slice(0, 3);
+  const unreadNotifs = notifications.filter(n => !n.is_read);
+  const recentNotifs = unreadNotifs.length > 0 ? unreadNotifs.slice(0, 3) : notifications.slice(0, 3);
 
   return (
     <div className="space-y-6 animate-fade-in dashboard-module intern-mobile-page">
@@ -215,25 +239,80 @@ export default function InternDashboard() {
           </div>
         </div>
 
-        {/* Recent Notifications */}
+        {/* Recent Notifications & Announcements */}
         <div className="card p-5">
-          <h2 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
-            <Bell className="w-4 h-4 text-blue-600" /> Notifications
-          </h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-bold text-gray-800 flex items-center gap-2">
+              <Bell className="w-4 h-4 text-blue-600" /> Notifications & Announcements
+            </h2>
+            <div className="flex items-center gap-2">
+              {unreadNotifs.length > 0 && (
+                <span className="badge bg-blue-100 text-blue-700 text-xs font-semibold px-2 py-0.5 rounded-full">
+                  {unreadNotifs.length} new
+                </span>
+              )}
+              {notifications.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setConfirmClearOpen(true)}
+                  className="text-xs text-gray-400 hover:text-red-600 flex items-center gap-1 transition-colors px-2 py-1 rounded hover:bg-red-50 border border-transparent hover:border-red-100"
+                  title="Clear all notifications"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Clear notifications</span>
+                </button>
+              )}
+            </div>
+          </div>
           {recentNotifs.length === 0 ? (
             <div className="text-center py-6 text-gray-400">
               <Bell className="w-8 h-8 mx-auto mb-2 opacity-30" />
-              <p className="text-sm">No new notifications</p>
+              <p className="text-sm">No notifications yet</p>
             </div>
           ) : (
             <div className="space-y-3">
-              {recentNotifs.map((n, index) => (
-                <div key={n.id || `${n.created_at || 'notification'}-${index}`} className="p-3 bg-blue-50 rounded-xl">
-                  <p className="text-sm font-medium text-blue-800">{n.title}</p>
-                  <p className="text-xs text-blue-600 mt-0.5">{n.message}</p>
-                  <p className="text-xs text-blue-400 mt-1">{safeFormatDistanceToNow(n.created_at)}</p>
-                </div>
-              ))}
+              {recentNotifs.map((n, index) => {
+                const isAnnouncement = n.title?.toLowerCase().includes('announcement') ||
+                                       n.title?.toLowerCase().includes('memo') ||
+                                       n.title?.toLowerCase().includes('holiday');
+                return (
+                  <div
+                    key={n.id || `${n.created_at || 'notification'}-${index}`}
+                    onClick={() => handleNotificationClick(n)}
+                    className={`p-3 rounded-xl transition-all border cursor-pointer hover:shadow-sm ${
+                      !n.is_read
+                        ? 'bg-blue-50/90 border-blue-200 hover:bg-blue-100/70 hover:border-blue-300'
+                        : 'bg-gray-50/70 border-gray-100 hover:border-gray-300 text-gray-700'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-start gap-2.5 min-w-0">
+                        <div className={`p-1.5 rounded-lg shrink-0 ${!n.is_read ? 'bg-blue-100 text-blue-700' : 'bg-gray-200 text-gray-600'}`}>
+                          {isAnnouncement ? (
+                            <Megaphone className="w-3.5 h-3.5" />
+                          ) : (
+                            <Bell className="w-3.5 h-3.5" />
+                          )}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className={`text-sm ${!n.is_read ? 'font-semibold text-blue-900' : 'font-medium text-gray-800'}`}>
+                            {n.title}
+                          </p>
+                          <p className={`text-xs mt-0.5 line-clamp-2 whitespace-pre-wrap leading-relaxed ${!n.is_read ? 'text-blue-700' : 'text-gray-600'}`}>
+                            {n.message}
+                          </p>
+                          <p className={`text-[11px] mt-1 ${!n.is_read ? 'text-blue-500' : 'text-gray-400'}`}>
+                            {safeFormatDistanceToNow(n.created_at)}
+                          </p>
+                        </div>
+                      </div>
+                      {!n.is_read && (
+                        <span className="w-2 h-2 rounded-full bg-blue-600 shrink-0 mt-1.5" title="Unread" />
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
@@ -268,6 +347,154 @@ export default function InternDashboard() {
           )}
         </div>
       </div>
+
+      {/* Notification Details Modal */}
+      <Modal
+        isOpen={!!selectedNotification}
+        onClose={() => setSelectedNotification(null)}
+        title={selectedNotification ? (
+          <div className="flex items-center gap-2">
+            {selectedNotification.title?.toLowerCase().includes('announcement') ||
+             selectedNotification.title?.toLowerCase().includes('memo') ||
+             selectedNotification.title?.toLowerCase().includes('holiday') ? (
+              <div className="p-1 bg-blue-100 text-blue-600 rounded-lg">
+                <Megaphone className="w-4 h-4" />
+              </div>
+            ) : (
+              <div className="p-1 bg-blue-100 text-blue-600 rounded-lg">
+                <Bell className="w-4 h-4" />
+              </div>
+            )}
+            <span className="text-gray-900 font-bold">
+              {selectedNotification.title?.toLowerCase().includes('announcement')
+                ? 'Announcement Details'
+                : selectedNotification.title?.toLowerCase().includes('holiday')
+                ? 'Holiday Details'
+                : selectedNotification.title?.toLowerCase().includes('memo')
+                ? 'Memo Details'
+                : 'Notification Details'}
+            </span>
+          </div>
+        ) : 'Notification Details'}
+        size="md"
+        footer={
+          <div className="flex items-center justify-between w-full">
+            {selectedNotification && (
+              selectedNotification.title?.toLowerCase().includes('announcement') ||
+              selectedNotification.title?.toLowerCase().includes('memo') ||
+              selectedNotification.title?.toLowerCase().includes('holiday') ||
+              selectedNotification.message?.includes('Date:')
+            ) ? (
+              <button
+                type="button"
+                className="btn btn-secondary text-xs sm:text-sm flex items-center gap-1.5"
+                onClick={() => {
+                  setSelectedNotification(null);
+                  navigate('/intern/calendar');
+                }}
+              >
+                <Calendar className="w-4 h-4 text-blue-600" /> View Calendar
+              </button>
+            ) : (
+              <div />
+            )}
+            <button
+              type="button"
+              className="btn btn-primary text-xs sm:text-sm"
+              onClick={() => setSelectedNotification(null)}
+            >
+              Close
+            </button>
+          </div>
+        }
+      >
+        {selectedNotification && (
+          <div className="space-y-4 py-1">
+            <div>
+              <div className="flex flex-wrap items-center gap-2 mb-2">
+                <span className={`badge ${
+                  selectedNotification.title?.toLowerCase().includes('announcement')
+                    ? 'bg-blue-100 text-blue-800'
+                    : selectedNotification.title?.toLowerCase().includes('holiday')
+                    ? 'bg-red-100 text-red-800'
+                    : selectedNotification.title?.toLowerCase().includes('memo')
+                    ? 'bg-amber-100 text-amber-800'
+                    : 'bg-gray-100 text-gray-800'
+                } text-xs font-semibold px-2.5 py-0.5 rounded-full`}>
+                  {selectedNotification.title?.toLowerCase().includes('announcement')
+                    ? 'Announcement'
+                    : selectedNotification.title?.toLowerCase().includes('holiday')
+                    ? 'Holiday'
+                    : selectedNotification.title?.toLowerCase().includes('memo')
+                    ? 'Memo'
+                    : 'System Notification'}
+                </span>
+                <span className="text-xs text-gray-400">
+                  {safeFormatDistanceToNow(selectedNotification.created_at)}
+                </span>
+              </div>
+              <h3 className="text-base sm:text-lg font-bold text-gray-900 leading-snug">
+                {selectedNotification.title}
+              </h3>
+            </div>
+
+            <div className="p-4 bg-gray-50/80 rounded-xl border border-gray-100 text-gray-700 text-sm whitespace-pre-wrap leading-relaxed">
+              {selectedNotification.message}
+            </div>
+
+            <div className="text-xs text-gray-400 flex items-center gap-1.5 pt-1">
+              <Clock className="w-3.5 h-3.5" />
+              <span>
+                Received:{' '}
+                {selectedNotification.created_at
+                  ? new Date(selectedNotification.created_at).toLocaleString('en-US', {
+                      dateStyle: 'medium',
+                      timeStyle: 'short',
+                    })
+                  : 'Recently'}
+              </span>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Clear Notifications Confirmation Modal */}
+      <Modal
+        isOpen={confirmClearOpen}
+        onClose={() => setConfirmClearOpen(false)}
+        title="Clear Notifications"
+        size="sm"
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => setConfirmClearOpen(false)}
+              disabled={clearing}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="btn btn-danger flex items-center gap-1.5"
+              onClick={handleConfirmClear}
+              disabled={clearing}
+            >
+              <Trash2 className="w-4 h-4" />
+              {clearing ? 'Clearing...' : 'Clear All'}
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-2 py-2">
+          <p className="text-sm text-gray-700">
+            Are you sure you want to clear all your notifications?
+          </p>
+          <p className="text-xs text-gray-400">
+            This will remove all current notifications and announcements from your notifications list.
+          </p>
+        </div>
+      </Modal>
 
     </div>
   );

@@ -1,9 +1,144 @@
-import { useState, useEffect, useCallback } from 'react';
-import { CheckCircle, XCircle, Camera, Trash2, Settings2, RotateCcw, ChevronRight, AlertTriangle } from 'lucide-react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { CheckCircle, XCircle, Camera, Trash2, Settings2, RotateCcw, ChevronRight, AlertTriangle, Edit3, Eye, ShieldCheck, Download, Calendar } from 'lucide-react';
 import api from '../../utils/api.js';
 import DataTable from '../../components/common/DataTable.jsx';
 import Modal from '../../components/common/Modal.jsx';
 import toast from 'react-hot-toast';
+import { useAuth } from '../../context/AuthContext.jsx';
+import DTREditModal from '../../components/dtr/DTREditModal.jsx';
+import DTRPreviewModal from '../../components/dtr/DTRPreviewModal.jsx';
+import BulkDTROverrideModal from '../../components/dtr/BulkDTROverrideModal.jsx';
+
+function WatermarkedSelfie({ photoUrl, recordDate, recordTime, isSuperadmin }) {
+  const [mode, setMode] = useState('official'); // 'official' | 'audit'
+  const [renderedUrl, setRenderedUrl] = useState(photoUrl);
+
+  const activeMode = isSuperadmin ? mode : 'official';
+
+  const officialStamp = useMemo(() => {
+    if (!recordDate || !recordTime) return '';
+    let timeFormatted = recordTime;
+    if (!/AM|PM/i.test(recordTime)) {
+      const [hStr, mStr, sStr] = recordTime.split(':');
+      let h = parseInt(hStr, 10);
+      const m = mStr || '00';
+      const s = sStr || '00';
+      const ampm = h >= 12 ? 'PM' : 'AM';
+      h = h % 12 || 12;
+      timeFormatted = `${String(h).padStart(2, '0')}:${m}:${s} ${ampm}`;
+    } else if (!/:\d{2}:\d{2}/.test(recordTime)) {
+      timeFormatted = recordTime.replace(/^(\d{2}:\d{2})\s*(AM|PM)$/i, '$1:00 $2');
+    }
+    return `${recordDate} ${timeFormatted}`;
+  }, [recordDate, recordTime]);
+
+  useEffect(() => {
+    if (!photoUrl) return;
+    if (activeMode === 'audit') {
+      setRenderedUrl(photoUrl);
+      return;
+    }
+
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.src = photoUrl;
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth || img.width || 640;
+      canvas.height = img.naturalHeight || img.height || 480;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      // Draw original image
+      ctx.drawImage(img, 0, 0);
+
+      if (officialStamp) {
+        ctx.save();
+        ctx.font = 'bold 18px sans-serif';
+        const textMetrics = ctx.measureText(officialStamp);
+        const textWidth = textMetrics.width;
+
+        // Cleanly cover the bottom-left watermark area
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.78)';
+        ctx.beginPath();
+        if (ctx.roundRect) {
+          ctx.roundRect(8, canvas.height - 40, textWidth + 18, 30, 4);
+        } else {
+          ctx.rect(8, canvas.height - 40, textWidth + 18, 30);
+        }
+        ctx.fill();
+
+        // Render official watermark
+        ctx.font = 'bold 18px sans-serif';
+        ctx.shadowColor = 'black';
+        ctx.shadowBlur = 6;
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.98)';
+        ctx.fillText(officialStamp, 14, canvas.height - 18);
+        ctx.restore();
+      }
+
+      setRenderedUrl(canvas.toDataURL('image/jpeg', 0.9));
+    };
+  }, [photoUrl, activeMode, officialStamp]);
+
+  const handleDownload = () => {
+    const link = document.createElement('a');
+    link.href = renderedUrl;
+    link.download = `selfie_${recordDate}_${activeMode}.jpg`;
+    link.click();
+  };
+
+  return (
+    <div className="space-y-2.5 w-full flex flex-col items-center">
+      <div className="flex items-center justify-between w-full px-1 text-xs">
+        {isSuperadmin ? (
+          <div className="inline-flex rounded-lg bg-slate-100 p-0.5 border border-slate-200">
+            <button
+              type="button"
+              className={`px-2.5 py-1 rounded font-medium transition-all ${
+                activeMode === 'official'
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+              onClick={() => setMode('official')}
+            >
+              Official Watermark
+            </button>
+            <button
+              type="button"
+              className={`px-2.5 py-1 rounded font-medium transition-all ${
+                activeMode === 'audit'
+                  ? 'bg-slate-700 text-white shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+              onClick={() => setMode('audit')}
+            >
+              Original Camera Watermark
+            </button>
+          </div>
+        ) : (
+          <span className="text-xs font-semibold text-slate-700">Official Attendance Watermark</span>
+        )}
+
+        <button
+          type="button"
+          onClick={handleDownload}
+          className="text-slate-600 hover:text-blue-600 font-medium flex items-center gap-1 bg-white border border-slate-200 px-2 py-1 rounded shadow-xs"
+        >
+          <Download className="w-3.5 h-3.5" /> Save Image
+        </button>
+      </div>
+
+      <div className="relative rounded-xl overflow-hidden border border-gray-200 shadow-sm bg-black flex justify-center w-full">
+        <img
+          src={renderedUrl}
+          alt="Intern Selfie"
+          className="max-h-[360px] w-auto object-contain rounded-lg"
+        />
+      </div>
+    </div>
+  );
+}
 
 const formatPhtDate = value => new Intl.DateTimeFormat('en-US', {
   timeZone: 'Asia/Manila',
@@ -19,6 +154,21 @@ const formatPhtTime = (value, includeSeconds = false) => new Intl.DateTimeFormat
   ...(includeSeconds ? { second: '2-digit' } : {}),
   hour12: true,
 }).format(new Date(value));
+
+const getPhtDateStr = (value) => {
+  if (!value) return '';
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila' }).format(new Date(value));
+};
+
+const getPht24HourTime = (value) => {
+  if (!value) return '';
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Manila',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  }).format(new Date(value));
+};
 
 const ACTION_DETAILS = {
   approve: {
@@ -52,6 +202,8 @@ const ACTION_DETAILS = {
 };
 
 export default function AttendanceApproval() {
+  const { user } = useAuth();
+  const isSuperadmin = user?.role?.toLowerCase() === 'superadmin';
   const [logs, setLogs] = useState([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -61,7 +213,10 @@ export default function AttendanceApproval() {
   const [selected, setSelected] = useState(null);
   const [remarks, setRemarks] = useState('');
   const [saving, setSaving] = useState(false);
-  const [previewPhoto, setPreviewPhoto] = useState(null);
+  const [previewRecord, setPreviewRecord] = useState(null);
+  const [dtrPreviewOpen, setDtrPreviewOpen] = useState(false);
+  const [dtrEditOpen, setDtrEditOpen] = useState(false);
+  const [bulkModalOpen, setBulkModalOpen] = useState(false);
 
   const fetchLogs = useCallback(async () => {
     setLoading(true);
@@ -150,12 +305,12 @@ export default function AttendanceApproval() {
     { key: 'remarks', label: 'Remarks', render: v => <span className="text-xs text-gray-500">{v || '—'}</span> },
     {
       key: 'photo', label: 'Selfie Preview',
-      render: (v) => {
+      render: (v, row) => {
         if (!v) return <span className="text-xs text-gray-400">—</span>;
         return (
           <button 
             className="btn btn-ghost btn-sm text-blue-600 font-semibold flex items-center gap-1 hover:bg-blue-50 px-2 py-1 rounded"
-            onClick={() => setPreviewPhoto(v)}
+            onClick={() => setPreviewRecord(row)}
           >
             <Camera className="w-3.5 h-3.5" strokeWidth={2} /> Preview
           </button>
@@ -178,9 +333,19 @@ export default function AttendanceApproval() {
 
   return (
     <div className="space-y-6 animate-fade-in attendance-approval-page">
-      <div>
-        <h1 className="text-xl sm:text-2xl font-bold text-gray-800" style={{ fontFamily: 'Outfit, sans-serif' }}>Attendance Approval</h1>
-        <p className="text-gray-500 text-sm">Review attendance and reopen a rejected scan slot when correction is needed</p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-800" style={{ fontFamily: 'Outfit, sans-serif' }}>Attendance Approval</h1>
+          <p className="text-gray-500 text-sm">Review attendance and reopen a rejected scan slot when correction is needed</p>
+        </div>
+        <button
+          type="button"
+          id="attendance-bulk-override-btn"
+          className="btn btn-secondary flex items-center gap-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-50 self-start sm:self-auto"
+          onClick={() => setBulkModalOpen(true)}
+        >
+          <Calendar className="w-4 h-4 text-blue-600" /> Bulk DTR Override
+        </button>
       </div>
 
       {/* Filters */}
@@ -347,24 +512,138 @@ export default function AttendanceApproval() {
         )}
       </Modal>
 
-      {/* Selfie Preview Modal */}
+      {/* Selfie Verification Preview Modal */}
       <Modal
-        isOpen={!!previewPhoto}
-        onClose={() => setPreviewPhoto(null)}
+        isOpen={!!previewRecord}
+        onClose={() => setPreviewRecord(null)}
         title="Selfie Verification Preview"
-        size="sm"
+        size="md"
         footer={
-          <button className="btn btn-secondary w-full" onClick={() => setPreviewPhoto(null)}>Close</button>
+          <div className="flex items-center justify-between w-full gap-2 flex-wrap">
+            {isSuperadmin ? (
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  id="selfie-edit-official-time-btn"
+                  className="btn btn-sm btn-primary flex items-center gap-1.5"
+                  onClick={() => setDtrEditOpen(true)}
+                >
+                  <Edit3 className="w-3.5 h-3.5" /> Edit Official Time
+                </button>
+                <button
+                  type="button"
+                  id="selfie-view-dtr-card-btn"
+                  className="btn btn-sm btn-secondary flex items-center gap-1.5"
+                  onClick={() => setDtrPreviewOpen(true)}
+                >
+                  <Eye className="w-3.5 h-3.5 text-indigo-600" /> DTR Preview
+                </button>
+              </div>
+            ) : <div />}
+            <button className="btn btn-secondary btn-sm" onClick={() => setPreviewRecord(null)}>Close</button>
+          </div>
         }
       >
-        <div className="flex flex-col items-center justify-center p-2">
-          {previewPhoto ? (
-            <img src={previewPhoto} alt="Intern Selfie" className="rounded-xl max-w-full h-auto border shadow-sm" />
+        <div className="space-y-3 p-1">
+          {previewRecord?.photo ? (
+            <WatermarkedSelfie
+              photoUrl={previewRecord.photo}
+              recordDate={getPhtDateStr(previewRecord.scan_time)}
+              recordTime={formatPhtTime(previewRecord.scan_time, false)}
+              isSuperadmin={isSuperadmin}
+            />
           ) : (
-            <p className="text-gray-500">No photo available</p>
+            <p className="text-gray-500 text-center py-6">No photo available</p>
+          )}
+
+          {previewRecord && (
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-2.5 text-xs">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-200">
+                <div>
+                  <p className="font-semibold text-gray-800 text-sm">{previewRecord.full_name}</p>
+                  <p className="text-gray-500">{previewRecord.division_name || previewRecord.department_name || 'PNP ITMS'}</p>
+                </div>
+                <span className={`badge ${previewRecord.scan_type === 'time_in' ? 'badge-time-in' : 'badge-time-out'}`}>
+                  {previewRecord.scan_type === 'time_in' ? 'Time In' : 'Time Out'}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div className="bg-white p-2 rounded border border-slate-100">
+                  <span className="text-gray-500 block font-medium">Official Date</span>
+                  <span className="font-semibold text-gray-800 text-sm">{formatPhtDate(previewRecord.scan_time)}</span>
+                </div>
+                <div className="bg-white p-2 rounded border border-slate-100">
+                  <span className="text-gray-500 block font-medium">Official Recorded Time</span>
+                  <span className="font-semibold text-blue-700 text-sm">{formatPhtTime(previewRecord.scan_time, false)}</span>
+                </div>
+              </div>
+
+              {isSuperadmin && (
+                <div className="bg-amber-50 border border-amber-200 rounded p-2 text-amber-900 flex items-start gap-1.5">
+                  <ShieldCheck className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-semibold">Camera Biometric Scan (Audit): </span>
+                    <span className="font-mono font-medium">{previewRecord.actual_scan_time ? formatPhtTime(previewRecord.actual_scan_time, true) : formatPhtTime(previewRecord.scan_time, true)}</span>
+                    <p className="text-[11px] text-amber-700 mt-0.5">
+                      The camera watermark timestamp is permanently retained for biometric audit integrity. Superadmins can modify the official DTR Date and Time above at any time without rescanning.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
           )}
         </div>
       </Modal>
+
+      {/* Superadmin DTR Edit Modal */}
+      {previewRecord && (
+        <DTREditModal
+          isOpen={dtrEditOpen}
+          onClose={() => setDtrEditOpen(false)}
+          intern={{ id: previewRecord.intern_id, full_name: previewRecord.full_name }}
+          date={getPhtDateStr(previewRecord.scan_time)}
+          record={{
+            date: getPhtDateStr(previewRecord.scan_time),
+            attendance_date: getPhtDateStr(previewRecord.scan_time),
+            time_in: previewRecord.scan_type === 'time_in' ? getPht24HourTime(previewRecord.scan_time) : '',
+            time_out: previewRecord.scan_type === 'time_out' ? getPht24HourTime(previewRecord.scan_time) : '',
+            approval_status: previewRecord.approval_status || 'approved',
+          }}
+          onSaveSuccess={() => {
+            fetchLogs();
+            setPreviewRecord(null);
+          }}
+        />
+      )}
+
+      {/* Official DTR Preview Modal */}
+      {previewRecord && (
+        <DTRPreviewModal
+          isOpen={dtrPreviewOpen}
+          onClose={() => setDtrPreviewOpen(false)}
+          intern={{ id: previewRecord.intern_id, full_name: previewRecord.full_name }}
+          currentUser={user}
+          record={{
+            date: getPhtDateStr(previewRecord.scan_time),
+            attendance_date: getPhtDateStr(previewRecord.scan_time),
+            time_in: previewRecord.scan_type === 'time_in' ? getPht24HourTime(previewRecord.scan_time) : '',
+            am_time_in: previewRecord.scan_type === 'time_in' ? getPht24HourTime(previewRecord.scan_time) : '',
+            time_out: previewRecord.scan_type === 'time_out' ? getPht24HourTime(previewRecord.scan_time) : '',
+            pm_time_out: previewRecord.scan_type === 'time_out' ? getPht24HourTime(previewRecord.scan_time) : '',
+            approval_status: previewRecord.approval_status || 'approved',
+          }}
+          onSaveSuccess={() => {
+            fetchLogs();
+          }}
+        />
+      )}
+      {/* Bulk Override Modal */}
+      <BulkDTROverrideModal
+        isOpen={bulkModalOpen}
+        onClose={() => setBulkModalOpen(false)}
+        onSuccess={fetchLogs}
+      />
     </div>
   );
 }

@@ -47,6 +47,10 @@ export default function AdminCalendar() {
     return () => { active = false; };
   }, [currentDate.month, currentDate.year, isMobile, loadEvents]);
 
+  useEffect(() => {
+    calendarRef.current?.getApi()?.refetchEvents();
+  }, []);
+
   const openCreate = (date) => {
     setSelectedEvent(null);
     setForm({ ...INIT_FORM, event_date: date });
@@ -140,6 +144,7 @@ export default function AdminCalendar() {
     if (part === 'month') newDate.setMonth(value);
     if (part === 'year') newDate.setFullYear(value);
     calendarRef.current?.getApi().gotoDate(newDate);
+    calendarRef.current?.getApi().refetchEvents();
   };
 
   const handleDatesSet = (arg) => {

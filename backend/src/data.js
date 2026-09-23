@@ -4,6 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { supabase } from './supabaseClient.js';
 import { getPhtDateKey, getPhtDayBoundsUtc } from './utils/attendanceTime.js';
 import { buildDtrRecords, summarizeDtrRecords } from './utils/dtrRecords.js';
+import { getAssignedProfileForAccount } from './services/attendanceControlService.js';
 
 const INTERN_ROLE = 'intern';
 const ADMIN_ROLE = 'admin';
@@ -318,6 +319,13 @@ export async function getInternById(id) {
       .single();
     if (error) throw error;
     const [intern] = await addCalculatedRenderedHours([data]);
+    if (intern) {
+      try {
+        intern.assigned_profile = await getAssignedProfileForAccount(intern.id);
+      } catch {
+        intern.assigned_profile = null;
+      }
+    }
     return intern;
   } catch (err) {
     const { data, error } = await supabase
@@ -333,6 +341,13 @@ export async function getInternById(id) {
       face_registered_at: null,
       self_face_enrollment_available: false,
     }]);
+    if (intern) {
+      try {
+        intern.assigned_profile = await getAssignedProfileForAccount(intern.id);
+      } catch {
+        intern.assigned_profile = null;
+      }
+    }
     return intern;
   }
 }
@@ -580,6 +595,13 @@ export async function getCurrentUserProfile(userId) {
       throw error;
     }
     const [intern] = await addCalculatedRenderedHours([data]);
+    if (intern) {
+      try {
+        intern.assigned_profile = await getAssignedProfileForAccount(intern.id);
+      } catch {
+        intern.assigned_profile = null;
+      }
+    }
     return intern;
   } catch (err) {
     const { data, error } = await supabase
@@ -598,6 +620,13 @@ export async function getCurrentUserProfile(userId) {
       face_registered_at: null,
       self_face_enrollment_available: false,
     }]);
+    if (intern) {
+      try {
+        intern.assigned_profile = await getAssignedProfileForAccount(intern.id);
+      } catch {
+        intern.assigned_profile = null;
+      }
+    }
     return intern;
   }
 }
@@ -1266,10 +1295,82 @@ export async function setBulkDtrOverride({ internIds, date, type, hours = 0, rem
   return { success: true, count: results.length };
 }
 
+export async function ensureCalendarNotificationsForUser(userId) {
+  if (!userId) return;
+  try {
+    const { data: markerData } = await supabase
+      .from('notifications')
+      .select('message, created_at')
+      .eq('user_id', userId)
+      .eq('title', '__CLEARED__')
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    const clearedAt = markerData && markerData.length > 0
+      ? new Date(markerData[0].message || markerData[0].created_at).getTime()
+      : 0;
+
+    const { data: events, error: eventsError } = await supabase
+      .from('calendar_events')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(20);
+
+    if (eventsError || !events || events.length === 0) return;
+
+    const { data: existingNotifs, error: notifError } = await supabase
+      .from('notifications')
+      .select('title')
+      .eq('user_id', userId);
+
+    if (notifError) return;
+
+    const existingTitles = new Set((existingNotifs || []).map((n) => n.title.toLowerCase().trim()));
+    const newNotifs = [];
+
+    for (const event of events) {
+      const eventTime = new Date(event.created_at).getTime();
+      if (clearedAt > 0 && eventTime <= clearedAt) {
+        continue;
+      }
+
+      const typeLabel = event.event_type ? event.event_type.charAt(0).toUpperCase() + event.event_type.slice(1) : 'Announcement';
+      const notifTitle = `New ${typeLabel}: ${event.title}`;
+      const altTitle = `New ${event.event_type}: ${event.title}`;
+
+      if (!existingTitles.has(notifTitle.toLowerCase().trim()) && !existingTitles.has(altTitle.toLowerCase().trim())) {
+        const notifMessage = event.description
+          ? `${event.description}${event.event_date ? ` (Date: ${event.event_date})` : ''}`
+          : `A new ${event.event_type || 'announcement'} has been posted on the calendar for ${event.event_date}.`;
+
+        newNotifs.push({
+          user_id: userId,
+          title: notifTitle,
+          message: notifMessage,
+          is_read: false,
+          created_at: event.created_at || new Date().toISOString(),
+        });
+        existingTitles.add(notifTitle.toLowerCase().trim());
+      }
+    }
+
+    if (newNotifs.length > 0) {
+      await supabase.from('notifications').insert(newNotifs);
+    }
+  } catch (err) {
+    console.error('Error ensuring calendar notifications for user:', err?.message || err);
+  }
+}
+
 export async function getNotifications(userId, isAdmin) {
+  if (!isAdmin && userId) {
+    await ensureCalendarNotificationsForUser(userId);
+  }
+
   let query = supabase
     .from('notifications')
     .select('*')
+    .neq('title', '__CLEARED__')
     .order('created_at', { ascending: false });
 
   if (!isAdmin) {
@@ -1292,7 +1393,7 @@ export async function markNotificationRead(notificationId, userId, isAdmin) {
 }
 
 export async function markAllNotificationsRead(userId, isAdmin) {
-  let query = supabase.from('notifications').update({ is_read: true });
+  let query = supabase.from('notifications').update({ is_read: true }).neq('title', '__CLEARED__');
   if (!isAdmin) {
     query = query.eq('user_id', userId);
   } else {
@@ -1301,6 +1402,31 @@ export async function markAllNotificationsRead(userId, isAdmin) {
   const { error } = await query;
   if (error) throw error;
   return { success: true };
+}
+
+export async function clearNotifications(userId, isAdmin) {
+  if (!isAdmin && userId) {
+    const { error: delError } = await supabase
+      .from('notifications')
+      .delete()
+      .eq('user_id', userId);
+
+    if (delError) throw delError;
+
+    await supabase.from('notifications').insert([{
+      user_id: userId,
+      title: '__CLEARED__',
+      message: new Date().toISOString(),
+      is_read: true,
+      created_at: new Date().toISOString(),
+    }]);
+
+    return { success: true };
+  } else {
+    const { error } = await supabase.from('notifications').delete().neq('id', 0);
+    if (error) throw error;
+    return { success: true };
+  }
 }
 
 export async function getEvaluations(userId, isAdmin, division_id = null, department_id = null) {
@@ -1515,18 +1641,53 @@ export async function deleteDocument(id, userId, isAdmin) {
 export async function getCalendarEvents({ year, month }) {
   if (!year || !month) throw new Error('Year and month are required');
 
-  const startDate = new Date(year, month - 1, 1);
-  const endDate = new Date(year, month, 0);
+  const pad = (n) => String(n).padStart(2, '0');
+  const startStr = `${year}-${pad(month)}-01`;
+  const lastDay = new Date(Date.UTC(Number(year), Number(month), 0)).getUTCDate();
+  const endStr = `${year}-${pad(month)}-${pad(lastDay)}`;
 
   const { data, error } = await supabase
     .from('calendar_events')
     .select(`*, creator:accounts(full_name)`)
-    .gte('event_date', startDate.toISOString().slice(0, 10))
-    .lte('event_date', endDate.toISOString().slice(0, 10))
+    .gte('event_date', startStr)
+    .lte('event_date', endStr)
     .order('event_date', { ascending: true });
 
   if (error) throw error;
   return data || [];
+}
+
+export async function broadcastCalendarEventNotification(event) {
+  if (!event) return;
+  try {
+    const { data: interns, error: internsError } = await supabase
+      .from('accounts')
+      .select('id')
+      .eq('role', INTERN_ROLE)
+      .eq('status', 'active');
+
+    if (internsError) throw internsError;
+    if (!interns || interns.length === 0) return;
+
+    const typeLabel = event.event_type ? event.event_type.charAt(0).toUpperCase() + event.event_type.slice(1) : 'Announcement';
+    const notifTitle = `New ${typeLabel}: ${event.title}`;
+    const notifMessage = event.description
+      ? `${event.description}${event.event_date ? ` (Date: ${event.event_date})` : ''}`
+      : `A new ${event.event_type || 'announcement'} has been posted on the calendar for ${event.event_date}.`;
+
+    const notifications = interns.map((intern) => ({
+      user_id: intern.id,
+      title: notifTitle,
+      message: notifMessage,
+      is_read: false,
+      created_at: new Date().toISOString(),
+    }));
+
+    const { error: notificationError } = await supabase.from('notifications').insert(notifications);
+    if (notificationError) throw notificationError;
+  } catch (err) {
+    console.error('Failed to create notifications for calendar event:', err?.message || err);
+  }
 }
 
 export async function createCalendarEvent(payload, userId) {
@@ -1546,6 +1707,11 @@ export async function createCalendarEvent(payload, userId) {
     .single();
 
   if (error) throw error;
+
+  if (event) {
+    await broadcastCalendarEventNotification(event);
+  }
+
   return event;
 }
 

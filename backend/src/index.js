@@ -58,6 +58,7 @@ import {
   getNotifications,
   markNotificationRead,
   markAllNotificationsRead,
+  clearNotifications,
   getEvaluations,
   createEvaluation,
   updateEvaluation,
@@ -697,8 +698,8 @@ app.get('/admin/dtr/:internId', authMiddleware, adminMiddleware, async (req, res
   }
 });
 
-// Manual DTR override routes - strictly restricted to Superadmin
-app.post('/admin/dtr/:internId/override', authMiddleware, superadminMiddleware, async (req, res) => {
+// Manual DTR override routes - available to Admin and Superadmin
+app.post('/admin/dtr/:internId/override', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const internId = Number(req.params.internId);
     await assertSupervisorCanAccessIntern(req.user, internId, 'DTR records');
@@ -709,7 +710,7 @@ app.post('/admin/dtr/:internId/override', authMiddleware, superadminMiddleware, 
   }
 });
 
-app.post('/admin/dtr/bulk-override', authMiddleware, superadminMiddleware, async (req, res) => {
+app.post('/admin/dtr/bulk-override', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     let internIds = Array.isArray(req.body?.internIds)
       ? req.body.internIds.map(Number).filter(Number.isInteger)
@@ -752,6 +753,7 @@ app.put('/admin/dtr/:internId/edit', authMiddleware, superadminMiddleware, async
     const result = await editDtrRecord({
       internId,
       date: req.body.date,
+      new_date: req.body.new_date,
       time_in: req.body.time_in,
       time_out: req.body.time_out,
       status: req.body.status,
@@ -885,6 +887,16 @@ app.patch('/notifications/read-all', authMiddleware, async (req, res) => {
   try {
     const isStaff = ['admin', 'supervisor', 'superadmin'].includes(req.user.role);
     const result = await markAllNotificationsRead(req.user.id, isStaff);
+    return res.json(result);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/notifications/clear', authMiddleware, async (req, res) => {
+  try {
+    const isStaff = ['admin', 'supervisor', 'superadmin'].includes(req.user.role);
+    const result = await clearNotifications(req.user.id, isStaff);
     return res.json(result);
   } catch (error) {
     return res.status(500).json({ error: error.message });

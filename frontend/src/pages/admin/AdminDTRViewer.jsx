@@ -1,11 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Clock, Filter, AlertCircle, Edit, Calendar, History, Shield, ShieldCheck } from 'lucide-react';
+import { Clock, Filter, AlertCircle, Edit, Calendar, History, Shield, ShieldCheck, Image as ImageIcon } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext.jsx';
 import api from '../../utils/api.js';
 import DTRPrint from '../../components/dtr/DTRPrint.jsx';
 import Modal from '../../components/common/Modal.jsx';
 import DTREditModal from '../../components/dtr/DTREditModal.jsx';
 import DTRHistoryModal from '../../components/dtr/DTRHistoryModal.jsx';
+import DTRPreviewModal from '../../components/dtr/DTRPreviewModal.jsx';
+import BulkDTROverrideModal from '../../components/dtr/BulkDTROverrideModal.jsx';
 import toast from 'react-hot-toast';
 
 const getPhtTodayKey = () => {
@@ -22,6 +24,7 @@ const getPhtTodayKey = () => {
 export default function AdminDTRViewer() {
   const { user } = useAuth();
   const isSuperadmin = user?.role === 'superadmin';
+  const canManageOverrides = isSuperadmin || user?.role === 'admin' || user?.role === 'supervisor';
 
   const [interns, setInterns] = useState([]);
   const [selectedInternId, setSelectedInternId] = useState('');
@@ -39,6 +42,10 @@ export default function AdminDTRViewer() {
   const [selectedRecordForEdit, setSelectedRecordForEdit] = useState(null);
   const [selectedDateForEdit, setSelectedDateForEdit] = useState(null);
 
+  // DTR Preview Modal state
+  const [previewModalOpen, setPreviewModalOpen] = useState(false);
+  const [selectedRecordForPreview, setSelectedRecordForPreview] = useState(null);
+
   // Superadmin modification audit history modal state
   const [historyModalOpen, setHistoryModalOpen] = useState(false);
 
@@ -54,13 +61,6 @@ export default function AdminDTRViewer() {
 
   // Bulk override dialog state
   const [bulkModalOpen, setBulkModalOpen] = useState(false);
-  const [bulkForm, setBulkForm] = useState({
-    date: getPhtTodayKey(),
-    type: 'suspended', // 'none' | 'suspended' | 'excused' | 'hours' | 'others'
-    hours: 8,
-    remarks: '',
-  });
-  const [savingBulk, setSavingBulk] = useState(false);
 
   // Load interns list
   useEffect(() => {
@@ -98,12 +98,23 @@ export default function AdminDTRViewer() {
   }, [selectedInternId, loadDTR]);
 
   const handleRowClick = (day, record) => {
-    if (!isSuperadmin) return;
     const dateStr = `${filters.year}-${String(filters.month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    const defaultTimeIn = selectedInternData?.assigned_profile?.time_in ? selectedInternData.assigned_profile.time_in.slice(0, 5) : '08:00';
+    const defaultTimeOut = selectedInternData?.assigned_profile?.time_out ? selectedInternData.assigned_profile.time_out.slice(0, 5) : '17:00';
+    const targetRec = record || {
+      date: dateStr,
+      attendance_date: dateStr,
+      time_in: defaultTimeIn,
+      am_time_in: defaultTimeIn,
+      time_out: defaultTimeOut,
+      pm_time_out: defaultTimeOut,
+      approval_status: 'approved',
+    };
     setSelectedDay(day);
     setSelectedDateForEdit(dateStr);
-    setSelectedRecordForEdit(record || { date: dateStr });
-    setDtrEditModalOpen(true);
+    setSelectedRecordForEdit(targetRec);
+    setSelectedRecordForPreview(targetRec);
+    setPreviewModalOpen(true);
   };
 
   const handleSaveOverride = async () => {
@@ -131,28 +142,6 @@ export default function AdminDTRViewer() {
     }
   };
 
-  const handleSaveBulkOverride = async () => {
-    setSavingBulk(true);
-    try {
-      const res = await api.post('/admin/dtr/bulk-override', {
-        date: bulkForm.date,
-        type: bulkForm.type,
-        hours: bulkForm.hours,
-        remarks: bulkForm.remarks
-      });
-      toast.success(`Bulk override applied to ${res.data.count || 0} active interns`);
-      setBulkModalOpen(false);
-      if (selectedInternId) {
-        loadDTR(); // Refresh current intern if visible
-      }
-    } catch (err) {
-      const errMsg = err.response?.data?.error || err.message || 'Failed to save bulk override';
-      toast.error(errMsg);
-    } finally {
-      setSavingBulk(false);
-    }
-  };
-
   const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
   const filteredInterns = interns.filter(i => {
@@ -171,8 +160,33 @@ export default function AdminDTRViewer() {
               : 'View Daily Time Records for personnel under your supervision'}
           </p>
         </div>
-        {isSuperadmin && (
-          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+          {selectedInternId && (
+            <button
+              className="btn btn-secondary flex items-center gap-1.5 text-xs"
+              onClick={() => {
+                const todayStr = getPhtTodayKey();
+                const existing = dtrRecords.find(r => r.date === todayStr);
+                const defaultTimeIn = selectedInternData?.assigned_profile?.time_in ? selectedInternData.assigned_profile.time_in.slice(0, 5) : '08:00';
+                const defaultTimeOut = selectedInternData?.assigned_profile?.time_out ? selectedInternData.assigned_profile.time_out.slice(0, 5) : '17:00';
+                const rec = existing || {
+                  date: todayStr,
+                  attendance_date: todayStr,
+                  time_in: defaultTimeIn,
+                  am_time_in: defaultTimeIn,
+                  time_out: defaultTimeOut,
+                  pm_time_out: defaultTimeOut,
+                  approval_status: 'approved',
+                };
+                setSelectedRecordForPreview(rec);
+                setPreviewModalOpen(true);
+              }}
+            >
+              <ImageIcon className="w-4 h-4 text-blue-600" />
+              Preview DTR Image
+            </button>
+          )}
+          {isSuperadmin && (
             <button
               className="btn btn-secondary flex items-center gap-1.5 text-xs"
               onClick={() => setHistoryModalOpen(true)}
@@ -180,22 +194,17 @@ export default function AdminDTRViewer() {
               <History className="w-4 h-4 text-blue-600" />
               Modification History
             </button>
+          )}
+          {canManageOverrides && (
             <button
-              className="btn btn-secondary flex items-center gap-1.5 text-xs"
-              onClick={() => {
-                setBulkForm({
-                  date: getPhtTodayKey(),
-                  type: 'suspended',
-                  hours: 8,
-                  remarks: ''
-                });
-                setBulkModalOpen(true);
-              }}
+              id="bulk-dtr-override-btn"
+              className="btn btn-secondary flex items-center gap-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-50"
+              onClick={() => setBulkModalOpen(true)}
             >
-              <Calendar className="w-4 h-4" /> Bulk DTR Override
+              <Calendar className="w-4 h-4 text-blue-600" /> Bulk DTR Override
             </button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* Trainee & Period Selectors */}
@@ -311,7 +320,7 @@ export default function AdminDTRViewer() {
                 records={dtrRecords}
                 month={filters.month}
                 year={filters.year}
-                onRowClick={isSuperadmin ? handleRowClick : null}
+                onRowClick={handleRowClick}
               />
             </div>
           </div>
@@ -384,80 +393,14 @@ export default function AdminDTRViewer() {
         </Modal>
       )}
 
-      {/* Bulk Override Modal */}
-      {bulkModalOpen && (
-        <Modal
-          isOpen={bulkModalOpen}
-          onClose={() => setBulkModalOpen(false)}
-          title="Apply Bulk DTR Override (All Active Interns)"
-          size="md"
-          footer={
-            <>
-              <button className="btn btn-secondary" onClick={() => setBulkModalOpen(false)}>Cancel</button>
-              <button className="btn btn-primary" onClick={handleSaveBulkOverride} disabled={savingBulk}>
-                {savingBulk ? 'Saving...' : 'Apply to All Interns'}
-              </button>
-            </>
-          }
-        >
-          <div className="space-y-4">
-            <div className="form-group">
-              <label className="form-label font-bold text-xs">Target Date</label>
-              <input
-                type="date"
-                className="form-input font-semibold"
-                value={bulkForm.date}
-                onChange={e => setBulkForm(f => ({ ...f, date: e.target.value }))}
-              />
-            </div>
-
-            <div className="form-group">
-              <label className="form-label font-bold text-xs">Configuration Type</label>
-              <select
-                className="form-input form-select text-sm font-semibold"
-                value={bulkForm.type}
-                onChange={e => setBulkForm(f => ({ ...f, type: e.target.value }))}
-              >
-                <option value="suspended">Suspended (No hours, label &quot;SUSPENDED&quot;)</option>
-                <option value="excused">Excused (Credits 8.00 hours, label &quot;EXCUSED&quot;)</option>
-                <option value="hours">Custom Hours (Override total daily hours)</option>
-                <option value="others">Others (Custom label and custom hours)</option>
-                <option value="none">Clear Override (Remove custom configuration)</option>
-              </select>
-            </div>
-
-            {(bulkForm.type === 'hours' || bulkForm.type === 'others') && (
-              <div className="form-group">
-                <label className="form-label font-bold text-xs">Custom Hours to Credit</label>
-                <input
-                  type="number"
-                  min="0"
-                  max="8"
-                  step="0.25"
-                  className="form-input font-bold"
-                  value={bulkForm.hours}
-                  onChange={e => setBulkForm(f => ({ ...f, hours: Number(e.target.value) }))}
-                />
-              </div>
-            )}
-
-            <div className="form-group">
-              <label className="form-label font-bold text-xs">Remarks / Label</label>
-              <textarea
-                className="form-input"
-                rows={3}
-                value={bulkForm.remarks}
-                onChange={e => setBulkForm(f => ({ ...f, remarks: e.target.value }))}
-                placeholder={
-                  bulkForm.type === 'others'
-                    ? "e.g. SEMINAR, HOLIDAY OVERRIDE, etc. (will show as row label)"
-                    : "e.g. Typhoon Suspension, Excused leave, System issue..."
-                }
-              />
-            </div>
-          </div>
-        </Modal>
-      )}
+      {/* Enhanced Bulk Override Modal */}
+      <BulkDTROverrideModal
+        isOpen={bulkModalOpen}
+        onClose={() => setBulkModalOpen(false)}
+        onSuccess={() => {
+          if (selectedInternId) loadDTR();
+        }}
+      />
 
       {/* Superadmin DTR Manual Edit Modal */}
       {isSuperadmin && (
@@ -478,6 +421,23 @@ export default function AdminDTRViewer() {
           onClose={() => setHistoryModalOpen(false)}
           internId={selectedInternId || null}
           internName={selectedInternData?.full_name || null}
+        />
+      )}
+
+      {/* Official DTR Attendance Preview Modal */}
+      {previewModalOpen && selectedRecordForPreview && (
+        <DTRPreviewModal
+          isOpen={previewModalOpen}
+          onClose={() => setPreviewModalOpen(false)}
+          record={selectedRecordForPreview}
+          intern={selectedInternData}
+          currentUser={user}
+          onSaveSuccess={(updatedRecord) => {
+            loadDTR();
+            if (updatedRecord) {
+              setSelectedRecordForPreview(updatedRecord);
+            }
+          }}
         />
       )}
     </div>

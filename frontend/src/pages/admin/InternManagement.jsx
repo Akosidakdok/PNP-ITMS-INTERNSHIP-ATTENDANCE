@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { UserPlus, Edit2, Trash2, Key, Archive, ShieldCheck, ClipboardList, Check, XCircle, History, RefreshCw, Eraser, Undo2 } from 'lucide-react';
+import { UserPlus, Edit2, Trash2, Key, Archive, ShieldCheck, ClipboardList, Check, XCircle, History, RefreshCw, Eraser, Undo2, Calendar } from 'lucide-react';
 import api from '../../utils/api.js';
 import DataTable from '../../components/common/DataTable.jsx';
 import Modal from '../../components/common/Modal.jsx';
@@ -7,6 +7,7 @@ import toast from 'react-hot-toast';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { AVAILABLE_COURSES } from '../../utils/constants.js';
 import FaceRegistrationModal from '../../components/face/FaceRegistrationModal.jsx';
+import BulkDTROverrideModal from '../../components/dtr/BulkDTROverrideModal.jsx';
 
 const INIT_FORM = {
   username: '', password: '', first_name: '', middle_name: '', last_name: '', name_suffix: '', email: '', phone: '', 
@@ -83,6 +84,7 @@ export default function InternManagement() {
   const [form, setForm] = useState(INIT_FORM);
   const [saving, setSaving] = useState(false);
   const [resetPwd, setResetPwd] = useState('');
+  const [bulkOverrideOpen, setBulkOverrideOpen] = useState(false);
   const [newSchoolName, setNewSchoolName] = useState('');
   const [activeTab, setActiveTab] = useState('active'); // 'active' | 'archived'
   const [sortBy, setSortBy] = useState('full_name'); // 'full_name' | 'department' | 'school'
@@ -827,9 +829,18 @@ export default function InternManagement() {
           <h1 className="text-xl sm:text-2xl font-bold text-gray-800" style={{ fontFamily: 'Outfit, sans-serif' }}>Intern Management</h1>
           <p className="text-gray-500 text-sm">{total} total interns</p>
         </div>
-        <button id="create-intern-btn" className="btn btn-primary w-full sm:w-auto" onClick={openCreate}>
-          <UserPlus className="w-4 h-4" /> Add Intern
-        </button>
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+          <button
+            id="interns-bulk-override-btn"
+            className="btn btn-secondary flex items-center gap-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-50"
+            onClick={() => setBulkOverrideOpen(true)}
+          >
+            <Calendar className="w-4 h-4 text-blue-600" /> Bulk DTR Override
+          </button>
+          <button id="create-intern-btn" className="btn btn-primary" onClick={openCreate}>
+            <UserPlus className="w-4 h-4" /> Add Intern
+          </button>
+        </div>
       </div>
 
       <div className="card border border-gray-100 rounded-xl overflow-hidden">
@@ -1231,6 +1242,11 @@ export default function InternManagement() {
         onSuccess={async () => {
           await Promise.all([fetchInterns(), fetchRenewalRequests()]);
         }}
+      />
+      <BulkDTROverrideModal
+        isOpen={bulkOverrideOpen}
+        onClose={() => setBulkOverrideOpen(false)}
+        onSuccess={fetchInterns}
       />
     </div>
   );
