@@ -766,6 +766,102 @@ app.put('/admin/dtr/:internId/edit', authMiddleware, superadminMiddleware, async
   }
 });
 
+app.put('/admin/dtr/:internId/batch-alter', authMiddleware, superadminMiddleware, async (req, res) => {
+  try {
+    const internId = Number(req.params.internId);
+    const {
+      dates,
+      mode = 'time',
+      time_in,
+      time_out,
+      status = 'approved',
+      override_type,
+      hours = 0,
+      remarks = '',
+      reason,
+    } = req.body;
+
+    if (!Array.isArray(dates) || dates.length === 0) {
+      return res.status(400).json({ error: 'At least one date must be selected' });
+    }
+    if (!reason || !reason.trim()) {
+      return res.status(400).json({ error: 'A modification reason is strictly required before saving' });
+    }
+
+    const results = [];
+    const errors = [];
+
+    for (const d of dates) {
+      try {
+        if (mode === 'override') {
+          const resOverride = await setDtrOverride(internId, {
+            date: d,
+            type: override_type,
+            hours: Number(hours) || 0,
+            remarks: remarks || '',
+          });
+          await supabase.from('dtr_edit_history').insert([{
+            account_id: internId,
+            field_name: 'Schedule Override',
+            original_value: 'N/A',
+            new_value: `${override_type}: ${remarks || ''} (${hours || 0} hrs)`,
+            modified_by: req.user.id,
+            modified_at: new Date().toISOString(),
+            reason: reason.trim(),
+          }]);
+          results.push({ date: d, success: true, result: resOverride });
+        } else if (mode === 'clear') {
+          const resClear = await setDtrOverride(internId, {
+            date: d,
+            type: 'NONE',
+            hours: 0,
+            remarks: '',
+          });
+          await supabase.from('dtr_edit_history').insert([{
+            account_id: internId,
+            field_name: 'Clear Record/Override',
+            original_value: 'Active Record/Override',
+            new_value: 'Cleared',
+            modified_by: req.user.id,
+            modified_at: new Date().toISOString(),
+            reason: reason.trim(),
+          }]);
+          results.push({ date: d, success: true, result: resClear });
+        } else {
+          // mode === 'time'
+          const resEdit = await editDtrRecord({
+            internId,
+            date: d,
+            time_in,
+            time_out,
+            status,
+            reason: reason.trim(),
+            modified_by: req.user.id,
+          });
+          results.push({ date: d, success: true, result: resEdit });
+        }
+      } catch (err) {
+        errors.push({ date: d, error: err.message });
+      }
+    }
+
+    if (results.length === 0 && errors.length > 0) {
+      return res.status(400).json({ error: errors[0].error || 'Failed to alter selected dates' });
+    }
+
+    return res.json({
+      success: true,
+      total: dates.length,
+      modifiedCount: results.length,
+      results,
+      errors,
+    });
+  } catch (error) {
+    console.error('Error in batch-alter endpoint:', error);
+    return res.status(error.statusCode || 500).json({ error: error.message });
+  }
+});
+
 app.get('/admin/dtr/:internId/history', authMiddleware, superadminMiddleware, async (req, res) => {
   try {
     const internId = Number(req.params.internId);

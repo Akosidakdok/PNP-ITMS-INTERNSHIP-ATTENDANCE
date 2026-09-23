@@ -5,7 +5,18 @@ import toast from 'react-hot-toast';
 import domtoimage from 'dom-to-image-more';
 import { jsPDF } from 'jspdf';
 
-export default function DTRPrint({ records, intern, month, year, onRowClick }) {
+export default function DTRPrint({
+  records,
+  intern,
+  month,
+  year,
+  onRowClick,
+  isSelectable = false,
+  selectedDates = [],
+  onDateToggle,
+  onSelectAllDates,
+  allDatesSelected = false,
+}) {
   const printRef = useRef(null);
   const [isExporting, setIsExporting] = useState(false);
 
@@ -179,7 +190,18 @@ export default function DTRPrint({ records, intern, month, year, onRowClick }) {
       {/* The printable area — horizontal scroll on mobile */}
       <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
         <div ref={printRef} style={{ backgroundColor: '#fff', padding: '10mm', width: '100%', boxSizing: 'border-box' }} id="dtr-print-root">
-          <DTRTable records={records} intern={intern} month={month} year={year} onRowClick={onRowClick} />
+          <DTRTable
+            records={records}
+            intern={intern}
+            month={month}
+            year={year}
+            onRowClick={onRowClick}
+            isSelectable={isSelectable}
+            selectedDates={selectedDates}
+            onDateToggle={onDateToggle}
+            onSelectAllDates={onSelectAllDates}
+            allDatesSelected={allDatesSelected}
+          />
         </div>
       </div>
     </div>

@@ -6,7 +6,6 @@ import Modal from '../../components/common/Modal.jsx';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../context/AuthContext.jsx';
 import DTREditModal from '../../components/dtr/DTREditModal.jsx';
-import DTRPreviewModal from '../../components/dtr/DTRPreviewModal.jsx';
 import BulkDTROverrideModal from '../../components/dtr/BulkDTROverrideModal.jsx';
 
 function WatermarkedSelfie({ photoUrl, recordDate, recordTime, isSuperadmin }) {
@@ -214,7 +213,6 @@ export default function AttendanceApproval() {
   const [remarks, setRemarks] = useState('');
   const [saving, setSaving] = useState(false);
   const [previewRecord, setPreviewRecord] = useState(null);
-  const [dtrPreviewOpen, setDtrPreviewOpen] = useState(false);
   const [dtrEditOpen, setDtrEditOpen] = useState(false);
   const [bulkModalOpen, setBulkModalOpen] = useState(false);
 
@@ -530,14 +528,6 @@ export default function AttendanceApproval() {
                 >
                   <Edit3 className="w-3.5 h-3.5" /> Edit Official Time
                 </button>
-                <button
-                  type="button"
-                  id="selfie-view-dtr-card-btn"
-                  className="btn btn-sm btn-secondary flex items-center gap-1.5"
-                  onClick={() => setDtrPreviewOpen(true)}
-                >
-                  <Eye className="w-3.5 h-3.5 text-indigo-600" /> DTR Preview
-                </button>
               </div>
             ) : <div />}
             <button className="btn btn-secondary btn-sm" onClick={() => setPreviewRecord(null)}>Close</button>
@@ -617,27 +607,6 @@ export default function AttendanceApproval() {
         />
       )}
 
-      {/* Official DTR Preview Modal */}
-      {previewRecord && (
-        <DTRPreviewModal
-          isOpen={dtrPreviewOpen}
-          onClose={() => setDtrPreviewOpen(false)}
-          intern={{ id: previewRecord.intern_id, full_name: previewRecord.full_name }}
-          currentUser={user}
-          record={{
-            date: getPhtDateStr(previewRecord.scan_time),
-            attendance_date: getPhtDateStr(previewRecord.scan_time),
-            time_in: previewRecord.scan_type === 'time_in' ? getPht24HourTime(previewRecord.scan_time) : '',
-            am_time_in: previewRecord.scan_type === 'time_in' ? getPht24HourTime(previewRecord.scan_time) : '',
-            time_out: previewRecord.scan_type === 'time_out' ? getPht24HourTime(previewRecord.scan_time) : '',
-            pm_time_out: previewRecord.scan_type === 'time_out' ? getPht24HourTime(previewRecord.scan_time) : '',
-            approval_status: previewRecord.approval_status || 'approved',
-          }}
-          onSaveSuccess={() => {
-            fetchLogs();
-          }}
-        />
-      )}
       {/* Bulk Override Modal */}
       <BulkDTROverrideModal
         isOpen={bulkModalOpen}
