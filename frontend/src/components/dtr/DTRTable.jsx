@@ -254,15 +254,16 @@ export default function DTRTable({
 
       {/* ── DESKTOP PRINT VIEW ── */}
       <div
-        id="dtr-print-root"
-        className="hidden md:block print:block"
+        id="dtr-sheet-content"
+        className="block"
         style={{
           fontFamily: 'Arial, sans-serif',
           fontSize: '11px',
           color: '#000',
           backgroundColor: '#fff',
-          padding: '16px 20px',
-          maxWidth: '720px',
+          padding: '14px 18px',
+          width: '100%',
+          maxWidth: '760px',
           margin: '0 auto',
           boxSizing: 'border-box',
         }}
