@@ -669,6 +669,201 @@ export async function editDtrRecord({
 }
 
 // ─────────────────────────────────────────────────────────────
+// SUPERADMIN DTR DELETION & AUDIT LOGGING
+// ─────────────────────────────────────────────────────────────
+
+export async function deleteDtrAttendance({
+  internId,
+  date,
+  reason,
+  modified_by,
+  target = 'all', // 'attendance' | 'override' | 'all'
+}) {
+  if (!internId) {
+    const err = new Error('Intern ID is required');
+    err.statusCode = 400;
+    throw err;
+  }
+  if (!date) {
+    const err = new Error('Attendance date is required');
+    err.statusCode = 400;
+    throw err;
+  }
+  if (!reason || !reason.trim()) {
+    const err = new Error('A modification reason is strictly required before saving');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  try {
+    getPhtDayBoundsUtc(date);
+  } catch {
+    const err = new Error('A valid attendance date is required (YYYY-MM-DD)');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const { startIso, endExclusiveIso } = getPhtDayBoundsUtc(date);
+
+  // 1. Fetch existing attendance_records row if it exists
+  const { data: record, error: recError } = await supabase
+    .from('attendance_records')
+    .select('*')
+    .eq('account_id', internId)
+    .eq('attendance_date', date)
+    .maybeSingle();
+
+  if (recError) {
+    console.error('Error fetching attendance_record for deletion:', recError);
+  }
+
+  // 2. Fetch existing attendance_logs for this date
+  const { data: logs, error: logsError } = await supabase
+    .from('attendance_logs')
+    .select('id, scan_type, scan_time, remarks, approval_status, attendance_record_id')
+    .eq('intern_id', internId)
+    .gte('scan_time', startIso)
+    .lt('scan_time', endExclusiveIso);
+
+  if (logsError) {
+    console.error('Error fetching attendance_logs for deletion:', logsError);
+    throw logsError;
+  }
+
+  let allLogs = logs || [];
+
+  // Also query by attendance_record_id if record exists to ensure any linked logs are found
+  if (record?.id) {
+    const { data: linkedLogs } = await supabase
+      .from('attendance_logs')
+      .select('id, scan_type, scan_time, remarks, approval_status, attendance_record_id')
+      .eq('intern_id', internId)
+      .eq('attendance_record_id', record.id);
+
+    if (linkedLogs && linkedLogs.length > 0) {
+      const existingIdSet = new Set(allLogs.map(l => l.id));
+      for (const log of linkedLogs) {
+        if (!existingIdSet.has(log.id)) {
+          allLogs.push(log);
+        }
+      }
+    }
+  }
+
+  let targetLogs = [];
+  if (target === 'override') {
+    targetLogs = allLogs.filter(l => typeof l.remarks === 'string' && l.remarks.startsWith('OVERRIDE:'));
+  } else {
+    // When deleting attendance ('attendance' or 'all'), remove all attendance entries for the date
+    targetLogs = allLogs;
+  }
+
+  const targetLogIds = targetLogs.map(l => l.id);
+
+  // 3. Delete attendance photos for targeted logs
+  if (targetLogIds.length > 0) {
+    try {
+      await supabase
+        .from('attendance_photos')
+        .delete()
+        .in('attendance_log_id', targetLogIds);
+    } catch (photoErr) {
+      console.warn('Notice deleting attendance_photos:', photoErr);
+    }
+
+    // 4. Delete targeted logs
+    const { error: logsDelErr } = await supabase
+      .from('attendance_logs')
+      .delete()
+      .in('id', targetLogIds);
+
+    if (logsDelErr) {
+      console.error('Error deleting attendance_logs:', logsDelErr);
+      throw logsDelErr;
+    }
+  }
+
+  // 5. Delete attendance_records row if target is 'attendance' or 'all'
+  let recordDeleted = false;
+  if (target === 'attendance' || target === 'all') {
+    if (record?.id) {
+      // Detach from dtr_edit_history so history is NOT cascade-deleted
+      try {
+        await supabase
+          .from('dtr_edit_history')
+          .update({ attendance_record_id: null })
+          .eq('attendance_record_id', record.id);
+      } catch (detachErr) {
+        console.warn('Notice detaching dtr_edit_history:', detachErr);
+      }
+
+      const { error: recDelErr } = await supabase
+        .from('attendance_records')
+        .delete()
+        .eq('id', record.id);
+
+      if (recDelErr) {
+        console.error('Error deleting attendance_record by id:', recDelErr);
+      } else {
+        recordDeleted = true;
+      }
+    }
+
+    // Clean up any remaining attendance_records for this intern and date
+    const { error: cleanRecErr } = await supabase
+      .from('attendance_records')
+      .delete()
+      .eq('account_id', internId)
+      .eq('attendance_date', date);
+
+    if (!cleanRecErr) {
+      recordDeleted = true;
+    }
+  }
+
+  // 6. Write audit log into dtr_edit_history
+  const modifiedAt = new Date().toISOString();
+  const fieldName = target === 'override'
+    ? 'Schedule Override'
+    : 'Attendance Record';
+
+  const origDetails = [];
+  if (record) {
+    origDetails.push(`Status: ${record.status || 'N/A'}`);
+    if (record.recorded_time_in) origDetails.push(`In: ${format12HourTime(formatPhtTime(record.recorded_time_in))}`);
+    if (record.recorded_time_out) origDetails.push(`Out: ${format12HourTime(formatPhtTime(record.recorded_time_out))}`);
+  }
+  if (targetLogs.length > 0) {
+    origDetails.push(`${targetLogs.length} scan log(s) removed`);
+  }
+  const originalValue = origDetails.length > 0 ? origDetails.join(', ') : 'Active Record/Override';
+
+  try {
+    await supabase.from('dtr_edit_history').insert([{
+      attendance_record_id: null,
+      account_id: internId,
+      field_name: fieldName,
+      original_value: originalValue,
+      new_value: 'Deleted / Cleared',
+      modified_by: modified_by || null,
+      modified_at: modifiedAt,
+      reason: reason.trim(),
+    }]);
+  } catch (auditErr) {
+    console.warn('Failed to insert dtr_edit_history audit log:', auditErr);
+  }
+
+  return {
+    success: true,
+    internId,
+    date,
+    target,
+    deletedLogsCount: targetLogIds.length,
+    deletedRecord: recordDeleted,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────
 // DTR EDIT HISTORY QUERY (SUPERADMIN ONLY)
 // ─────────────────────────────────────────────────────────────
 

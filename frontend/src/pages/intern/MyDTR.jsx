@@ -48,7 +48,7 @@ export default function MyDTR() {
     const dateStr = `${filters.year}-${String(filters.month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     const defaultTimeIn = intern?.assigned_profile?.time_in ? intern.assigned_profile.time_in.slice(0, 5) : '08:00';
     const defaultTimeOut = intern?.assigned_profile?.time_out ? intern.assigned_profile.time_out.slice(0, 5) : '17:00';
-    const targetRec = record || {
+    const targetRecord = record || {
       date: dateStr,
       attendance_date: dateStr,
       time_in: defaultTimeIn,
@@ -57,7 +57,7 @@ export default function MyDTR() {
       pm_time_out: defaultTimeOut,
       approval_status: 'approved',
     };
-    setSelectedRecordForPreview(targetRec);
+    setSelectedRecordForPreview(targetRecord);
     setPreviewModalOpen(true);
   };
 
@@ -173,7 +173,6 @@ export default function MyDTR() {
         </div>
       )}
 
-      {/* Official DTR Attendance Preview Modal (Read-Only for Interns) */}
       {previewModalOpen && selectedRecordForPreview && (
         <DTRPreviewModal
           isOpen={previewModalOpen}

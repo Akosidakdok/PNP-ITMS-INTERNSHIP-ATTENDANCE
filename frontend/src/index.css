@@ -2626,9 +2626,10 @@ body {
     position: absolute;
     left: 0;
     top: 0;
-    width: 100%;
-    margin: 0 !important;
-    padding: 10mm 15mm !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    margin: 0 auto !important;
+    padding: 6mm 8mm !important;
     max-width: 100% !important;
     font-size: 9pt !important;
     box-sizing: border-box !important;
@@ -2638,7 +2639,7 @@ body {
   }
 
   @page {
-    size: A4 portrait;
+    size: auto;
     margin: 0;
   }
 }

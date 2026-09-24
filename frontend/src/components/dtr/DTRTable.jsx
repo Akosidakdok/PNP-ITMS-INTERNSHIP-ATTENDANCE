@@ -100,7 +100,18 @@ function StatusBadge({ status, large = false }) {
   );
 }
 
-export default function DTRTable({ records = [], intern, month, year, onRowClick }) {
+export default function DTRTable({
+  records = [],
+  intern,
+  month,
+  year,
+  onRowClick,
+  isSelectable = false,
+  selectedDates = [],
+  onDateToggle,
+  onSelectAllDates,
+  allDatesSelected = false,
+}) {
   const daysInMonth = month && year ? getDaysInMonth(new Date(year, month - 1, 1)) : 31;
 
   // Build lookup: Manila calendar day → record
@@ -171,19 +182,41 @@ export default function DTRTable({ records = [], intern, month, year, onRowClick
           const rec = recordsByDay[day];
           const holiday = getHolidayName(year, month, day);
           const dateStr = month && year ? format(new Date(year, month - 1, day), 'EEE, MMM d') : day;
+          const isoDateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+          const isSelected = isSelectable && selectedDates.includes(isoDateStr);
           
-          // Skip empty weekends to save space
+          // Skip empty weekends to save space if not selectable and not selected
           const isWeekend = month && year ? [0, 6].includes(new Date(year, month - 1, day).getDay()) : false;
-          if (!rec && !holiday && isWeekend) return null;
+          if (!isSelectable && !rec && !holiday && isWeekend) return null;
 
           return (
             <div 
               key={day} 
-              className={`p-3 rounded-xl border dtr-mobile-list__card ${rec ? 'bg-white border-gray-200 shadow-sm cursor-pointer active:bg-gray-50' : 'bg-gray-100/40 border-gray-100'}`}
-              onClick={() => onRowClick && onRowClick(day, rec)}
+              className={`p-3 rounded-xl border transition-all dtr-mobile-list__card ${
+                isSelected
+                  ? 'bg-blue-50 border-blue-500 ring-2 ring-blue-500 shadow-sm'
+                  : rec ? 'bg-white border-gray-200 shadow-sm cursor-pointer active:bg-gray-50' : 'bg-gray-100/40 border-gray-100 cursor-pointer'
+              }`}
+              onClick={(e) => {
+                if (isSelectable && onDateToggle) {
+                  onDateToggle(isoDateStr, e.shiftKey, true);
+                } else if (onRowClick) {
+                  onRowClick(day, rec);
+                }
+              }}
             >
               <div className="flex justify-between items-center mb-1.5">
-                <span className={`font-bold text-xs ${isWeekend ? 'text-gray-400' : 'text-gray-700'}`}>{dateStr}</span>
+                <div className="flex items-center gap-2">
+                  {isSelectable && (
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      readOnly
+                      className="rounded text-blue-600 focus:ring-blue-500 pointer-events-none w-3.5 h-3.5"
+                    />
+                  )}
+                  <span className={`font-bold text-xs ${isSelected ? 'text-blue-900 font-extrabold' : isWeekend ? 'text-gray-400' : 'text-gray-700'}`}>{dateStr}</span>
+                </div>
                 {rec && <StatusBadge status={rec.approval_status} />}
               </div>
               
@@ -221,15 +254,16 @@ export default function DTRTable({ records = [], intern, month, year, onRowClick
 
       {/* ── DESKTOP PRINT VIEW ── */}
       <div
-        id="dtr-print-root"
-        className="hidden md:block print:block"
+        id="dtr-sheet-content"
+        className="block"
         style={{
           fontFamily: 'Arial, sans-serif',
           fontSize: '11px',
           color: '#000',
           backgroundColor: '#fff',
-          padding: '16px 20px',
-          maxWidth: '720px',
+          padding: '14px 18px',
+          width: '100%',
+          maxWidth: '760px',
           margin: '0 auto',
           boxSizing: 'border-box',
         }}
@@ -366,10 +400,41 @@ export default function DTRTable({ records = [], intern, month, year, onRowClick
           fontSize: '10px',
           tableLayout: 'fixed',
         }}>
-        <colgroup><col style={{ width: '12%' }} /><col style={{ width: '12%' }} /><col style={{ width: '13%' }} /><col style={{ width: '12%' }} /><col style={{ width: '13%' }} /><col style={{ width: '11%' }} /><col style={{ width: '27%' }} /></colgroup>
+        <colgroup>
+          {isSelectable && <col className="no-print" style={{ width: '28px' }} />}
+          <col style={{ width: '12%' }} />
+          <col style={{ width: '12%' }} />
+          <col style={{ width: '13%' }} />
+          <col style={{ width: '12%' }} />
+          <col style={{ width: '13%' }} />
+          <col style={{ width: '11%' }} />
+          <col style={{ width: isSelectable ? '25%' : '27%' }} />
+        </colgroup>
         <thead>
           {/* Group headers */}
           <tr>
+            {isSelectable && (
+              <th
+                rowSpan={2}
+                className="no-print"
+                style={thStyle({
+                  width: '28px',
+                  borderRight: '1px solid #000',
+                  backgroundColor: '#e2e8f0',
+                  textAlign: 'center',
+                  verticalAlign: 'middle',
+                  padding: '2px',
+                })}
+              >
+                <input
+                  type="checkbox"
+                  checked={allDatesSelected}
+                  onChange={() => onSelectAllDates && onSelectAllDates()}
+                  className="cursor-pointer rounded text-blue-600 focus:ring-blue-500 w-3.5 h-3.5"
+                  title="Select / Deselect All Dates"
+                />
+              </th>
+            )}
             <th rowSpan={2} style={thStyle({ borderRight: '1px solid #000' })}>Date</th>
             <th colSpan={2} style={thStyle({ backgroundColor: '#cce5ff', borderRight: '1px solid #000' })}>AM</th>
             <th colSpan={2} style={thStyle({ backgroundColor: '#ffdde1', borderRight: '1px solid #000' })}>PM</th>
@@ -392,13 +457,57 @@ export default function DTRTable({ records = [], intern, month, year, onRowClick
             const dayOfWeek = dateObj.getDay(); // 0 = Sunday, 6 = Saturday
             const holidayName = getHolidayName(year, month, day);
             const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+            const isoDateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+            const isSelected = isSelectable && selectedDates.includes(isoDateStr);
 
             // Click helper
-            const handleRowClick = () => {
-              if (onRowClick) {
+            const handleRowClick = (e) => {
+              if (isSelectable && onDateToggle) {
+                onDateToggle(isoDateStr, e?.shiftKey, e?.ctrlKey || e?.metaKey);
+              } else if (onRowClick) {
                 onRowClick(day, rec);
               }
             };
+
+            const renderSelectCell = () => {
+              if (!isSelectable) return null;
+              return (
+                <td
+                  className="no-print"
+                  style={tdStyle({
+                    textAlign: 'center',
+                    width: '28px',
+                    borderRight: '1px solid #000',
+                    backgroundColor: isSelected ? '#dbeafe' : 'inherit',
+                    verticalAlign: 'middle',
+                    padding: '2px',
+                    cursor: 'pointer',
+                  })}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (onDateToggle) {
+                      onDateToggle(isoDateStr, e.shiftKey, e.ctrlKey || e.metaKey);
+                    }
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={isSelected}
+                    readOnly
+                    className="cursor-pointer rounded text-blue-600 focus:ring-blue-500 w-3.5 h-3.5 pointer-events-none"
+                  />
+                </td>
+              );
+            };
+
+            const rowStyle = {
+              cursor: (isSelectable || onRowClick) ? 'pointer' : 'default',
+              backgroundColor: isSelected ? '#e0f2fe' : undefined,
+              outline: isSelected ? '2px solid #2563eb' : undefined,
+              outlineOffset: isSelected ? '-2px' : undefined,
+            };
+
+            const rowClassName = `transition-colors ${(isSelectable || onRowClick) ? 'hover:bg-blue-50/40 select-none' : ''}`;
 
             if (rec?.is_override) {
               if (rec.override_type === 'suspended') {
@@ -406,18 +515,19 @@ export default function DTRTable({ records = [], intern, month, year, onRowClick
                   <tr
                     key={day}
                     onClick={handleRowClick}
-                    style={{ cursor: onRowClick ? 'pointer' : 'default' }}
-                    className={onRowClick ? 'hover:bg-blue-50/20 transition-colors' : ''}
+                    style={rowStyle}
+                    className={rowClassName}
                   >
+                    {renderSelectCell()}
                     {/* Date formatted as MM/DD/YYYY */}
-                    <td style={tdStyle({ textAlign: 'center', fontWeight: '600', borderRight: '1px solid #000', height: '18px', fontSize: '9px' })}>
+                    <td style={tdStyle({ textAlign: 'center', fontWeight: '600', borderRight: '1px solid #000', height: '18px', fontSize: '9px', backgroundColor: isSelected ? '#dbeafe' : undefined })}>
                       {`${String(month).padStart(2, '0')}/${String(day).padStart(2, '0')}/${year}`}
                     </td>
                     <td colSpan={6} style={tdStyle({
                       textAlign: 'center',
                       fontWeight: 'bold',
                       fontStyle: 'italic',
-                      backgroundColor: '#f3f4f6', // Suspension gray
+                      backgroundColor: isSelected ? '#bae6fd' : '#f3f4f6', // Suspension gray
                       color: '#4b5563',
                       fontSize: '9px',
                       letterSpacing: '0.5px',
@@ -432,18 +542,19 @@ export default function DTRTable({ records = [], intern, month, year, onRowClick
                   <tr
                     key={day}
                     onClick={handleRowClick}
-                    style={{ cursor: onRowClick ? 'pointer' : 'default' }}
-                    className={onRowClick ? 'hover:bg-blue-50/20 transition-colors' : ''}
+                    style={rowStyle}
+                    className={rowClassName}
                   >
+                    {renderSelectCell()}
                     {/* Date formatted as MM/DD/YYYY */}
-                    <td style={tdStyle({ textAlign: 'center', fontWeight: '600', borderRight: '1px solid #000', height: '18px', fontSize: '9px' })}>
+                    <td style={tdStyle({ textAlign: 'center', fontWeight: '600', borderRight: '1px solid #000', height: '18px', fontSize: '9px', backgroundColor: isSelected ? '#dbeafe' : undefined })}>
                       {`${String(month).padStart(2, '0')}/${String(day).padStart(2, '0')}/${year}`}
                     </td>
                     <td colSpan={4} style={tdStyle({
                       textAlign: 'center',
                       fontWeight: 'bold',
                       fontStyle: 'italic',
-                      backgroundColor: '#e6fffa', // excused green-ish
+                      backgroundColor: isSelected ? '#c7f9cc' : '#e6fffa', // excused green-ish
                       color: '#0d9488',
                       fontSize: '9px',
                       letterSpacing: '0.5px',
@@ -465,18 +576,19 @@ export default function DTRTable({ records = [], intern, month, year, onRowClick
                   <tr
                     key={day}
                     onClick={handleRowClick}
-                    style={{ cursor: onRowClick ? 'pointer' : 'default' }}
-                    className={onRowClick ? 'hover:bg-blue-50/20 transition-colors' : ''}
+                    style={rowStyle}
+                    className={rowClassName}
                   >
+                    {renderSelectCell()}
                     {/* Date formatted as MM/DD/YYYY */}
-                    <td style={tdStyle({ textAlign: 'center', fontWeight: '600', borderRight: '1px solid #000', height: '18px', fontSize: '9px' })}>
+                    <td style={tdStyle({ textAlign: 'center', fontWeight: '600', borderRight: '1px solid #000', height: '18px', fontSize: '9px', backgroundColor: isSelected ? '#dbeafe' : undefined })}>
                       {`${String(month).padStart(2, '0')}/${String(day).padStart(2, '0')}/${year}`}
                     </td>
                     <td colSpan={4} style={tdStyle({
                       textAlign: 'center',
                       fontWeight: 'bold',
                       fontStyle: 'italic',
-                      backgroundColor: '#f3e8ff', // light purple
+                      backgroundColor: isSelected ? '#ede9fe' : '#f3e8ff', // light purple
                       color: '#7e22ce',
                       fontSize: '9px',
                       letterSpacing: '0.5px',
@@ -501,11 +613,12 @@ export default function DTRTable({ records = [], intern, month, year, onRowClick
                 <tr
                   key={day}
                   onClick={handleRowClick}
-                  style={{ cursor: onRowClick ? 'pointer' : 'default' }}
-                  className={onRowClick ? 'hover:bg-blue-50/20 transition-colors' : ''}
+                  style={rowStyle}
+                  className={rowClassName}
                 >
+                  {renderSelectCell()}
                   {/* Date formatted as MM/DD/YYYY */}
-                  <td style={tdStyle({ textAlign: 'center', fontWeight: '600', borderRight: '1px solid #000', height: '18px', fontSize: '9px' })}>
+                  <td style={tdStyle({ textAlign: 'center', fontWeight: '600', borderRight: '1px solid #000', height: '18px', fontSize: '9px', backgroundColor: isSelected ? '#dbeafe' : undefined })}>
                     {`${String(month).padStart(2, '0')}/${String(day).padStart(2, '0')}/${year}`}
                   </td>
                   {/* Spanned label across all remaining columns */}
@@ -513,7 +626,7 @@ export default function DTRTable({ records = [], intern, month, year, onRowClick
                     textAlign: 'center',
                     fontWeight: 'bold',
                     fontStyle: 'italic',
-                    backgroundColor: holidayName ? '#fef3c7' : '#f3f4f6', // Light amber for holiday, light gray for weekend
+                    backgroundColor: isSelected ? '#fde68a' : (holidayName ? '#fef3c7' : '#f3f4f6'), // Light amber for holiday, light gray for weekend
                     color: holidayName ? '#b45309' : '#6b7280',
                     fontSize: '9px',
                     letterSpacing: '1px',
@@ -529,31 +642,32 @@ export default function DTRTable({ records = [], intern, month, year, onRowClick
               <tr
                 key={day}
                 onClick={handleRowClick}
-                style={{ cursor: onRowClick ? 'pointer' : 'default' }}
-                className={onRowClick ? 'hover:bg-blue-50/20 transition-colors' : ''}
+                style={rowStyle}
+                className={rowClassName}
               >
+                {renderSelectCell()}
                 {/* Date formatted as MM/DD/YYYY */}
-                <td style={tdStyle({ textAlign: 'center', fontWeight: '600', borderRight: '1px solid #000', height: '18px', fontSize: '9px' })}>
+                <td style={tdStyle({ textAlign: 'center', fontWeight: '600', borderRight: '1px solid #000', height: '18px', fontSize: '9px', backgroundColor: isSelected ? '#dbeafe' : undefined })}>
                   {`${String(month).padStart(2, '0')}/${String(day).padStart(2, '0')}/${year}`}
                 </td>
 
                 {/* AM Time In */}
-                <td style={tdStyle({ backgroundColor: '#e8f4ff', textAlign: 'center', fontSize: '9px' })}>
+                <td style={tdStyle({ backgroundColor: isSelected ? '#bae6fd' : '#e8f4ff', textAlign: 'center', fontSize: '9px' })}>
                   {rec ? formatTime(rec.am_time_in) : ''}
                 </td>
 
                 {/* AM Status */}
-                <td style={tdStyle({ backgroundColor: '#e8f4ff', textAlign: 'center', borderRight: '1px solid #000' })}>
+                <td style={tdStyle({ backgroundColor: isSelected ? '#bae6fd' : '#e8f4ff', textAlign: 'center', borderRight: '1px solid #000' })}>
                   {rec?.am_time_in ? <StatusBadge status={rec.am_status} /> : <>&nbsp;</>}
                 </td>
 
                 {/* Time Out */}
-                <td style={tdStyle({ backgroundColor: '#ffe8eb', textAlign: 'center', fontSize: '9px' })}>
+                <td style={tdStyle({ backgroundColor: isSelected ? '#fed7aa' : '#ffe8eb', textAlign: 'center', fontSize: '9px' })}>
                   {rec ? formatTime(rec.pm_time_out || rec.am_time_out) : ''}
                 </td>
 
                 {/* Time Out Status */}
-                <td style={tdStyle({ backgroundColor: '#ffe8eb', textAlign: 'center', borderRight: '1px solid #000' })}>
+                <td style={tdStyle({ backgroundColor: isSelected ? '#fed7aa' : '#ffe8eb', textAlign: 'center', borderRight: '1px solid #000' })}>
                   {rec?.pm_time_out
                     ? <StatusBadge status={rec.pm_status} />
                     : rec?.am_time_out

@@ -1,12 +1,12 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Clock, Filter, AlertCircle, Edit, Calendar, History, Shield, ShieldCheck, Image as ImageIcon } from 'lucide-react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { Clock, Filter, AlertCircle, Edit, Calendar, History, Shield, ShieldCheck, CheckSquare, Square, MousePointerClick } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext.jsx';
 import api from '../../utils/api.js';
 import DTRPrint from '../../components/dtr/DTRPrint.jsx';
 import Modal from '../../components/common/Modal.jsx';
 import DTREditModal from '../../components/dtr/DTREditModal.jsx';
 import DTRHistoryModal from '../../components/dtr/DTRHistoryModal.jsx';
-import DTRPreviewModal from '../../components/dtr/DTRPreviewModal.jsx';
+import DTRBatchAlterModal from '../../components/dtr/DTRBatchAlterModal.jsx';
 import BulkDTROverrideModal from '../../components/dtr/BulkDTROverrideModal.jsx';
 import toast from 'react-hot-toast';
 
@@ -37,14 +37,15 @@ export default function AdminDTRViewer() {
   const [loading, setLoading] = useState(false);
   const [selectedInternData, setSelectedInternData] = useState(null);
 
+  // Superadmin Excel-like multi-date selection state
+  const [selectedDates, setSelectedDates] = useState([]);
+  const lastClickedDateRef = useRef(null);
+  const [batchAlterModalOpen, setBatchAlterModalOpen] = useState(false);
+
   // Superadmin DTR manual edit modal state
   const [dtrEditModalOpen, setDtrEditModalOpen] = useState(false);
   const [selectedRecordForEdit, setSelectedRecordForEdit] = useState(null);
   const [selectedDateForEdit, setSelectedDateForEdit] = useState(null);
-
-  // DTR Preview Modal state
-  const [previewModalOpen, setPreviewModalOpen] = useState(false);
-  const [selectedRecordForPreview, setSelectedRecordForPreview] = useState(null);
 
   // Superadmin modification audit history modal state
   const [historyModalOpen, setHistoryModalOpen] = useState(false);
@@ -97,24 +98,77 @@ export default function AdminDTRViewer() {
     }
   }, [selectedInternId, loadDTR]);
 
+  // Clear date selection when changing intern or month/year
+  useEffect(() => {
+    setSelectedDates([]);
+    lastClickedDateRef.current = null;
+  }, [selectedInternId, filters.month, filters.year]);
+
+  const daysInMonth = filters.month && filters.year ? new Date(filters.year, filters.month, 0).getDate() : 31;
+
+  const allMonthDates = useMemo(() => {
+    return Array.from({ length: daysInMonth }, (_, i) => {
+      const day = i + 1;
+      return `${filters.year}-${String(filters.month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    });
+  }, [filters.year, filters.month, daysInMonth]);
+
+  const allWeekdayDates = useMemo(() => {
+    return allMonthDates.filter(d => {
+      const parts = d.split('-').map(Number);
+      const dayOfWeek = new Date(parts[0], parts[1] - 1, parts[2]).getDay();
+      return dayOfWeek >= 1 && dayOfWeek <= 5; // Monday to Friday
+    });
+  }, [allMonthDates]);
+
+  // Excel-like selection handler with Shift-range and Ctrl-toggle support
+  const handleDateToggle = (dateStr, isShift, isCtrl) => {
+    if (isShift && lastClickedDateRef.current && lastClickedDateRef.current !== dateStr) {
+      const lastIdx = allMonthDates.indexOf(lastClickedDateRef.current);
+      const currIdx = allMonthDates.indexOf(dateStr);
+      if (lastIdx !== -1 && currIdx !== -1) {
+        const start = Math.min(lastIdx, currIdx);
+        const end = Math.max(lastIdx, currIdx);
+        const range = allMonthDates.slice(start, end + 1);
+        setSelectedDates(prev => {
+          const set = new Set(prev);
+          range.forEach(d => set.add(d));
+          return Array.from(set).sort();
+        });
+      }
+    } else if (isCtrl) {
+      setSelectedDates(prev => {
+        if (prev.includes(dateStr)) {
+          return prev.filter(d => d !== dateStr);
+        } else {
+          return [...prev, dateStr].sort();
+        }
+      });
+    } else {
+      setSelectedDates(prev => {
+        if (prev.includes(dateStr)) {
+          return prev.filter(d => d !== dateStr);
+        } else {
+          return [...prev, dateStr].sort();
+        }
+      });
+    }
+    lastClickedDateRef.current = dateStr;
+  };
+
+  const handleSelectAllToggle = () => {
+    if (selectedDates.length === allMonthDates.length) {
+      setSelectedDates([]);
+    } else {
+      setSelectedDates([...allMonthDates]);
+    }
+  };
+
   const handleRowClick = (day, record) => {
     const dateStr = `${filters.year}-${String(filters.month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-    const defaultTimeIn = selectedInternData?.assigned_profile?.time_in ? selectedInternData.assigned_profile.time_in.slice(0, 5) : '08:00';
-    const defaultTimeOut = selectedInternData?.assigned_profile?.time_out ? selectedInternData.assigned_profile.time_out.slice(0, 5) : '17:00';
-    const targetRec = record || {
-      date: dateStr,
-      attendance_date: dateStr,
-      time_in: defaultTimeIn,
-      am_time_in: defaultTimeIn,
-      time_out: defaultTimeOut,
-      pm_time_out: defaultTimeOut,
-      approval_status: 'approved',
-    };
-    setSelectedDay(day);
-    setSelectedDateForEdit(dateStr);
-    setSelectedRecordForEdit(targetRec);
-    setSelectedRecordForPreview(targetRec);
-    setPreviewModalOpen(true);
+    if (isSuperadmin) {
+      handleDateToggle(dateStr, false, false);
+    }
   };
 
   const handleSaveOverride = async () => {
@@ -156,34 +210,19 @@ export default function AdminDTRViewer() {
           <h1 className="text-xl sm:text-2xl font-bold text-gray-800" style={{ fontFamily: 'Outfit, sans-serif' }}>Intern DTR Management</h1>
           <p className="text-gray-500 text-sm">
             {isSuperadmin
-              ? 'Superadmin DTR management, manual corrections with audit logging, and schedule overrides'
+              ? 'Superadmin DTR management, Excel-style date selection & alteration with audit logging'
               : 'View Daily Time Records for personnel under your supervision'}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto dtr-page-actions">
-          {selectedInternId && (
+          {isSuperadmin && selectedDates.length > 0 && (
             <button
-              className="btn btn-secondary flex items-center gap-1.5 text-xs"
-              onClick={() => {
-                const todayStr = getPhtTodayKey();
-                const existing = dtrRecords.find(r => r.date === todayStr);
-                const defaultTimeIn = selectedInternData?.assigned_profile?.time_in ? selectedInternData.assigned_profile.time_in.slice(0, 5) : '08:00';
-                const defaultTimeOut = selectedInternData?.assigned_profile?.time_out ? selectedInternData.assigned_profile.time_out.slice(0, 5) : '17:00';
-                const rec = existing || {
-                  date: todayStr,
-                  attendance_date: todayStr,
-                  time_in: defaultTimeIn,
-                  am_time_in: defaultTimeIn,
-                  time_out: defaultTimeOut,
-                  pm_time_out: defaultTimeOut,
-                  approval_status: 'approved',
-                };
-                setSelectedRecordForPreview(rec);
-                setPreviewModalOpen(true);
-              }}
+              type="button"
+              className="btn btn-primary flex items-center gap-1.5 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-xs"
+              onClick={() => setBatchAlterModalOpen(true)}
             >
-              <ImageIcon className="w-4 h-4 text-blue-600" />
-              Preview DTR Image
+              <Edit className="w-3.5 h-3.5" />
+              Alter {selectedDates.length} Selected Date{selectedDates.length > 1 ? 's' : ''}
             </button>
           )}
           {isSuperadmin && (
@@ -282,10 +321,10 @@ export default function AdminDTRViewer() {
                   <ShieldCheck className="w-4 h-4 text-blue-700" /> Superadmin DTR Control
                 </h3>
                 <ul className="text-xs text-blue-800 space-y-2 list-disc list-inside">
-                  <li>Click on **any date row** in the table to correct Time In, Time Out, or attendance status.</li>
+                  <li>**Excel Date Selection**: Click any date row or checkbox to select.</li>
+                  <li>Hold **Shift** to select a range of dates, or **Ctrl** for multi-select.</li>
+                  <li>Click **Alter Selected Dates** to batch adjust Time In/Out or apply schedule overrides.</li>
                   <li>Every manual correction requires a **reason** and is permanently recorded in the audit trail.</li>
-                  <li>View the full audit trail anytime via **Modification History**.</li>
-                  <li>Schedule overrides (Suspended/Excused) remain supported.</li>
                 </ul>
               </div>
             ) : (
@@ -314,6 +353,45 @@ export default function AdminDTRViewer() {
 
           {/* DTR Sheet Rendering */}
           <div className="xl:col-span-3 card p-6 bg-white overflow-hidden shadow-sm flex flex-col items-center dtr-sheet-card">
+            {isSuperadmin && (
+              <div className="w-full max-w-[800px] mb-3 p-2.5 px-3 bg-gradient-to-r from-blue-50/80 to-indigo-50/80 border border-blue-200 rounded-xl flex flex-wrap items-center justify-between gap-2 text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-blue-950 flex items-center gap-1.5">
+                    <MousePointerClick className="w-4 h-4 text-blue-600" />
+                    Excel Date Selection
+                  </span>
+                  <span className="text-[11px] text-blue-700 hidden sm:inline">
+                    Click rows/checkboxes. Hold <kbd className="px-1 py-0.5 bg-white border border-blue-200 rounded font-mono text-[10px]">Shift</kbd> for range, <kbd className="px-1 py-0.5 bg-white border border-blue-200 rounded font-mono text-[10px]">Ctrl</kbd> for multi-select.
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5 ml-auto flex-wrap">
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-xs text-[11px] font-semibold text-blue-700 bg-white hover:bg-blue-50"
+                    onClick={() => setSelectedDates([...allWeekdayDates])}
+                  >
+                    Select Weekdays
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-xs text-[11px] font-semibold text-slate-700 bg-white hover:bg-slate-100"
+                    onClick={handleSelectAllToggle}
+                  >
+                    {selectedDates.length === allMonthDates.length ? 'Deselect All' : 'Select All Month'}
+                  </button>
+                  {selectedDates.length > 0 && (
+                    <button
+                      type="button"
+                      className="btn btn-xs text-[11px] text-red-600 hover:text-red-700 hover:bg-red-50 bg-white border border-red-200"
+                      onClick={() => setSelectedDates([])}
+                    >
+                      Clear ({selectedDates.length})
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
             <div className="w-full max-w-[800px] border border-gray-300 rounded-xl p-4 bg-gray-50/50 overflow-x-auto">
               <DTRPrint
                 intern={selectedInternData}
@@ -321,6 +399,11 @@ export default function AdminDTRViewer() {
                 month={filters.month}
                 year={filters.year}
                 onRowClick={handleRowClick}
+                isSelectable={isSuperadmin}
+                selectedDates={selectedDates}
+                onDateToggle={handleDateToggle}
+                onSelectAllDates={handleSelectAllToggle}
+                allDatesSelected={selectedDates.length > 0 && selectedDates.length === allMonthDates.length}
               />
             </div>
           </div>
@@ -424,19 +507,54 @@ export default function AdminDTRViewer() {
         />
       )}
 
-      {/* Official DTR Attendance Preview Modal */}
-      {previewModalOpen && selectedRecordForPreview && (
-        <DTRPreviewModal
-          isOpen={previewModalOpen}
-          onClose={() => setPreviewModalOpen(false)}
-          record={selectedRecordForPreview}
+      {/* Superadmin Floating Action Dock for Excel Selection */}
+      {isSuperadmin && selectedDates.length > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 w-11/12 max-w-2xl bg-slate-900/95 backdrop-blur-md text-white shadow-2xl rounded-2xl p-3.5 px-5 border border-slate-700/80 flex flex-wrap items-center justify-between gap-3 animate-fade-in">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-xl bg-blue-600 flex items-center justify-center font-bold text-sm shadow-inner text-white">
+              {selectedDates.length}
+            </div>
+            <div>
+              <p className="font-bold text-sm text-slate-100">
+                {selectedDates.length === 1 ? '1 Date Selected' : `${selectedDates.length} Dates Selected`}
+              </p>
+              <p className="text-[11px] text-slate-400">
+                Ready to alter official time or schedule overrides
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className="btn btn-sm btn-ghost text-slate-300 hover:text-white hover:bg-slate-800 text-xs"
+              onClick={() => setSelectedDates([])}
+            >
+              Clear
+            </button>
+            <button
+              type="button"
+              className="btn btn-sm bg-blue-600 hover:bg-blue-500 text-white font-bold flex items-center gap-1.5 shadow-md text-xs px-4"
+              onClick={() => setBatchAlterModalOpen(true)}
+            >
+              <Edit className="w-3.5 h-3.5" />
+              Alter Selected Date{selectedDates.length > 1 ? 's' : ''}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Superadmin Batch / Single Date Alteration Modal */}
+      {isSuperadmin && batchAlterModalOpen && (
+        <DTRBatchAlterModal
+          isOpen={batchAlterModalOpen}
+          onClose={() => setBatchAlterModalOpen(false)}
           intern={selectedInternData}
-          currentUser={user}
-          onSaveSuccess={(updatedRecord) => {
+          selectedDates={selectedDates}
+          existingRecords={dtrRecords}
+          onSaveSuccess={() => {
             loadDTR();
-            if (updatedRecord) {
-              setSelectedRecordForPreview(updatedRecord);
-            }
+            setSelectedDates([]);
           }}
         />
       )}
