@@ -62,6 +62,8 @@ import {
   getEvaluations,
   createEvaluation,
   updateEvaluation,
+  setEvaluationArchived,
+  deleteEvaluation,
   getDocuments,
   createDocument,
   updateDocumentStatus,
@@ -910,7 +912,9 @@ app.get('/evaluations', authMiddleware, async (req, res) => {
       divId = await getCurrentSupervisorDivisionId(req.user);
     }
     const isStaff = ['admin', 'supervisor', 'superadmin'].includes(req.user.role);
-    const evaluations = await getEvaluations(req.user.id, isStaff, divId);
+    const canViewArchived = ['admin', 'superadmin'].includes(req.user.role);
+    const includeArchived = canViewArchived && req.query.include_archived === 'true';
+    const evaluations = await getEvaluations(req.user.id, isStaff, divId, null, includeArchived);
     return res.json({ evaluations });
   } catch (error) {
     console.error('Error in GET /evaluations:', error);
@@ -928,20 +932,57 @@ app.post('/evaluations', authMiddleware, adminMiddleware, async (req, res) => {
   }
 });
 
-app.put('/evaluations/:id', authMiddleware, adminMiddleware, async (req, res) => {
+app.put('/evaluations/:id', authMiddleware, adminOnlyMiddleware, async (req, res) => {
   try {
     const evaluationId = Number(req.params.id);
-    await assertSupervisorCanAccessResource(
-      req.user,
-      'evaluations',
-      evaluationId,
-      'intern evaluations'
-    );
-    if (req.body?.intern_id !== undefined) {
-      await assertSupervisorCanAccessIntern(req.user, req.body.intern_id, 'intern evaluations');
+    if (!Number.isInteger(evaluationId) || evaluationId <= 0) {
+      return res.status(400).json({ error: 'Valid evaluation ID is required' });
     }
+
     const evaluation = await updateEvaluation(evaluationId, req.body);
     return res.json({ evaluation });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message });
+  }
+});
+
+app.patch('/evaluations/:id/archive', authMiddleware, adminOnlyMiddleware, async (req, res) => {
+  try {
+    const evaluationId = Number(req.params.id);
+    if (!Number.isInteger(evaluationId) || evaluationId <= 0) {
+      return res.status(400).json({ error: 'Valid evaluation ID is required' });
+    }
+
+    if (typeof req.body?.archived !== 'boolean') {
+      return res.status(400).json({ error: 'archived must be true or false' });
+    }
+
+    const reason = String(req.body?.reason || '').trim();
+    if (req.body.archived && !reason) {
+      return res.status(400).json({ error: 'A reason is required when archiving an evaluation' });
+    }
+
+    const evaluation = await setEvaluationArchived(
+      evaluationId,
+      req.body.archived,
+      req.user.id,
+      reason,
+    );
+    return res.json({ evaluation });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message });
+  }
+});
+
+app.delete('/evaluations/:id', authMiddleware, adminOnlyMiddleware, async (req, res) => {
+  try {
+    const evaluationId = Number(req.params.id);
+    if (!Number.isInteger(evaluationId) || evaluationId <= 0) {
+      return res.status(400).json({ error: 'Valid evaluation ID is required' });
+    }
+
+    await deleteEvaluation(evaluationId);
+    return res.json({ success: true, message: 'Evaluation permanently deleted' });
   } catch (error) {
     return res.status(error.statusCode || 500).json({ error: error.message });
   }

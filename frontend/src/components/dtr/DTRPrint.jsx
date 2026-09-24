@@ -162,9 +162,9 @@ export default function DTRPrint({ records, intern, month, year, onRowClick }) {
   };
 
   return (
-    <div>
+    <div className="dtr-print">
       {/* Action buttons — hidden during print */}
-      <div className="flex flex-col sm:flex-row gap-2 mb-4 no-print">
+      <div className="flex flex-col sm:flex-row gap-2 mb-4 no-print dtr-print__actions">
         <button className="btn btn-secondary btn-sm w-full sm:w-auto" onClick={handlePrint} disabled={isExporting}>
           <Printer className="w-4 h-4" /> Print
         </button>
@@ -177,8 +177,8 @@ export default function DTRPrint({ records, intern, month, year, onRowClick }) {
       </div>
 
       {/* The printable area — horizontal scroll on mobile */}
-      <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-        <div ref={printRef} style={{ backgroundColor: '#fff', padding: '10mm', width: '100%', boxSizing: 'border-box' }} id="dtr-print-root">
+      <div className="dtr-print__viewport" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+        <div ref={printRef} className="dtr-print__canvas" style={{ backgroundColor: '#fff', padding: '10mm', width: '100%', boxSizing: 'border-box' }} id="dtr-print-root">
           <DTRTable records={records} intern={intern} month={month} year={year} onRowClick={onRowClick} />
         </div>
       </div>

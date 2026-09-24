@@ -548,7 +548,7 @@ export default function Profile({ role }) {
                   <p className="deployment-card-label text-[10px] font-bold uppercase tracking-wider mb-1">Designated Division</p>
                   <div className="deployment-card-division mt-1 px-3 py-2 border rounded-lg">
                     <p className="deployment-card-division-value font-bold text-xs tracking-wide">
-                      {profile.division_name || profile.department_name || '—'}
+                      {profile.division_name || '—'}
                     </p>
                   </div>
                 </div>

@@ -88,6 +88,9 @@ create table if not exists evaluations (
   teamwork numeric,
   communication numeric,
   initiative numeric,
+  archived_at timestamptz,
+  archived_by bigint references accounts(id) on delete set null,
+  archive_reason text,
   created_at timestamptz not null default now()
 );
 

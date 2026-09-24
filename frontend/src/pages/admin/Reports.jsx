@@ -18,13 +18,13 @@ const csvCell = value => `"${String(value ?? '').replaceAll('"', '""')}"`;
 export default function Reports() {
   const [report, setReport] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [departments, setDepartments] = useState([]);
-  const [filters, setFilters] = useState({ month: new Date().getMonth() + 1, year: new Date().getFullYear(), department_id: '' });
+  const [divisions, setDivisions] = useState([]);
+  const [filters, setFilters] = useState({ month: new Date().getMonth() + 1, year: new Date().getFullYear(), division_id: '' });
 
   useEffect(() => {
-    api.get('/departments')
-      .then(r => setDepartments(r.data.departments))
-      .catch(() => toast.error('Could not load department list.'));
+    api.get('/divisions')
+      .then(r => setDivisions(r.data.divisions || []))
+      .catch(() => toast.error('Could not load division list.'));
     fetchReport();
   }, []);
 
@@ -39,11 +39,11 @@ export default function Reports() {
   };
 
   const exportCSV = () => {
-    const headers = ['Full Name', 'School', 'Department', 'Days Present', 'Total Hours', 'Required Hours', 'Rendered Hours'];
+    const headers = ['Full Name', 'School', 'Division', 'Days Present', 'Total Hours', 'Required Hours', 'Rendered Hours'];
     const rows = report.map(r => [
       r.full_name,
       r.school || '',
-      r.department_name || '',
+      r.division_name || '',
       r.days_present,
       (toMinutes(r.total_minutes, r.total_hours) / 60).toFixed(2),
       r.required_hours,
@@ -86,10 +86,10 @@ export default function Reports() {
           </select>
         </div>
         <div className="form-group w-full sm:w-auto">
-          <label className="form-label">Department</label>
-          <select className="form-input form-select text-sm w-full sm:w-auto" value={filters.department_id} onChange={e => setFilters(f => ({ ...f, department_id: e.target.value }))}>
-            <option value="">All Departments</option>
-            {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+          <label className="form-label">Division</label>
+          <select className="form-input form-select text-sm w-full sm:w-auto" value={filters.division_id} onChange={e => setFilters(f => ({ ...f, division_id: e.target.value }))}>
+            <option value="">All Divisions</option>
+            {divisions.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
           </select>
         </div>
         <button id="generate-report-btn" className="btn btn-primary btn-sm w-full sm:w-auto" onClick={fetchReport} disabled={loading}>
@@ -110,7 +110,7 @@ export default function Reports() {
             <thead>
               <tr>
                 <th>Intern Name</th>
-                <th>Department</th>
+                <th>Division</th>
                 <th>Days Present</th>
                 <th>Total Hours</th>
                 <th>Required</th>
@@ -132,7 +132,7 @@ export default function Reports() {
                   return (
                     <tr key={i}>
                       <td data-label="Intern Name" className="font-medium text-gray-800">{r.full_name}</td>
-                      <td data-label="Department" className="text-xs text-gray-500">{r.department_name || '—'}</td>
+                      <td data-label="Division" className="text-xs text-gray-500">{r.division_name || '—'}</td>
                       <td data-label="Days Present" className="text-center font-semibold">{r.days_present}</td>
                       <td data-label="Total Hours" className="text-center font-semibold">{formatDuration(toMinutes(r.total_minutes, r.total_hours))}</td>
                       <td data-label="Required" className="text-center text-gray-500">{r.required_hours}h</td>

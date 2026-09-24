@@ -88,7 +88,7 @@ export default function MyDTR() {
   const years = [2024, 2025, 2026, 2027, 2028, 2029, 2030, 2031, 2032, 2033, 2034, 2035, 2036, 2037, 2038, 2039, 2040];
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-6 animate-fade-in dtr-page dtr-intern-page">
       <div>
         <h1 className="text-xl sm:text-2xl font-bold text-gray-800" style={{ fontFamily: 'Outfit, sans-serif' }}>Daily Time Record</h1>
         <p className="text-gray-500 text-sm">View and export your attendance records</p>
@@ -111,8 +111,8 @@ export default function MyDTR() {
       </div>
 
       {/* Filters & Actions */}
-      <div className="card p-4 flex flex-col sm:flex-row flex-wrap gap-3 items-start sm:items-end justify-between">
-        <div className="flex flex-wrap gap-3 items-end">
+      <div className="card p-4 flex flex-col sm:flex-row flex-wrap gap-3 items-start sm:items-end justify-between dtr-filter-card">
+        <div className="flex flex-wrap gap-3 items-end dtr-filter-fields">
           <div className="form-group">
             <label className="form-label">Month</label>
             <select className="form-input form-select text-sm w-full sm:w-auto" value={filters.month} onChange={e => setFilters(f => ({ ...f, month: Number(e.target.value) }))}>
@@ -127,7 +127,7 @@ export default function MyDTR() {
           </div>
         </div>
 
-        <div>
+        <div className="dtr-filter-actions">
           <button
             type="button"
             className="btn btn-secondary btn-sm flex items-center gap-1.5"

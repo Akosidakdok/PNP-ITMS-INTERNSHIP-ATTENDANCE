@@ -90,7 +90,7 @@ export default function DTRHistoryModal({
             <p className="text-xs text-gray-400 mt-1">No manual DTR adjustments have been recorded for this criteria.</p>
           </div>
         ) : (
-          <div className="overflow-x-auto border border-gray-200 rounded-lg">
+          <div className="overflow-x-auto border border-gray-200 rounded-lg dtr-history-table">
             <table className="min-w-full divide-y divide-gray-200 text-xs">
               <thead className="bg-gray-50 text-gray-600 font-semibold uppercase tracking-wider text-[11px]">
                 <tr>
@@ -106,31 +106,31 @@ export default function DTRHistoryModal({
               <tbody className="divide-y divide-gray-100 bg-white">
                 {history.map((entry) => (
                   <tr key={entry.id} className="hover:bg-gray-50/80 transition-colors">
-                    <td className="px-3 py-2.5 whitespace-nowrap">
+                    <td data-label="Date / Account" className="px-3 py-2.5 whitespace-nowrap">
                       <p className="font-bold text-gray-800">{entry.attendance_date || 'N/A'}</p>
                       <p className="text-[11px] text-gray-500">{entry.account_name}</p>
                     </td>
-                    <td className="px-3 py-2.5 whitespace-nowrap">
+                    <td data-label="Field" className="px-3 py-2.5 whitespace-nowrap">
                       <span className="inline-block px-2 py-0.5 font-medium rounded bg-slate-100 text-slate-700">
                         {entry.field_name}
                       </span>
                     </td>
-                    <td className="px-3 py-2.5 whitespace-nowrap text-red-600 font-medium">
+                    <td data-label="Original Value" className="px-3 py-2.5 whitespace-nowrap text-red-600 font-medium">
                       <span className="line-through">{entry.original_value || 'None'}</span>
                     </td>
-                    <td className="px-3 py-2.5 whitespace-nowrap text-green-700 font-bold">
+                    <td data-label="Modified Value" className="px-3 py-2.5 whitespace-nowrap text-green-700 font-bold">
                       {entry.new_value || 'None'}
                     </td>
-                    <td className="px-3 py-2.5 whitespace-nowrap text-gray-700">
+                    <td data-label="Modified By" className="px-3 py-2.5 whitespace-nowrap text-gray-700">
                       <p className="font-semibold">{entry.modified_by_name || 'Superadmin'}</p>
                       <span className="text-[10px] text-purple-700 uppercase font-bold">
                         {entry.modified_by_role || 'superadmin'}
                       </span>
                     </td>
-                    <td className="px-3 py-2.5 whitespace-nowrap text-gray-500">
+                    <td data-label="Modified At" className="px-3 py-2.5 whitespace-nowrap text-gray-500">
                       {formatTimestamp(entry.modified_at)}
                     </td>
-                    <td className="px-3 py-2.5 text-gray-700 max-w-xs break-words">
+                    <td data-label="Reason" className="px-3 py-2.5 text-gray-700 max-w-xs break-words">
                       <span className="italic">"{entry.reason}"</span>
                     </td>
                   </tr>

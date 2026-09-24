@@ -281,7 +281,7 @@ export default function AttendanceApproval() {
       render: (v, row) => (
         <div>
           <p className="font-medium text-sm text-gray-800">{v}</p>
-          <p className="text-xs text-gray-400">{row.division_name || row.department_name || '—'}</p>
+          <p className="text-xs text-gray-400">{row.division_name || '—'}</p>
         </div>
       )
     },
@@ -561,7 +561,7 @@ export default function AttendanceApproval() {
               <div className="flex items-center justify-between pb-2 border-b border-slate-200">
                 <div>
                   <p className="font-semibold text-gray-800 text-sm">{previewRecord.full_name}</p>
-                  <p className="text-gray-500">{previewRecord.division_name || previewRecord.department_name || 'PNP ITMS'}</p>
+                  <p className="text-gray-500">{previewRecord.division_name || 'PNP ITMS'}</p>
                 </div>
                 <span className={`badge ${previewRecord.scan_type === 'time_in' ? 'badge-time-in' : 'badge-time-out'}`}>
                   {previewRecord.scan_type === 'time_in' ? 'Time In' : 'Time Out'}

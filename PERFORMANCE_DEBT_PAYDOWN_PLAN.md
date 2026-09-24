@@ -1,12 +1,15 @@
 # Frontend Performance Debt Paydown Plan
 
 **Prepared:** September 15, 2026  
-**Status:** Proposed  
-**Scope:** Frontend loading, heavyweight feature delivery, Face ID startup, caching, and measurable performance gates
+**Updated:** September 24, 2026
+**Status:** Revised proposal
+**Scope:** Frontend loading, route/tab boundaries, dependency delivery, Face ID startup, caching, package hygiene, and measurable performance gates
 
 ## Objective
 
 Reduce the code and model payload required for the first usable screen, make heavyweight features load only when requested, and establish repeatable evidence that attendance scanning performs acceptably on supported mobile devices.
+
+The plan covers every current route, navigation destination, nested tab, modal, and heavyweight workflow. New packages are not a prerequisite; they may be introduced only after the inventory and baseline show a concrete tooling gap.
 
 This work must not delay or weaken the open privacy, upload-validation, evaluation-validation, or calendar-authorization fixes. Performance changes should be delivered as isolated pull requests with behavior-preserving regression checks.
 
@@ -34,6 +37,23 @@ Additional findings:
 - The service worker caches same-origin scripts, styles, images, fonts, and the manifest, but does not explicitly manage the local Face ID model files or cross-origin MediaPipe resources.
 - No frontend automated-test command or recorded cold/warm mobile performance baseline currently exists.
 
+### Current Surface Inventory
+
+The baseline and acceptance work must account for these current application surfaces:
+
+- Admin/supervisor destinations: dashboard, interns, supervisors, attendance, documents, evaluations, calendar, divisions, schools, reports, DTR, projects, attendance control, and profile.
+- Intern destinations: dashboard, scan attendance, DTR, projects, documents, evaluation, calendar, and profile.
+- Nested heavy surfaces: DTR print/export, DTR preview/history/edit, bulk DTR override, face registration/renewal, project file management, attendance-control tabs, evaluation forms/modals, and calendar views.
+- Compatibility destinations: the legacy departments URL redirects to divisions and must remain covered by redirect/refresh checks without reintroducing department terminology into the active UI.
+
+### Package and Dependency Policy
+
+- First classify each production dependency as shell, route-level, nested-feature, model/runtime, or development-only.
+- Prefer the existing React/Vite capabilities for route splitting and loading states before adding a runtime package.
+- An optional development-only bundle analyzer may be added if the baseline cannot produce sufficient machine-readable detail; it must not enter the production dependency graph without justification.
+- Every new package must include a reason, expected payload impact, maintenance cost, and removal/revisit criteria.
+- Do not add packages, manually split vendors, or remove face models before the baseline identifies the specific problem they address.
+
 The bundle-size warning is a risk indicator, not proof of a user-visible failure. Cold-load and real-device measurements are required before and after implementation.
 
 ## Target Outcomes
@@ -44,31 +64,41 @@ The bundle-size warning is a risk indicator, not proof of a user-visible failure
 4. Required model/runtime assets use an intentional versioning and caching policy.
 5. A repeatable report records bundle sizes, cold/warm navigation timing, and Face ID readiness on supported devices.
 6. Existing backend tests remain green and every frontend production build succeeds throughout the work.
+7. Every current route, tab, modal, and heavy workflow is included in the dependency map and acceptance evidence.
 
 ## Implementation Cycle — Required Execution Order
 
-### START HERE — Cycle 1: Measure Before Changing Code
+### START HERE — Cycle 0: Inventory Before Measuring or Changing Code
+
+**First task:** `PERF-000 — Inventory current routes, tabs, and dependency ownership.`
+
+This short preparation cycle ensures that the baseline and later acceptance checks include newly added screens and nested workflows rather than measuring only the primary dashboard routes.
+
+### Cycle 1: Measure Before Changing Code
 
 **First task:** `PERF-001 — Capture the cold/warm baseline and add bundle reporting.`
 
-This must be completed first. Without a recorded baseline, later bundle changes cannot demonstrate an improvement and regressions cannot be distinguished from pre-existing behavior.
+This must be completed after `PERF-000`. Without a recorded baseline, later bundle changes cannot demonstrate an improvement and regressions cannot be distinguished from pre-existing behavior.
 
 | Cycle | Work ID | Priority | Required work | Starts after | Exit gate |
 |---:|---|---|---|---|---|
-| **1 — FIRST** | **PERF-001** | **P0 for this initiative** | Capture bundle, route, Face ID, and device baselines; add non-blocking size reporting | Immediately | Baseline committed and reproducible |
-| **2 — SECOND** | **PERF-002** | **P1** | Convert application pages to lazy-loaded route boundaries | PERF-001 | Routes, refreshes, redirects, and build pass; initial bundle decreases |
-| **3 — THIRD** | **PERF-003** | **P1** | Isolate Face/QR, DTR/PDF, and calendar dependency graphs | PERF-002 | Heavy chunks are absent from unrelated navigation |
+| **0 — PREP** | **PERF-000** | **P0 for this initiative** | Inventory routes, tabs, nested heavy surfaces, dependency ownership, and package candidates | Immediately | Surface/dependency map committed |
+| **1 — FIRST** | **PERF-001** | **P0 for this initiative** | Capture bundle, route, Face ID, device, and tab-transition baselines; add non-blocking size reporting | PERF-000 | Baseline committed and reproducible |
+| **2 — SECOND** | **PERF-002** | **P1** | Convert application pages to lazy-loaded route boundaries | PERF-001 | Routes, refreshes, redirects, tabs, and build pass; initial bundle decreases |
+| **3 — THIRD** | **PERF-003** | **P1** | Isolate Face/QR, DTR/PDF, calendar, and nested heavy feature dependency graphs | PERF-002 | Heavy chunks are absent from unrelated navigation |
 | **4 — FOURTH** | **PERF-004** | **P1** | Add phased Face ID loading, cleanup, pinned asset delivery, and safe model caching | PERF-003 and device access | Cold/warm Face ID and recovery cases pass on Android and iPhone |
 | **5 — LAST** | **PERF-005** | **P1 release gate** | Set evidence-based CI budgets and close performance acceptance records | PERF-004 | CI budgets enforced and acceptance evidence approved |
 
 The execution path is:
 
-`PERF-001 Baseline` → `PERF-002 Routes` → `PERF-003 Heavy Features` → `PERF-004 Face Assets` → `PERF-005 Enforcement`
+`PERF-000 Inventory` → `PERF-001 Baseline` → `PERF-002 Routes` → `PERF-003 Heavy Features` → `PERF-004 Face Assets` → `PERF-005 Enforcement`
 
 ### Cycle Operating Rules
 
 - Complete each cycle's exit gate before starting its dependent cycle.
+- Complete `PERF-000` before recording measurements so every route, tab, and nested feature has an owner and acceptance path.
 - Keep one implementation pull request per cycle; do not combine all bundle, routing, and service-worker changes.
+- Treat package additions as reviewable changes; do not add a package solely to make a later cycle more convenient.
 - Rebuild and attach a size comparison to every pull request.
 - Run affected workflow smoke tests before merging each cycle.
 - If a P0/P1 privacy, authorization, upload, or correctness defect conflicts with this work, the release-critical defect takes precedence.
@@ -80,17 +110,31 @@ The execution path is:
 Use these labels consistently in issues and pull requests:
 
 - `initiative:performance-paydown`
+- `cycle:0-surface-inventory`
 - `cycle:1-baseline` through `cycle:5-enforcement`
 - `priority:perf-p0` for `PERF-001`
 - `priority:perf-p1` for `PERF-002` through `PERF-005`
 - `area:routing`, `area:face-id`, `area:dtr-export`, `area:calendar`, or `area:pwa-cache`
 - `gate:blocked`, `gate:ready`, or `gate:passed`
 
+### Cycle 0 Checklist — PERF-000
+
+- [ ] Enumerate all current admin, supervisor, intern, legal, redirect, and profile routes.
+- [ ] Enumerate nested tabs, modals, print/export flows, camera flows, and other feature entry points.
+- [ ] Map each route/tab to its static imports, dynamic imports, model files, and third-party resources.
+- [ ] Classify packages as shell, route-level, nested-feature, model/runtime, or development-only.
+- [ ] Record package candidates and explicitly mark whether each is required, optional, or unnecessary.
+- [ ] Commit the inventory under `docs/performance/PERF-000-surface-inventory.md`.
+- [ ] Mark `PERF-000` `gate:passed` before beginning `PERF-001`.
+
 ### First Cycle Checklist — PERF-001
+
+Complete this checklist only after `PERF-000` has passed:
 
 - [ ] Run and save a clean production build report.
 - [ ] Add an analyzer or machine-readable build output.
 - [ ] Add a warning-only bundle-budget command.
+- [ ] Include all current routes, tabs, and nested heavy surfaces in the baseline matrix.
 - [ ] Record cold and warm login, admin-home, and intern-home readiness.
 - [ ] Record cold and warm Scan Attendance-to-Face-ID-ready timing.
 - [ ] Record DTR print/export and calendar feature-load timing.
@@ -100,6 +144,23 @@ Use these labels consistently in issues and pull requests:
 
 ## Delivery Plan
 
+### PR 0 — Surface and Dependency Inventory
+
+**Purpose:** Establish complete coverage of the current route, tab, modal, and dependency surface before measuring or changing delivery boundaries.
+
+Implementation:
+
+- Create `docs/performance/PERF-000-surface-inventory.md` from the current route and nested-feature map.
+- Record which imports are eager, route-lazy, feature-lazy, model/runtime, or development-only.
+- Include the admin, supervisor, intern, legal, redirect, profile, DTR, Face ID, QR, calendar, project, attendance-control, and evaluation surfaces.
+- Record existing package candidates without adding packages by default.
+
+Acceptance:
+
+- Every current route and nested heavy entry point has a baseline/acceptance owner.
+- Package additions are either deferred or justified with measurable expected impact.
+- The inventory is committed before `PERF-001` begins.
+
 ### PR 1 — Establish Measurements and Guardrails
 
 **Purpose:** Create a trustworthy before/after baseline before changing bundle boundaries.
@@ -108,6 +169,7 @@ Implementation:
 
 - Add a frontend `analyze` script that produces a visual or machine-readable bundle report.
 - Add a lightweight bundle-budget script that reads the built assets and reports initial and lazy-chunk gzip sizes.
+- Use the `PERF-000` inventory to include route, tab, and nested-feature transitions in the measurement matrix.
 - Record cold-cache and warm-cache measurements for:
   - Login to interactive.
   - Admin dashboard to interactive.
@@ -136,11 +198,13 @@ Implementation:
 - Wrap route rendering in a shared `Suspense` boundary using the existing visual language from `SystemLoader` or `LoadingSpinner`.
 - Group routes by access path so admin-only, supervisor/intern, legal, and shared pages do not enter unrelated navigation paths.
 - Add a route-load error boundary with a retry/reload action for stale deployments or failed chunk requests.
+- Cover every route in the `PERF-000` inventory, including legal, redirect, profile, attendance-control, and role-specific destinations.
 - Do not add `manualChunks` until route boundaries are working and measured; manually splitting vendor code alone does not reduce total work.
 
 Acceptance:
 
 - Direct navigation and refresh work for every existing route.
+- Every current navigation tab and compatibility redirect is included in direct-navigation and refresh checks.
 - Authorization redirects behave exactly as before.
 - A failed lazy import presents a recoverable error rather than a blank screen.
 - The initial main chunk is materially smaller than the recorded baseline.
@@ -156,12 +220,14 @@ Implementation:
 - Lazy-load `FaceRegistrationModal` only when registration or renewal is initiated.
 - Lazy-load `DTRPrint` and its `jspdf`/DOM-image dependency graph only when DTR output is displayed or export is requested.
 - Lazy-load admin and intern calendar pages so FullCalendar is isolated from unrelated routes.
+- Review nested tabs and modals from the inventory, including DTR history/edit/print, bulk override, evaluation forms, project file management, and attendance-control panels; split them when their dependency graph is materially heavy.
 - Add deliberate loading UI at each boundary so the application never appears frozen.
 - Verify that closing and reopening a feature reuses the loaded chunk without reinitializing resources unnecessarily.
 
 Acceptance:
 
 - Dashboard and login network traces do not request Face ID, QR, PDF, or calendar chunks.
+- Ordinary dashboard, reports, evaluations, and record-management tabs do not request unrelated camera, QR, PDF, or calendar chunks.
 - DTR calculations and displayed totals remain unchanged.
 - QR scanning, Face ID registration/verification, calendar interaction, and DTR printing remain functional.
 - No new duplicate model initialization or camera stream remains active after leaving a feature.
@@ -216,9 +282,10 @@ Acceptance:
 
 | Order | Change | Risk | Dependency |
 |---:|---|---|---|
-| 1 | Measurement and reporting | Low | None |
+| 0 | Surface and dependency inventory | Low | None |
+| 1 | Measurement and reporting | Low | PERF-000 passed |
 | 2 | Route-level lazy loading | Medium | Baseline captured |
-| 3 | Face/QR, DTR, and calendar boundaries | Medium | Route boundaries stable |
+| 3 | Face/QR, DTR, calendar, and nested-feature boundaries | Medium | Route boundaries stable |
 | 4 | Face startup and asset caching | High | Device environment available |
 | 5 | Enforced budgets and final acceptance | Low | Final measurements captured |
 
@@ -230,8 +297,10 @@ PRs 1–3 can proceed without changing face-matching rules. PR 4 must not weaken
 - [ ] `cd frontend && npm run build` passes.
 - [ ] Login, logout, legal acceptance, and role redirects work.
 - [ ] Direct URL refresh works for affected routes.
+- [ ] All affected navigation tabs, nested modals, and compatibility redirects are covered.
 - [ ] No authenticated API response or biometric information enters a browser cache.
 - [ ] Loading and error states are visible and recoverable.
+- [ ] Any new package is justified, measured, and kept out of the production graph unless required.
 - [ ] Bundle report is attached and compared with the preceding baseline.
 - [ ] Relevant desktop and mobile smoke cases pass.
 
@@ -240,6 +309,7 @@ PRs 1–3 can proceed without changing face-matching rules. PR 4 must not weaken
 Performance debt paydown is complete when:
 
 - Route and heavy-feature code is delivered on demand.
+- Every current route, tab, modal, and heavyweight workflow has an intentional delivery boundary.
 - Initial JavaScript size is reduced and protected by an agreed CI budget.
 - Face ID cold/warm readiness is measured on supported Android and iPhone devices.
 - Model/runtime hosting, versioning, and caching behavior is documented and tested.

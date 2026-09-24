@@ -77,7 +77,7 @@ export default function InternManagement() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
-  const [departments, setDepartments] = useState([]);
+  const [divisions, setDivisions] = useState([]);
   const [schools, setSchools] = useState([]);
   const [modal, setModal] = useState(null); // 'create' | 'edit' | 'delete' | 'reset'
   const [selected, setSelected] = useState(null);
@@ -87,7 +87,7 @@ export default function InternManagement() {
   const [bulkOverrideOpen, setBulkOverrideOpen] = useState(false);
   const [newSchoolName, setNewSchoolName] = useState('');
   const [activeTab, setActiveTab] = useState('active'); // 'active' | 'archived'
-  const [sortBy, setSortBy] = useState('full_name'); // 'full_name' | 'department' | 'school'
+  const [sortBy, setSortBy] = useState('full_name'); // 'full_name' | 'division' | 'school'
   const [sortOrder, setSortOrder] = useState('asc'); // 'asc' | 'desc'
   const [faceEnrollmentTarget, setFaceEnrollmentTarget] = useState(null);
   const [renewalRequests, setRenewalRequests] = useState([]);
@@ -160,8 +160,8 @@ export default function InternManagement() {
   }, []);
 
   useEffect(() => {
-    api.get('/divisions').catch(() => api.get('/departments'))
-      .then(r => setDepartments(r.data.divisions || r.data.departments || []))
+    api.get('/divisions')
+      .then(r => setDivisions(r.data.divisions || []))
       .catch(() => toast.error('Could not load division list.'));
     api.get('/schools')
       .then(r => setSchools(r.data.schools))
@@ -400,7 +400,7 @@ export default function InternManagement() {
         </div>
       )
     },
-    { key: 'department_name', label: 'Division', render: (v, row) => row.division_name || v || <span className="text-gray-400">—</span> },
+    { key: 'division_name', label: 'Division', render: v => v || <span className="text-gray-400">—</span> },
     { key: 'school', label: 'School', render: v => <span className="text-xs text-gray-600">{v || '—'}</span> },
     {
       key: 'rendered_hours', label: 'Progress',
@@ -721,19 +721,19 @@ export default function InternManagement() {
             {useAuth().user?.role === 'supervisor' ? (
               <select
                 className="form-input form-select bg-gray-100 text-gray-500 cursor-not-allowed"
-                value={useAuth().user?.division_id || useAuth().user?.department_id || ''}
+                value={useAuth().user?.division_id || ''}
                 disabled
               >
-                <option value={useAuth().user?.division_id || useAuth().user?.department_id}>{useAuth().user?.division_name || useAuth().user?.department_name || 'Your Division'}</option>
+                <option value={useAuth().user?.division_id}>{useAuth().user?.division_name || 'Your Division'}</option>
               </select>
             ) : (
               <select
                 className="form-input form-select bg-gray-50/50"
-                value={form.division_id || form.department_id || ''}
-                onChange={e => setForm(f => ({ ...f, division_id: e.target.value, department_id: undefined }))}
+                value={form.division_id || ''}
+                onChange={e => setForm(f => ({ ...f, division_id: e.target.value }))}
               >
                 <option value="">Select division</option>
-                {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                {divisions.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
               </select>
             )}
           </div>
@@ -794,7 +794,7 @@ export default function InternManagement() {
         onChange={e => { setSortBy(e.target.value); setPage(1); }}
       >
         <option value="full_name">Name</option>
-        <option value="department">Division</option>
+        <option value="division">Division</option>
         <option value="school">School</option>
       </select>
       <button

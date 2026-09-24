@@ -28,6 +28,46 @@ const SELF_PROFILE_EDITABLE_FIELDS = new Set([
   'emergency_relation',
   'emergency_phone',
 ]);
+const EVALUATION_CREATE_FIELDS = new Set([
+  'intern_id',
+  'overall_score',
+  'overall_rating',
+  'comments',
+  'work_quality',
+  'punctuality',
+  'teamwork',
+  'communication',
+  'initiative',
+]);
+const EVALUATION_UPDATE_FIELDS = new Set([
+  'overall_score',
+  'overall_rating',
+  'comments',
+  'work_quality',
+  'punctuality',
+  'teamwork',
+  'communication',
+  'initiative',
+]);
+
+function pickEvaluationFields(payload, allowedFields) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    const error = new Error('Evaluation payload must be an object');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const unsupportedFields = Object.keys(payload).filter(field => !allowedFields.has(field));
+  if (unsupportedFields.length > 0) {
+    const error = new Error(`Unsupported evaluation field(s): ${unsupportedFields.join(', ')}`);
+    error.statusCode = 400;
+    throw error;
+  }
+
+  return Object.fromEntries(
+    Object.entries(payload).filter(([, value]) => value !== undefined)
+  );
+}
 
 async function addCalculatedRenderedHours(interns = []) {
   const internIds = interns.map(intern => intern.id).filter(Boolean);
@@ -309,16 +349,20 @@ export async function getInterns({ search, page = 1, limit = 10, division_id, de
 }
 
 export async function getInternById(id) {
-  const baseFields = 'id, username, full_name, first_name, middle_name, last_name, name_suffix, email, role, school, course, department_id, department_name, status, start_date, end_date, required_hours, rendered_hours, student_id, year_level, phone, home_address, emergency_name, emergency_relation, emergency_phone';
+  const legacyFields = 'id, username, full_name, first_name, middle_name, last_name, name_suffix, email, role, school, course, department_id, department_name, status, start_date, end_date, required_hours, rendered_hours, student_id, year_level, phone, home_address, emergency_name, emergency_relation, emergency_phone';
   try {
     const { data, error } = await supabase
       .from('accounts')
-      .select(`${baseFields}, face_registered, face_registered_at, self_face_enrollment_available`)
+      .select(`${INTERN_LIST_FIELDS}`)
       .eq('id', id)
       .eq('role', INTERN_ROLE)
       .single();
     if (error) throw error;
-    const [intern] = await addCalculatedRenderedHours([data]);
+    const [intern] = await addCalculatedRenderedHours([{
+      ...data,
+      division_id: data.division_id ?? data.department_id ?? null,
+      division_name: data.division_name ?? data.department_name ?? null,
+    }]);
     if (intern) {
       try {
         intern.assigned_profile = await getAssignedProfileForAccount(intern.id);
@@ -330,13 +374,15 @@ export async function getInternById(id) {
   } catch (err) {
     const { data, error } = await supabase
       .from('accounts')
-      .select(baseFields)
+      .select(legacyFields)
       .eq('id', id)
       .eq('role', INTERN_ROLE)
       .single();
     if (error) throw error;
     const [intern] = await addCalculatedRenderedHours([{
       ...data,
+      division_id: data.division_id ?? data.department_id ?? null,
+      division_name: data.division_name ?? data.department_name ?? null,
       face_registered: false,
       face_registered_at: null,
       self_face_enrollment_available: false,
@@ -1429,13 +1475,24 @@ export async function clearNotifications(userId, isAdmin) {
   }
 }
 
-export async function getEvaluations(userId, isAdmin, division_id = null, department_id = null) {
+export async function getEvaluations(
+  userId,
+  canViewAll,
+  division_id = null,
+  department_id = null,
+  includeArchived = false,
+) {
   let query = supabase
     .from('evaluations')
     .select('*')
     .order('evaluation_date', { ascending: false });
 
-  if (!isAdmin) {
+  // Archived evaluations are restricted to the admin evaluation-management view.
+  if (!canViewAll || !includeArchived) {
+    query = query.is('archived_at', null);
+  }
+
+  if (!canViewAll) {
     query = query.eq('intern_id', userId);
   }
 
@@ -1479,8 +1536,17 @@ export async function getEvaluations(userId, isAdmin, division_id = null, depart
 }
 
 export async function createEvaluation(payload, evaluatorId, evaluatorName) {
+  const fields = pickEvaluationFields(payload, EVALUATION_CREATE_FIELDS);
+  const internId = Number(fields.intern_id);
+  if (!Number.isInteger(internId) || internId <= 0) {
+    const error = new Error('A valid intern is required');
+    error.statusCode = 400;
+    throw error;
+  }
+
   const row = {
-    ...payload,
+    ...fields,
+    intern_id: internId,
     evaluator_id: evaluatorId,
     evaluator_name: evaluatorName,
     evaluation_date: new Date().toISOString(),
@@ -1498,11 +1564,54 @@ export async function createEvaluation(payload, evaluatorId, evaluatorName) {
 }
 
 export async function updateEvaluation(id, payload) {
+  const updates = pickEvaluationFields(payload, EVALUATION_UPDATE_FIELDS);
+  if (Object.keys(updates).length === 0) {
+    const error = new Error('At least one editable evaluation field is required');
+    error.statusCode = 400;
+    throw error;
+  }
+
   const { data, error } = await supabase
     .from('evaluations')
-    .update(payload)
+    .update(updates)
     .eq('id', id)
     .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function setEvaluationArchived(id, archived, actorId, reason = '') {
+  const updates = archived
+    ? {
+        archived_at: new Date().toISOString(),
+        archived_by: actorId,
+        archive_reason: String(reason || '').trim() || null,
+      }
+    : {
+        archived_at: null,
+        archived_by: null,
+        archive_reason: null,
+      };
+
+  const { data, error } = await supabase
+    .from('evaluations')
+    .update(updates)
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteEvaluation(id) {
+  const { data, error } = await supabase
+    .from('evaluations')
+    .delete()
+    .eq('id', id)
+    .select('id')
     .single();
 
   if (error) throw error;

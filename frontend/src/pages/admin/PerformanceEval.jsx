@@ -1,5 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Star, PlusCircle, Edit2, Eye, Lock, Unlock } from 'lucide-react';
+import {
+  PlusCircle, Edit2, Eye, Lock, Unlock,
+  Archive, ArchiveRestore, Trash2, AlertTriangle,
+} from 'lucide-react';
 import api from '../../utils/api.js';
 import DataTable from '../../components/common/DataTable.jsx';
 import Modal from '../../components/common/Modal.jsx';
@@ -87,8 +90,7 @@ function parseEvaluationDetails(ev) {
 
 export default function PerformanceEval() {
   const { user } = useAuth();
-  const isAdmin = user?.role === 'admin';
-  const isSupervisor = user?.role === 'supervisor';
+  const isAdmin = user?.role === 'admin' || user?.role === 'superadmin';
 
   const [evals, setEvals] = useState([]);
   const [interns, setInterns] = useState([]);
@@ -98,12 +100,18 @@ export default function PerformanceEval() {
   const [editId, setEditId] = useState(null);
   const [saving, setSaving] = useState(false);
   const [viewEval, setViewEval] = useState(null);
+  const [includeArchived, setIncludeArchived] = useState(false);
+  const [lifecycleTarget, setLifecycleTarget] = useState(null);
+  const [lifecycleReason, setLifecycleReason] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleteConfirmation, setDeleteConfirmation] = useState('');
+  const [lifecycleSaving, setLifecycleSaving] = useState(false);
 
   const fetchEvals = useCallback(async () => {
     setLoading(true);
     try {
       const [evRes, inRes] = await Promise.all([
-        api.get('/evaluations'),
+        api.get('/evaluations', { params: { include_archived: includeArchived } }),
         api.get('/interns', { params: { limit: 100 } })
       ]);
       setEvals(evRes.data.evaluations);
@@ -113,7 +121,7 @@ export default function PerformanceEval() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [includeArchived]);
 
   useEffect(() => {
     fetchEvals();
@@ -152,6 +160,61 @@ export default function PerformanceEval() {
   const openView = (e) => {
     setViewEval(e);
     setModal('view');
+  };
+
+  const openLifecycleConfirmation = (row, action) => {
+    setLifecycleTarget({ row, action });
+    setLifecycleReason('');
+  };
+
+  const handleLifecycleAction = async () => {
+    if (!lifecycleTarget) return;
+    const { row, action } = lifecycleTarget;
+    const isArchiving = action === 'archive';
+    const reason = lifecycleReason.trim();
+
+    if (isArchiving && !reason) {
+      toast.error('A reason is required when archiving an evaluation');
+      return;
+    }
+
+    setLifecycleSaving(true);
+    try {
+      await api.patch(`/evaluations/${row.id}/archive`, {
+        archived: isArchiving,
+        reason,
+      });
+      toast.success(isArchiving ? 'Evaluation archived' : 'Evaluation restored');
+      setLifecycleTarget(null);
+      setLifecycleReason('');
+      fetchEvals();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to update evaluation status');
+    } finally {
+      setLifecycleSaving(false);
+    }
+  };
+
+  const openDeleteConfirmation = (row) => {
+    setDeleteTarget(row);
+    setDeleteConfirmation('');
+  };
+
+  const handleDelete = async () => {
+    if (!deleteTarget || deleteConfirmation !== 'DELETE') return;
+
+    setLifecycleSaving(true);
+    try {
+      await api.delete(`/evaluations/${deleteTarget.id}`);
+      toast.success('Evaluation permanently deleted');
+      setDeleteTarget(null);
+      setDeleteConfirmation('');
+      fetchEvals();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to delete evaluation');
+    } finally {
+      setLifecycleSaving(false);
+    }
   };
 
   const handleToggleVisibility = async (row) => {
@@ -218,7 +281,6 @@ export default function PerformanceEval() {
     });
 
     const payload = {
-      intern_id: form.intern_id,
       overall_score: overallScore,
       overall_rating: rating,
       comments: serializedDetails,
@@ -228,6 +290,7 @@ export default function PerformanceEval() {
       communication: Math.round(form.performance_communication),
       initiative: Math.round(form.project_initiative)
     };
+    if (!editId) payload.intern_id = form.intern_id;
 
     setSaving(true);
     try {
@@ -283,14 +346,26 @@ export default function PerformanceEval() {
   const ratingDetailsLive = getRatingAndLetter(finalGradeLive);
 
   const columns = [
-    { key: 'full_name', label: 'Intern', render: v => <p className="font-medium text-sm text-gray-800">{v}</p> },
+    {
+      key: 'full_name',
+      label: 'Intern',
+      render: (v, row) => (
+        <div>
+          <p className="font-medium text-sm text-gray-800">{v}</p>
+          {row.archived_at && (
+            <span className="badge bg-slate-100 text-slate-600 border border-slate-200 mt-1">
+              Archived
+            </span>
+          )}
+        </div>
+      ),
+    },
     { key: 'evaluation_date', label: 'Date', render: v => <span className="text-sm text-gray-500">{format(new Date(v), 'MMM dd, yyyy')}</span> },
     { key: 'overall_score', label: 'Final Grade', render: v => <span className="font-bold text-blue-700">{Number(v).toFixed(2)}%</span> },
     {
       key: 'overall_rating',
       label: 'Rating',
       render: (v, row) => {
-        const details = parseEvaluationDetails(row);
         const ratingInfo = getRatingAndLetter(row.overall_score);
         return (
           <div className="flex flex-col gap-0.5">
@@ -304,8 +379,18 @@ export default function PerformanceEval() {
       key: 'comments',
       label: 'Intern Visibility',
       render: (_, row) => {
+        if (row.archived_at) {
+          return <span className="text-xs text-gray-400">Unavailable while archived</span>;
+        }
         const details = parseEvaluationDetails(row);
         const isVisible = !!details.is_visible;
+        if (!isAdmin) {
+          return (
+            <span className={`text-xs font-semibold ${isVisible ? 'text-green-700' : 'text-amber-700'}`}>
+              {isVisible ? 'Open' : 'Locked'}
+            </span>
+          );
+        }
         return (
           <button
             onClick={() => handleToggleVisibility(row)}
@@ -330,10 +415,26 @@ export default function PerformanceEval() {
           <button className="btn btn-ghost btn-sm" onClick={() => openView(row)}>
             <Eye className="w-3.5 h-3.5" /> View
           </button>
-          {isAdmin && (
+          {isAdmin && !row.archived_at && (
             <button className="btn btn-ghost btn-sm text-blue-600" onClick={() => openEdit(row)}>
               <Edit2 className="w-3.5 h-3.5" /> Edit
             </button>
+          )}
+          {isAdmin && (
+            <>
+              <button
+                className={`btn btn-ghost btn-sm ${row.archived_at ? 'text-emerald-600' : 'text-amber-600'}`}
+                onClick={() => openLifecycleConfirmation(row, row.archived_at ? 'restore' : 'archive')}
+              >
+                {row.archived_at
+                  ? <ArchiveRestore className="w-3.5 h-3.5" />
+                  : <Archive className="w-3.5 h-3.5" />}
+                {row.archived_at ? 'Restore' : 'Archive'}
+              </button>
+              <button className="btn btn-ghost btn-sm text-red-600" onClick={() => openDeleteConfirmation(row)}>
+                <Trash2 className="w-3.5 h-3.5" /> Delete
+              </button>
+            </>
           )}
         </div>
       )
@@ -347,9 +448,21 @@ export default function PerformanceEval() {
           <h1 className="text-xl sm:text-2xl font-bold text-gray-800" style={{ fontFamily: 'Outfit, sans-serif' }}>Performance Evaluations</h1>
           <p className="text-gray-500 text-sm">{evals.length} evaluations on record</p>
         </div>
-        <button id="create-eval-btn" className="btn btn-primary w-full sm:w-auto" onClick={openCreate}>
-          <PlusCircle className="w-4 h-4" /> Evaluate Intern
-        </button>
+        <div className="flex flex-col sm:flex-row gap-2">
+          {isAdmin && (
+            <button
+              type="button"
+              className="btn btn-secondary w-full sm:w-auto"
+              onClick={() => setIncludeArchived(value => !value)}
+            >
+              {includeArchived ? <ArchiveRestore className="w-4 h-4" /> : <Archive className="w-4 h-4" />}
+              {includeArchived ? 'Hide Archived' : 'Show Archived'}
+            </button>
+          )}
+          <button id="create-eval-btn" className="btn btn-primary w-full sm:w-auto" onClick={openCreate}>
+            <PlusCircle className="w-4 h-4" /> Evaluate Intern
+          </button>
+        </div>
       </div>
 
       <div className="table-responsive">
@@ -406,7 +519,7 @@ export default function PerformanceEval() {
                     <span className="font-semibold text-gray-700">Course/Program:</span> {selectedInternDetails.course || '—'}
                   </div>
                   <div className="text-xs text-gray-500">
-                    <span className="font-semibold text-gray-700">Department/Unit:</span> {selectedInternDetails.department_name || '—'}
+                    <span className="font-semibold text-gray-700">Division:</span> {selectedInternDetails.division_name || '—'}
                   </div>
                   <div className="text-xs text-gray-500 md:col-span-2">
                     <span className="font-semibold text-gray-700">OJT Period:</span> {selectedInternDetails.start_date ? format(new Date(selectedInternDetails.start_date), 'MMM dd, yyyy') : '—'} to {selectedInternDetails.end_date ? format(new Date(selectedInternDetails.end_date), 'MMM dd, yyyy') : '—'}
@@ -613,7 +726,7 @@ export default function PerformanceEval() {
         const finalGrade = projectScore + performanceScore;
         const ratingDetails = getRatingAndLetter(finalGrade);
 
-        // Try to match course/dept from intern record
+        // Try to match course/division from intern record
         const internRecord = interns.find(i => i.id === viewEval.intern_id);
 
         return (
@@ -652,8 +765,8 @@ export default function PerformanceEval() {
                   <span className="ml-2 border-b border-gray-400 pb-0.5 inline-block min-w-[200px] font-semibold">{internRecord?.course || '—'}</span>
                 </div>
                 <div>
-                  <span className="font-bold text-gray-700">Department/Unit:</span>
-                  <span className="ml-2 border-b border-gray-400 pb-0.5 inline-block min-w-[200px] font-semibold">{internRecord?.department_name || '—'}</span>
+                  <span className="font-bold text-gray-700">Division:</span>
+                  <span className="ml-2 border-b border-gray-400 pb-0.5 inline-block min-w-[200px] font-semibold">{internRecord?.division_name || '—'}</span>
                 </div>
                 <div>
                   <span className="font-bold text-gray-700">OJT Period:</span>
@@ -787,6 +900,115 @@ export default function PerformanceEval() {
           </Modal>
         );
       })()}
+
+      {/* Archive / restore confirmation (admins only) */}
+      {lifecycleTarget && (
+        <Modal
+          isOpen={Boolean(lifecycleTarget)}
+          onClose={() => setLifecycleTarget(null)}
+          title={lifecycleTarget.action === 'archive' ? 'Archive Evaluation' : 'Restore Evaluation'}
+          size="sm"
+          footer={
+            <>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setLifecycleTarget(null)}
+                disabled={lifecycleSaving}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className={`btn ${lifecycleTarget.action === 'archive' ? 'btn-primary bg-amber-600 hover:bg-amber-700' : 'btn-primary bg-emerald-600 hover:bg-emerald-700'}`}
+                onClick={handleLifecycleAction}
+                disabled={lifecycleSaving || (lifecycleTarget.action === 'archive' && !lifecycleReason.trim())}
+              >
+                {lifecycleSaving
+                  ? 'Saving...'
+                  : lifecycleTarget.action === 'archive' ? 'Archive Evaluation' : 'Restore Evaluation'}
+              </button>
+            </>
+          }
+        >
+          <div className="space-y-4 text-sm">
+            <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-900">
+              <AlertTriangle className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-600" />
+              <p>
+                {lifecycleTarget.action === 'archive'
+                  ? 'This hides the evaluation from normal lists and from the intern. It can be restored later.'
+                  : 'This makes the evaluation active again and returns it to normal lists.'}
+              </p>
+            </div>
+            <p className="font-semibold text-gray-800">
+              {lifecycleTarget.row.full_name || 'Selected intern'}
+            </p>
+            {lifecycleTarget.action === 'archive' && (
+              <div className="form-group">
+                <label className="form-label">Archive reason *</label>
+                <textarea
+                  className="form-input"
+                  rows={3}
+                  value={lifecycleReason}
+                  onChange={e => setLifecycleReason(e.target.value)}
+                  placeholder="Explain why this evaluation is being archived"
+                  required
+                />
+              </div>
+            )}
+          </div>
+        </Modal>
+      )}
+
+      {/* Permanent deletion confirmation (admins only) */}
+      {deleteTarget && (
+        <Modal
+          isOpen={Boolean(deleteTarget)}
+          onClose={() => setDeleteTarget(null)}
+          title="Permanently Delete Evaluation"
+          size="sm"
+          footer={
+            <>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setDeleteTarget(null)}
+                disabled={lifecycleSaving}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary bg-red-600 hover:bg-red-700"
+                onClick={handleDelete}
+                disabled={lifecycleSaving || deleteConfirmation !== 'DELETE'}
+              >
+                {lifecycleSaving ? 'Deleting...' : 'Delete Permanently'}
+              </button>
+            </>
+          }
+        >
+          <div className="space-y-4 text-sm">
+            <div className="flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 p-3 text-red-900">
+              <AlertTriangle className="mt-0.5 h-5 w-5 flex-shrink-0 text-red-600" />
+              <p>This permanently removes the evaluation and cannot be undone. Archive it instead if it may be needed later.</p>
+            </div>
+            <p className="font-semibold text-gray-800">
+              {deleteTarget.full_name || 'Selected intern'}
+            </p>
+            <div className="form-group">
+              <label className="form-label">Type DELETE to confirm</label>
+              <input
+                className="form-input font-semibold"
+                value={deleteConfirmation}
+                onChange={e => setDeleteConfirmation(e.target.value)}
+                placeholder="DELETE"
+                autoComplete="off"
+              />
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

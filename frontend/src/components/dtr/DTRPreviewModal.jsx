@@ -217,7 +217,7 @@ export default function DTRPreviewModal({
         }
         size="lg"
         footer={
-          <div className="flex flex-wrap items-center justify-between gap-3 w-full">
+          <div className="flex flex-wrap items-center justify-between gap-3 w-full dtr-preview-footer">
             <div className="flex items-center gap-2">
               {isSuperadmin && (
                 <button
@@ -378,10 +378,11 @@ export default function DTRPreviewModal({
           {/* ─────────────────────────────────────────────────────────────
               THE OFFICIAL DTR PREVIEW IMAGE CARD (DOM Element to PNG)
           ───────────────────────────────────────────────────────────── */}
-          <div className="overflow-x-auto flex justify-center py-2">
+          <div className="overflow-x-auto flex justify-center py-2 dtr-preview-viewport">
             <div
               ref={previewRef}
               id="dtr-preview-image-card"
+              className="dtr-preview-card"
               style={{
                 fontFamily: 'Arial, sans-serif',
                 color: '#111827',
@@ -448,8 +449,8 @@ export default function DTRPreviewModal({
                     <span>{intern?.school || 'N/A'}</span>
                   </div>
                   <div>
-                    <span style={{ color: '#64748b', fontWeight: 'bold' }}>Office / Division: </span>
-                    <span>{intern?.division_name || intern?.department_name || 'ITMS'}</span>
+                    <span style={{ color: '#64748b', fontWeight: 'bold' }}>Division: </span>
+                    <span>{intern?.division_name || 'ITMS'}</span>
                   </div>
                   <div style={{ gridColumn: 'span 2' }}>
                     <span style={{ color: '#64748b', fontWeight: 'bold' }}>Attendance Profile: </span>

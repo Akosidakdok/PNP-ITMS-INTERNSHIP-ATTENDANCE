@@ -49,7 +49,7 @@ export default function BulkDTROverrideModal({
       .then(([internsRes, divRes]) => {
         const activeInterns = (internsRes.data.interns || []).filter(i => i.status !== 'archived');
         setInterns(activeInterns);
-        setDivisions(divRes.data.divisions || divRes.data.departments || []);
+        setDivisions(divRes.data.divisions || []);
       })
       .catch(() => toast.error('Failed to load interns or divisions'))
       .finally(() => setLoadingData(false));
@@ -151,7 +151,7 @@ export default function BulkDTROverrideModal({
       title="Apply Bulk DTR Override"
       size="lg"
       footer={
-        <div className="flex items-center justify-between w-full gap-2">
+        <div className="flex items-center justify-between w-full gap-2 dtr-bulk-footer">
           <span className="text-xs text-slate-500">
             Targeting: <strong>{targetInterns.length}</strong> intern(s)
           </span>
@@ -250,7 +250,7 @@ export default function BulkDTROverrideModal({
         {/* Scope Selector */}
         <div className="border-t border-slate-200 pt-3">
           <label className="form-label font-bold text-gray-800 block mb-2">Target Intern Scope</label>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-3 gap-2 dtr-override-scope">
             <button
               type="button"
               className={`p-2.5 rounded-lg border text-left flex flex-col justify-between transition-all ${

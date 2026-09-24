@@ -62,7 +62,7 @@ export default function SupervisorDashboard() {
           Supervisor Dashboard
         </h1>
         <p className="text-gray-500 text-sm mt-1">
-          Welcome, {user?.full_name}. Overview for {stats?.division_name || stats?.department_name || 'your division'}.
+          Welcome, {user?.full_name}. Overview for {stats?.division_name || 'your division'}.
         </p>
       </div>
 
@@ -109,7 +109,7 @@ export default function SupervisorDashboard() {
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold text-gray-800 truncate">{log.full_name}</p>
-                    <p className="text-xs text-gray-500">{log.division_name || log.department_name || 'No division'}</p>
+                    <p className="text-xs text-gray-500">{log.division_name || 'No division'}</p>
                   </div>
                   <div className="text-right flex-shrink-0">
                     <span className={`badge ${log.scan_type === 'time_in' ? 'badge-time-in' : 'badge-time-out'}`}>

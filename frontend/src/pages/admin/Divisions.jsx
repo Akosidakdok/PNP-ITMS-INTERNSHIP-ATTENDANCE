@@ -61,8 +61,8 @@ export default function Divisions() {
   const fetch = async () => {
     setLoading(true);
     try {
-      const res = await api.get('/divisions').catch(() => api.get('/departments'));
-      setDivisions(res.data.divisions || res.data.departments || []);
+      const res = await api.get('/divisions');
+      setDivisions(res.data.divisions || []);
     } catch {
       toast.error('Failed to load divisions.');
     }
@@ -80,9 +80,9 @@ export default function Divisions() {
     setSaving(true);
     try {
       if (selected) {
-        await api.put(`/divisions/${selected.id}`, form).catch(() => api.put(`/departments/${selected.id}`, form));
+        await api.put(`/divisions/${selected.id}`, form);
       } else {
-        await api.post('/divisions', form).catch(() => api.post('/departments', form));
+        await api.post('/divisions', form);
       }
       toast.success(selected ? 'Division updated' : 'Division created');
       setModal(null);
@@ -94,7 +94,7 @@ export default function Divisions() {
   const handleDelete = async () => {
     setSaving(true);
     try {
-      await api.delete(`/divisions/${selected.id}`).catch(() => api.delete(`/departments/${selected.id}`));
+      await api.delete(`/divisions/${selected.id}`);
       toast.success('Division deleted');
       setModal(null);
       fetch();
@@ -106,7 +106,7 @@ export default function Divisions() {
   const fetchInternsForDiv = async (divId) => {
     setInternsLoading(true);
     try {
-      const res = await api.get('/interns', { params: { division_id: divId, department_id: divId, limit: 100 } });
+      const res = await api.get('/interns', { params: { division_id: divId, limit: 100 } });
       setInterns(res.data.interns);
     } catch {
       toast.error('Failed to load interns.');

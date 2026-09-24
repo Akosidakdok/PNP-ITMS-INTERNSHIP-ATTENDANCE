@@ -747,7 +747,7 @@ export default function MyProjects() {
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Division / Department</label>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Division</label>
               <select
                 value={form.division_id}
                 onChange={e => setForm({ ...form, division_id: e.target.value })}

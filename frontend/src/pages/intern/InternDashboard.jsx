@@ -128,7 +128,7 @@ export default function InternDashboard() {
         <h1 className="text-xl sm:text-2xl font-bold mb-1" style={{ fontFamily: 'Outfit, sans-serif' }}>
           {loading ? '...' : intern?.full_name || user?.username}
         </h1>
-        <p className="text-blue-200 text-sm">{loading ? '' : intern?.department_name || 'PNP-ITMS'}</p>
+        <p className="text-blue-200 text-sm">{loading ? '' : intern?.division_name || 'PNP-ITMS'}</p>
         <div className="mt-4 flex flex-wrap items-center gap-2 sm:gap-3">
           <span className="badge bg-white/20 text-white">{intern?.school || '—'}</span>
           <span className="badge bg-white/20 text-white">{intern?.course || '—'}</span>

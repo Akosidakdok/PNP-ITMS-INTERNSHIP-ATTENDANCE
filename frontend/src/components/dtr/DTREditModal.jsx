@@ -104,7 +104,7 @@ export default function DTREditModal({
             </div>
           </div>
         ) : (
-          <div className="flex justify-end gap-2 w-full">
+          <div className="flex justify-end gap-2 w-full dtr-edit-footer">
             <button
               type="button"
               className="btn btn-secondary"

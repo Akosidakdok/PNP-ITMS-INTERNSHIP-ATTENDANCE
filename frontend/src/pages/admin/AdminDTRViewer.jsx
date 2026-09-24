@@ -146,12 +146,12 @@ export default function AdminDTRViewer() {
 
   const filteredInterns = interns.filter(i => {
     const search = internSearch.toLowerCase();
-    return (i.full_name?.toLowerCase().includes(search) || false) || (i.department_name?.toLowerCase().includes(search) || false);
+    return (i.full_name?.toLowerCase().includes(search) || false) || (i.division_name?.toLowerCase().includes(search) || false);
   });
 
   return (
-    <div className="space-y-6 animate-fade-in">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+    <div className="space-y-6 animate-fade-in dtr-page dtr-admin-page">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 dtr-page-header">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold text-gray-800" style={{ fontFamily: 'Outfit, sans-serif' }}>Intern DTR Management</h1>
           <p className="text-gray-500 text-sm">
@@ -160,7 +160,7 @@ export default function AdminDTRViewer() {
               : 'View Daily Time Records for personnel under your supervision'}
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto dtr-page-actions">
           {selectedInternId && (
             <button
               className="btn btn-secondary flex items-center gap-1.5 text-xs"
@@ -208,14 +208,14 @@ export default function AdminDTRViewer() {
       </div>
 
       {/* Trainee & Period Selectors */}
-      <div className="card p-4 flex flex-col sm:flex-row flex-wrap gap-4 items-start sm:items-end">
+      <div className="card p-4 flex flex-col sm:flex-row flex-wrap gap-4 items-start sm:items-end dtr-filter-card">
         <div className="form-group w-full sm:flex-1 sm:min-w-[300px]">
           <label className="form-label font-bold text-xs text-gray-700">Trainee / Intern</label>
           <div className="flex flex-col gap-2">
             <input 
               type="text" 
               className="form-input text-sm"
-              placeholder="Type to filter by name or department..."
+              placeholder="Type to filter by name or division..."
               value={internSearch}
               onChange={e => setInternSearch(e.target.value)}
             />
@@ -227,7 +227,7 @@ export default function AdminDTRViewer() {
               <option value="">Select intern...</option>
               {filteredInterns.map(i => (
                 <option key={i.id} value={i.id}>
-                  {i.full_name} ({i.department_name || 'No Dept'})
+                  {i.full_name} ({i.division_name || 'No Division'})
                 </option>
               ))}
             </select>
@@ -272,7 +272,7 @@ export default function AdminDTRViewer() {
           <p className="text-gray-500 text-sm font-medium">Fetching DTR logs...</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 xl:grid-cols-4 gap-6 dtr-content-grid">
           
           {/* Instructions Box */}
           <div className="xl:col-span-1 space-y-4">
@@ -305,7 +305,7 @@ export default function AdminDTRViewer() {
                 <div className="text-xs text-gray-600 space-y-1">
                   <p><span className="font-bold text-gray-800">School:</span> {selectedInternData.school || '—'}</p>
                   <p><span className="font-bold text-gray-800">Course:</span> {selectedInternData.course || '—'}</p>
-                  <p><span className="font-bold text-gray-800">Division:</span> {selectedInternData.division_name || selectedInternData.department_name || '—'}</p>
+                  <p><span className="font-bold text-gray-800">Division:</span> {selectedInternData.division_name || '—'}</p>
                   <p><span className="font-bold text-gray-800">Required:</span> {selectedInternData.required_hours || 0} Hrs</p>
                 </div>
               </div>
@@ -313,7 +313,7 @@ export default function AdminDTRViewer() {
           </div>
 
           {/* DTR Sheet Rendering */}
-          <div className="xl:col-span-3 card p-6 bg-white overflow-hidden shadow-sm flex flex-col items-center">
+          <div className="xl:col-span-3 card p-6 bg-white overflow-hidden shadow-sm flex flex-col items-center dtr-sheet-card">
             <div className="w-full max-w-[800px] border border-gray-300 rounded-xl p-4 bg-gray-50/50 overflow-x-auto">
               <DTRPrint
                 intern={selectedInternData}

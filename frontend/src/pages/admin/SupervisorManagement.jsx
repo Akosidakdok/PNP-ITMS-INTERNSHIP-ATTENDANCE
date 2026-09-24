@@ -7,7 +7,7 @@ import toast from 'react-hot-toast';
 
 const INIT_FORM = {
   username: '', password: '', full_name: '', email: '', phone: '',
-  department_id: '', status: 'active', home_address: ''
+  division_id: '', status: 'active', home_address: ''
 };
 
 const generateUsername = (fullName) => {
@@ -33,7 +33,7 @@ export default function SupervisorManagement() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
-  const [departments, setDepartments] = useState([]);
+  const [divisions, setDivisions] = useState([]);
   const [modal, setModal] = useState(null); // 'create' | 'edit' | 'delete' | 'reset'
   const [selected, setSelected] = useState(null);
   const [form, setForm] = useState(INIT_FORM);
@@ -51,9 +51,9 @@ export default function SupervisorManagement() {
   }, [search, page]);
 
   useEffect(() => {
-    api.get('/departments')
-      .then(r => setDepartments(r.data.departments))
-      .catch(() => toast.error('Could not load department list.'));
+    api.get('/divisions')
+      .then(r => setDivisions(r.data.divisions || []))
+      .catch(() => toast.error('Could not load division list.'));
   }, []);
 
   useEffect(() => { fetchSupervisors(); }, [fetchSupervisors]);
@@ -147,7 +147,7 @@ export default function SupervisorManagement() {
         </div>
       )
     },
-    { key: 'department_name', label: 'Department', render: v => v || <span className="text-gray-400">—</span> },
+    { key: 'division_name', label: 'Division', render: v => v || <span className="text-gray-400">—</span> },
     { key: 'email', label: 'Email', render: v => <span className="text-xs text-gray-600">{v || '—'}</span> },
     {
       key: 'status', label: 'Status',
@@ -260,14 +260,14 @@ export default function SupervisorManagement() {
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="form-group">
-            <label className="form-label text-[11px] text-gray-500 uppercase font-bold tracking-wider">Department Assignment</label>
+            <label className="form-label text-[11px] text-gray-500 uppercase font-bold tracking-wider">Division Assignment</label>
             <select
               className="form-input form-select bg-gray-50/50"
-              value={form.department_id || ''}
-              onChange={e => setForm(f => ({ ...f, department_id: e.target.value }))}
+              value={form.division_id || ''}
+              onChange={e => setForm(f => ({ ...f, division_id: e.target.value }))}
             >
-              <option value="">Select department</option>
-              {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+              <option value="">Select division</option>
+              {divisions.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
             </select>
           </div>
           {modal === 'edit' && (

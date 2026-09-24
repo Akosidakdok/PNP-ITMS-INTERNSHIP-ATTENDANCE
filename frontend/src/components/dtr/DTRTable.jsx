@@ -152,13 +152,13 @@ export default function DTRTable({ records = [], intern, month, year, onRowClick
   return (
     <>
       {/* ── MOBILE LIST VIEW ── */}
-      <div className="md:hidden space-y-3 no-print bg-gray-50/30 p-1">
-        <div className="flex items-center justify-between mb-4 px-2">
+      <div className="md:hidden space-y-3 no-print bg-gray-50/30 p-1 dtr-mobile-list">
+        <div className="flex items-center justify-between mb-4 px-2 dtr-mobile-list__header">
           <div>
             <h2 className="font-bold text-gray-800 text-sm">Attendance Log</h2>
             <p className="text-xs text-gray-500">{month && year ? format(new Date(year, month - 1, 1), 'MMMM yyyy') : ''}</p>
           </div>
-          <div className="text-right">
+          <div className="text-right dtr-mobile-list__summary">
             <span className="font-black text-blue-700 text-lg">{formatDuration(approvedMinutes)}</span>
             <p className="text-[9px] font-semibold uppercase text-gray-400">Approved rendered</p>
             {workedMinutes !== approvedMinutes && (
@@ -179,7 +179,7 @@ export default function DTRTable({ records = [], intern, month, year, onRowClick
           return (
             <div 
               key={day} 
-              className={`p-3 rounded-xl border ${rec ? 'bg-white border-gray-200 shadow-sm cursor-pointer active:bg-gray-50' : 'bg-gray-100/40 border-gray-100'}`}
+              className={`p-3 rounded-xl border dtr-mobile-list__card ${rec ? 'bg-white border-gray-200 shadow-sm cursor-pointer active:bg-gray-50' : 'bg-gray-100/40 border-gray-100'}`}
               onClick={() => onRowClick && onRowClick(day, rec)}
             >
               <div className="flex justify-between items-center mb-1.5">
@@ -195,7 +195,7 @@ export default function DTRTable({ records = [], intern, month, year, onRowClick
                   <span className="opacity-75 ml-1">({formatDuration(getRecordMinutes(rec))})</span>
                 </div>
               ) : rec ? (
-                <div className="grid grid-cols-3 gap-2 text-[11px] mt-2">
+                <div className="grid grid-cols-3 gap-2 text-[11px] mt-2 dtr-mobile-list__metrics">
                   <div className="bg-gray-50 p-1.5 rounded">
                     <span className="text-gray-400 block mb-0.5 text-[9px] uppercase font-bold">In</span>
                     <span className="font-semibold text-gray-800">{formatTime(rec.time_in) || '--:--'}</span>
@@ -343,9 +343,9 @@ export default function DTRTable({ records = [], intern, month, year, onRowClick
 
         {/* Office */}
         <div style={{ clear: 'both', marginBottom: '8px', height: '16px' }}>
-          <div style={{ float: 'left', fontWeight: 'bold', width: '45px' }}>Office:</div>
-          <div style={{ float: 'left', width: 'calc(100% - 45px)' }}>
-            <div style={{ height: '14px', paddingLeft: '8px' }}>{intern?.department_name || ''}</div>
+          <div style={{ float: 'left', fontWeight: 'bold', width: '50px' }}>Division:</div>
+          <div style={{ float: 'left', width: 'calc(100% - 50px)' }}>
+            <div style={{ height: '14px', paddingLeft: '8px' }}>{intern?.division_name || ''}</div>
             <div style={{ borderTop: '1px solid #000' }}></div>
           </div>
         </div>

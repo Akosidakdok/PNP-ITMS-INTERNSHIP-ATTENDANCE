@@ -47,8 +47,7 @@ function getHomePath(role) {
 }
 
 function PerformanceEvalWrapper() {
-  const { user } = useAuth();
-  return <PerformanceEval readOnly={user?.role === 'supervisor'} />;
+  return <PerformanceEval />;
 }
 
 function ProtectedRoute({ children, roles }) {
