@@ -10,6 +10,7 @@ import { useAuth } from '../../context/AuthContext.jsx';
 import Modal from '../../components/common/Modal.jsx';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
+import { divisionLabel } from '../../utils/display.js';
 
 const FILE_CATEGORIES = [
   { id: 'documentation', label: 'Documentation', icon: FileText, color: 'text-blue-600 bg-blue-50 border-blue-200' },
@@ -597,7 +598,7 @@ export default function ProjectDirectory() {
                   Project Leader
                 </div>
                 <p className="mt-2 font-bold text-slate-900">{quickViewProject.leader_name || 'Unassigned'}</p>
-                <p className="mt-0.5 text-xs text-slate-500">{quickViewProject.leader_division || 'No division assigned'}</p>
+                <p className="mt-0.5 text-xs text-slate-500">{divisionLabel(quickViewProject.leader_division)}</p>
               </div>
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                 <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
@@ -881,7 +882,7 @@ export default function ProjectDirectory() {
                     <label key={member.id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm hover:bg-slate-50">
                       <span>
                         <span className="font-semibold text-slate-800">{member.full_name}</span>
-                        <span className="block text-[11px] text-slate-500">{member.division_name}</span>
+                        <span className="block text-[11px] text-slate-500">{divisionLabel(member.division_name)}</span>
                       </span>
                       <input
                         type="checkbox"

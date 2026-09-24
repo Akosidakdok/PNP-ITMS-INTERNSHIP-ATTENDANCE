@@ -30,7 +30,7 @@
 | Dashboard | `/admin` | `GET /admin/dashboard-stats`, QR endpoints | System-wide totals, recent activity, and active QR code |
 | Intern management | `/admin/interns` | `GET/POST /interns`, `GET/PUT/DELETE /interns/:id`, password reset, Face ID staff enrollment | Full intern lifecycle with validated fields |
 | Supervisor management | `/admin/supervisors` | `GET/POST /supervisors`, `GET/PUT/DELETE /supervisors/:id`, password reset | Administrator-only supervisor lifecycle |
-| Divisions | `/admin/divisions` | Division and department CRUD | Administrator-only mutation; authenticated read |
+| Divisions | `/admin/divisions` | Division CRUD | Administrator-only mutation; authenticated read |
 | Schools | `/admin/schools` | School CRUD | Administrator-only mutation; authenticated read |
 | Attendance | `/admin/attendance` | Attendance log listing and approval/rejection | Paginated review with photo preview and durable status changes |
 | DTR | `/admin/dtr` | Intern list, per-intern DTR, single and bulk overrides | Correct Manila-time calculations and validated overrides |
@@ -113,4 +113,3 @@
 - [ ] Authenticated intern workflows executed interactively
 
 The unchecked items are blocked by the database health failure and unavailable browser connection recorded in the environment checklist.
-

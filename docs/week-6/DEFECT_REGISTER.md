@@ -1,7 +1,8 @@
 # Week 6 Defect Register
 
 **Created:** August 25, 2026  
-**Status:** Open defects identified during the August 24–25 baseline and administrator static/API audit.
+**Remediation update:** The DTR, notification, upload validation, evaluation validation, report encoding/loading, calendar ownership, attendance pagination, document/evaluation pagination, and selector scale findings below have been addressed in the current build. W6-EVAL-002, W6-VAL-001, W6-TEST-001, and W6-PERF-001 remain open pending a policy decision or dedicated follow-up work.
+**Status:** Historical baseline; see the remediation update above for the current state of each finding.
 
 ## Priority Definitions
 
@@ -84,4 +85,3 @@
 ## Audit Limitations
 
 These defects are confirmed by deterministic source traces. Authenticated browser reproduction is still required after Supabase health and browser connectivity are restored. No defect is marked resolved until an automated or interactive regression case passes.
-

@@ -4,6 +4,7 @@ import { useAuth } from './context/AuthContext.jsx';
 import api from './utils/api.js';
 import { formatDistanceToNow } from 'date-fns';
 import QRDisplay from './components/qr/QRDisplay.jsx';
+import { divisionLabel } from './utils/display.js';
 
 function StatCard({ icon: Icon, label, value, gradient, trend }) {
   return (
@@ -62,7 +63,7 @@ export default function SupervisorDashboard() {
           Supervisor Dashboard
         </h1>
         <p className="text-gray-500 text-sm mt-1">
-          Welcome, {user?.full_name}. Overview for {stats?.division_name || 'your division'}.
+          Welcome, {user?.full_name}. Overview for {divisionLabel(stats?.division_name)}.
         </p>
       </div>
 
@@ -109,7 +110,7 @@ export default function SupervisorDashboard() {
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold text-gray-800 truncate">{log.full_name}</p>
-                    <p className="text-xs text-gray-500">{log.division_name || 'No division'}</p>
+                    <p className="text-xs text-gray-500">{divisionLabel(log.division_name)}</p>
                   </div>
                   <div className="text-right flex-shrink-0">
                     <span className={`badge ${log.scan_type === 'time_in' ? 'badge-time-in' : 'badge-time-out'}`}>

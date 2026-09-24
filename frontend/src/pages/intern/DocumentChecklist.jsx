@@ -11,7 +11,7 @@ export default function DocumentChecklist({ internId }) {
   const fetchDocs = useCallback(async () => {
     setLoading(true);
     try {
-      const params = internId ? { intern_id: internId } : {};
+      const params = internId ? { intern_id: internId, limit: 100 } : { limit: 100 };
       const res = await api.get('/documents', { params });
       setDocs(res.data.documents);
     } catch {

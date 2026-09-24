@@ -19,6 +19,8 @@ function useDebounce(value, delay = 350) {
 
 export default function DocumentReview() {
   const [docs, setDocs] = useState([]);
+  const [docPage, setDocPage] = useState(1);
+  const [docTotal, setDocTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('pending');
   const [searchQuery, setSearchQuery] = useState('');
@@ -35,14 +37,25 @@ export default function DocumentReview() {
       const params = {
         status: statusFilter || undefined,
         search: debouncedSearch || undefined,
+        page: docPage,
+        limit: 15,
       };
       const res = await api.get('/documents', { params });
-      setDocs(res.data.documents);
-    } catch { toast.error('Failed to load documents'); }
+      setDocs(res.data.documents || []);
+      setDocTotal(res.data.total || 0);
+    } catch {
+      setDocs([]);
+      setDocTotal(0);
+      toast.error('Failed to load documents');
+    }
     finally { setLoading(false); }
-  }, [statusFilter, debouncedSearch]);
+  }, [statusFilter, debouncedSearch, docPage]);
 
   useEffect(() => { fetchDocs(); }, [fetchDocs]);
+
+  useEffect(() => {
+    setDocPage(1);
+  }, [statusFilter, debouncedSearch]);
 
   const handleReview = async (docId) => {
     setSaving(true);
@@ -150,10 +163,10 @@ export default function DocumentReview() {
           columns={columns}
           data={docs}
           loading={loading}
-          total={docs.length}
-          page={1}
-          limit={docs.length || 1}
-          onPageChange={() => {}} // No-op as pagination is not implemented here
+          total={docTotal}
+          page={docPage}
+          limit={15}
+          onPageChange={setDocPage}
           emptyMessage="No documents found"
         />
       </div>

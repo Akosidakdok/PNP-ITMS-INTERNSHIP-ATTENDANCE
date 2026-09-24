@@ -6,6 +6,8 @@ import {
 import api from '../../utils/api.js';
 import DataTable from '../../components/common/DataTable.jsx';
 import Modal from '../../components/common/Modal.jsx';
+import { fetchAllInterns } from '../../utils/interns.js';
+import { divisionLabel } from '../../utils/display.js';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
 import { useAuth } from '../../context/AuthContext.jsx';
@@ -93,6 +95,8 @@ export default function PerformanceEval() {
   const isAdmin = user?.role === 'admin' || user?.role === 'superadmin';
 
   const [evals, setEvals] = useState([]);
+  const [evalPage, setEvalPage] = useState(1);
+  const [evalTotal, setEvalTotal] = useState(0);
   const [interns, setInterns] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null); // 'form' | 'view'
@@ -111,21 +115,28 @@ export default function PerformanceEval() {
     setLoading(true);
     try {
       const [evRes, inRes] = await Promise.all([
-        api.get('/evaluations', { params: { include_archived: includeArchived } }),
-        api.get('/interns', { params: { limit: 100 } })
+        api.get('/evaluations', { params: { include_archived: includeArchived, page: evalPage, limit: 15 } }),
+        fetchAllInterns({ includeArchived: true })
       ]);
-      setEvals(evRes.data.evaluations);
-      setInterns(inRes.data.interns);
+      setEvals(evRes.data.evaluations || []);
+      setEvalTotal(evRes.data.total || 0);
+      setInterns(inRes);
     } catch {
+      setEvals([]);
+      setEvalTotal(0);
       toast.error('Failed to load evaluations');
     } finally {
       setLoading(false);
     }
-  }, [includeArchived]);
+  }, [includeArchived, evalPage]);
 
   useEffect(() => {
     fetchEvals();
   }, [fetchEvals]);
+
+  useEffect(() => {
+    setEvalPage(1);
+  }, [includeArchived]);
 
   const openCreate = () => {
     setForm(INIT_FORM);
@@ -446,7 +457,7 @@ export default function PerformanceEval() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold text-gray-800" style={{ fontFamily: 'Outfit, sans-serif' }}>Performance Evaluations</h1>
-          <p className="text-gray-500 text-sm">{evals.length} evaluations on record</p>
+          <p className="text-gray-500 text-sm">{evalTotal} evaluations on record</p>
         </div>
         <div className="flex flex-col sm:flex-row gap-2">
           {isAdmin && (
@@ -466,7 +477,16 @@ export default function PerformanceEval() {
       </div>
 
       <div className="table-responsive">
-        <DataTable columns={columns} data={evals} loading={loading} total={evals.length} page={1} limit={100} onPageChange={() => {}} emptyMessage="No evaluations yet" />
+        <DataTable
+          columns={columns}
+          data={evals}
+          loading={loading}
+          total={evalTotal}
+          page={evalPage}
+          limit={15}
+          onPageChange={setEvalPage}
+          emptyMessage="No evaluations yet"
+        />
       </div>
 
       {/* Add / Edit Evaluation Modal (Admins can do both, Supervisors can only add/create) */}
@@ -519,7 +539,7 @@ export default function PerformanceEval() {
                     <span className="font-semibold text-gray-700">Course/Program:</span> {selectedInternDetails.course || '—'}
                   </div>
                   <div className="text-xs text-gray-500">
-                    <span className="font-semibold text-gray-700">Division:</span> {selectedInternDetails.division_name || '—'}
+                    <span className="font-semibold text-gray-700">Division:</span> {divisionLabel(selectedInternDetails.division_name)}
                   </div>
                   <div className="text-xs text-gray-500 md:col-span-2">
                     <span className="font-semibold text-gray-700">OJT Period:</span> {selectedInternDetails.start_date ? format(new Date(selectedInternDetails.start_date), 'MMM dd, yyyy') : '—'} to {selectedInternDetails.end_date ? format(new Date(selectedInternDetails.end_date), 'MMM dd, yyyy') : '—'}
@@ -756,27 +776,27 @@ export default function PerformanceEval() {
 
               {/* Trainee Details */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2.5 text-xs border border-gray-300 rounded-xl p-4 bg-gray-50/50">
-                <div>
+                <div className="evaluation-detail-field">
                   <span className="font-bold text-gray-700">Trainee Name:</span>
-                  <span className="ml-2 border-b border-gray-400 pb-0.5 inline-block min-w-[200px] font-semibold">{viewEval.full_name}</span>
+                  <span className="evaluation-detail-value ml-2 border-b border-gray-400 pb-0.5 inline-block min-w-[200px] font-semibold">{viewEval.full_name}</span>
                 </div>
-                <div>
+                <div className="evaluation-detail-field">
                   <span className="font-bold text-gray-700">Position/Program:</span>
-                  <span className="ml-2 border-b border-gray-400 pb-0.5 inline-block min-w-[200px] font-semibold">{internRecord?.course || '—'}</span>
+                  <span className="evaluation-detail-value ml-2 border-b border-gray-400 pb-0.5 inline-block min-w-[200px] font-semibold">{internRecord?.course || '—'}</span>
                 </div>
-                <div>
+                <div className="evaluation-detail-field">
                   <span className="font-bold text-gray-700">Division:</span>
-                  <span className="ml-2 border-b border-gray-400 pb-0.5 inline-block min-w-[200px] font-semibold">{internRecord?.division_name || '—'}</span>
+                  <span className="evaluation-detail-value ml-2 border-b border-gray-400 pb-0.5 inline-block min-w-[200px] font-semibold">{divisionLabel(internRecord?.division_name)}</span>
                 </div>
-                <div>
+                <div className="evaluation-detail-field">
                   <span className="font-bold text-gray-700">OJT Period:</span>
-                  <span className="ml-2 border-b border-gray-400 pb-0.5 inline-block min-w-[200px] font-semibold">
+                  <span className="evaluation-detail-value ml-2 border-b border-gray-400 pb-0.5 inline-block min-w-[200px] font-semibold">
                     {internRecord?.start_date ? format(new Date(internRecord.start_date), 'MM/dd/yyyy') : '—'} to {internRecord?.end_date ? format(new Date(internRecord.end_date), 'MM/dd/yyyy') : '—'}
                   </span>
                 </div>
-                <div className="md:col-span-2">
+                <div className="evaluation-detail-field md:col-span-2">
                   <span className="font-bold text-gray-700">Evaluator/Supervisor:</span>
-                  <span className="ml-2 border-b border-gray-400 pb-0.5 inline-block min-w-[200px] font-semibold">{viewEval.evaluator_name}</span>
+                  <span className="evaluation-detail-value ml-2 border-b border-gray-400 pb-0.5 inline-block min-w-[200px] font-semibold">{viewEval.evaluator_name}</span>
                 </div>
               </div>
 

@@ -7,6 +7,7 @@ import toast from 'react-hot-toast';
 import { useAuth } from '../../context/AuthContext.jsx';
 import DTREditModal from '../../components/dtr/DTREditModal.jsx';
 import BulkDTROverrideModal from '../../components/dtr/BulkDTROverrideModal.jsx';
+import { divisionLabel } from '../../utils/display.js';
 
 function WatermarkedSelfie({ photoUrl, recordDate, recordTime, isSuperadmin }) {
   const [mode, setMode] = useState('official'); // 'official' | 'audit'
@@ -223,6 +224,8 @@ export default function AttendanceApproval() {
       setLogs(res.data.logs);
       setTotal(res.data.total);
     } catch (error) {
+      setLogs([]);
+      setTotal(0);
       toast.error(
         error?.response?.data?.error
           || (error?.request ? 'Unable to reach the attendance service' : 'Failed to load attendance')
@@ -232,6 +235,10 @@ export default function AttendanceApproval() {
   }, [filters, page]);
 
   useEffect(() => { fetchLogs(); }, [fetchLogs]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [filters.status, filters.date]);
 
   const handleAction = async (action) => {
     const actionDetails = ACTION_DETAILS[action];
@@ -279,7 +286,7 @@ export default function AttendanceApproval() {
       render: (v, row) => (
         <div>
           <p className="font-medium text-sm text-gray-800">{v}</p>
-          <p className="text-xs text-gray-400">{row.division_name || '—'}</p>
+          <p className="text-xs text-gray-400">{divisionLabel(row.division_name)}</p>
         </div>
       )
     },
@@ -551,7 +558,7 @@ export default function AttendanceApproval() {
               <div className="flex items-center justify-between pb-2 border-b border-slate-200">
                 <div>
                   <p className="font-semibold text-gray-800 text-sm">{previewRecord.full_name}</p>
-                  <p className="text-gray-500">{previewRecord.division_name || 'PNP ITMS'}</p>
+                  <p className="text-gray-500">{divisionLabel(previewRecord.division_name)}</p>
                 </div>
                 <span className={`badge ${previewRecord.scan_type === 'time_in' ? 'badge-time-in' : 'badge-time-out'}`}>
                   {previewRecord.scan_type === 'time_in' ? 'Time In' : 'Time Out'}

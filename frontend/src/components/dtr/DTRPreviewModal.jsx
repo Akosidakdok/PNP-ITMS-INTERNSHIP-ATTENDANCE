@@ -8,6 +8,7 @@ import api from '../../utils/api.js';
 import toast from 'react-hot-toast';
 import domtoimage from 'dom-to-image-more';
 import DTRHistoryModal from './DTRHistoryModal.jsx';
+import { divisionLabel } from '../../utils/display.js';
 
 // Month names helper
 const MONTH_NAMES = [
@@ -454,7 +455,7 @@ export default function DTRPreviewModal({
                   </div>
                   <div>
                     <span style={{ color: '#64748b', fontWeight: 'bold' }}>Division: </span>
-                    <span>{intern?.division_name || 'ITMS'}</span>
+                    <span>{divisionLabel(intern?.division_name)}</span>
                   </div>
                   <div style={{ gridColumn: 'span 2' }}>
                     <span style={{ color: '#64748b', fontWeight: 'bold' }}>Attendance Profile: </span>

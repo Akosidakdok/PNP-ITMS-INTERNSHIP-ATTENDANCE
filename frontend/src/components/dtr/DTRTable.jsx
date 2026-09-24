@@ -1,4 +1,5 @@
 import { format, getDaysInMonth, parseISO } from 'date-fns';
+import { divisionLabel } from '../../utils/display.js';
 
 const MONTH_NAMES = [
   'January','February','March','April','May','June',
@@ -379,7 +380,7 @@ export default function DTRTable({
         <div style={{ clear: 'both', marginBottom: '8px', height: '16px' }}>
           <div style={{ float: 'left', fontWeight: 'bold', width: '50px' }}>Division:</div>
           <div style={{ float: 'left', width: 'calc(100% - 50px)' }}>
-            <div style={{ height: '14px', paddingLeft: '8px' }}>{intern?.division_name || ''}</div>
+            <div style={{ height: '14px', paddingLeft: '8px' }}>{divisionLabel(intern?.division_name)}</div>
             <div style={{ borderTop: '1px solid #000' }}></div>
           </div>
         </div>

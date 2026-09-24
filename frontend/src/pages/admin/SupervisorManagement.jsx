@@ -4,6 +4,7 @@ import api from '../../utils/api.js';
 import DataTable from '../../components/common/DataTable.jsx';
 import Modal from '../../components/common/Modal.jsx';
 import toast from 'react-hot-toast';
+import { divisionLabel } from '../../utils/display.js';
 
 const INIT_FORM = {
   username: '', password: '', full_name: '', email: '', phone: '',
@@ -147,7 +148,7 @@ export default function SupervisorManagement() {
         </div>
       )
     },
-    { key: 'division_name', label: 'Division', render: v => v || <span className="text-gray-400">—</span> },
+    { key: 'division_name', label: 'Division', render: v => divisionLabel(v) },
     { key: 'email', label: 'Email', render: v => <span className="text-xs text-gray-600">{v || '—'}</span> },
     {
       key: 'status', label: 'Status',

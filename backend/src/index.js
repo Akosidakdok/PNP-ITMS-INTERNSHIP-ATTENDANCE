@@ -70,6 +70,7 @@ import {
   updateDocumentStatus,
   deleteDocument,
   getCalendarEvents,
+  assertCalendarEventMutationAccess,
   createCalendarEvent,
   getSupervisorDashboardStats,
   updateCalendarEvent,
@@ -90,6 +91,7 @@ import {
   setBulkDtrOverride
 } from './data.js';
 import { getPhtDayBoundsUtc } from './utils/attendanceTime.js';
+import { MAX_UPLOAD_BYTES } from './utils/fileValidation.js';
 import {
   getProjects,
   getProjectById,
@@ -133,7 +135,16 @@ const host = process.env.HOST || '0.0.0.0';
 
 // Use memoryStorage for multer to pass file buffer to Supabase Storage
 const storage = multer.memoryStorage();
-const upload = multer({ storage: storage });
+const upload = multer({ storage, limits: { fileSize: MAX_UPLOAD_BYTES, files: 1 } });
+const uploadSingle = fieldName => (req, res, next) => upload.single(fieldName)(req, res, error => {
+  if (error) {
+    const message = error.code === 'LIMIT_FILE_SIZE'
+      ? 'File exceeds the 25 MB upload limit'
+      : error.message || 'Invalid file upload';
+    return res.status(error.code === 'LIMIT_FILE_SIZE' ? 413 : 400).json({ error: message });
+  }
+  return next();
+});
 const SELF_PROFILE_FIELDS = new Set([
   'email',
   'phone',
@@ -210,7 +221,7 @@ app.get('/auth/me', authMiddleware, async (req, res) => {
     const legal_status = await getLegalAcceptanceStatus(req.user.id);
     return res.json({ user: profile, legal_status });
   } catch (error) {
-    return res.status(500).json({ error: error.message });
+    return res.status(error.statusCode || 500).json({ error: error.message });
   }
 });
 
@@ -219,7 +230,7 @@ app.get('/legal/documents/active', async (req, res) => {
     const documents = await getActiveLegalDocuments();
     return res.json({ documents });
   } catch (error) {
-    return res.status(500).json({ error: error.message });
+    return res.status(error.statusCode || 500).json({ error: error.message });
   }
 });
 
@@ -228,7 +239,7 @@ app.get('/legal/acceptance-status', authMiddleware, async (req, res) => {
     const status = await getLegalAcceptanceStatus(req.user.id);
     return res.json(status);
   } catch (error) {
-    return res.status(500).json({ error: error.message });
+    return res.status(error.statusCode || 500).json({ error: error.message });
   }
 });
 
@@ -249,7 +260,7 @@ app.get('/admin/legal/acceptance-status', authMiddleware, adminMiddleware, async
     const accounts = await getLegalAcceptanceSummary();
     return res.json({ accounts });
   } catch (error) {
-    return res.status(500).json({ error: error.message });
+    return res.status(error.statusCode || 500).json({ error: error.message });
   }
 });
 
@@ -258,7 +269,7 @@ app.get('/admin/dashboard-stats', authMiddleware, adminOnlyMiddleware, async (re
     const stats = await getAdminDashboardStats();
     return res.json(stats);
   } catch (error) {
-    return res.status(500).json({ error: error.message });
+    return res.status(error.statusCode || 500).json({ error: error.message });
   }
 });
 
@@ -269,7 +280,7 @@ app.get('/supervisor/dashboard-stats', authMiddleware, async (req, res) => {
     const stats = await getSupervisorDashboardStats(userProfile);
     return res.json(stats);
   } catch (error) {
-    return res.status(500).json({ error: error.message });
+    return res.status(error.statusCode || 500).json({ error: error.message });
   }
 });
 
@@ -314,7 +325,7 @@ app.get('/divisions', authMiddleware, async (req, res) => {
     const divisions = await getDivisions();
     return res.json({ divisions, departments: divisions });
   } catch (error) {
-    return res.status(500).json({ error: error.message });
+    return res.status(error.statusCode || 500).json({ error: error.message });
   }
 });
 
@@ -323,7 +334,7 @@ app.post('/divisions', authMiddleware, adminOnlyMiddleware, async (req, res) => 
     const division = await createDivision(req.body);
     return res.json({ division, department: division });
   } catch (error) {
-    return res.status(500).json({ error: error.message });
+    return res.status(error.statusCode || 500).json({ error: error.message });
   }
 });
 
@@ -332,7 +343,7 @@ app.put('/divisions/:id', authMiddleware, adminOnlyMiddleware, async (req, res) 
     const division = await updateDivision(Number(req.params.id), req.body);
     return res.json({ division, department: division });
   } catch (error) {
-    return res.status(500).json({ error: error.message });
+    return res.status(error.statusCode || 500).json({ error: error.message });
   }
 });
 
@@ -341,7 +352,7 @@ app.delete('/divisions/:id', authMiddleware, adminOnlyMiddleware, async (req, re
     const result = await deleteDivision(Number(req.params.id));
     return res.json(result);
   } catch (error) {
-    return res.status(500).json({ error: error.message });
+    return res.status(error.statusCode || 500).json({ error: error.message });
   }
 });
 
@@ -359,7 +370,7 @@ app.post('/departments', authMiddleware, adminOnlyMiddleware, async (req, res) =
     const department = await createDepartment(req.body);
     return res.json({ department, division: department });
   } catch (error) {
-    return res.status(500).json({ error: error.message });
+    return res.status(error.statusCode || 500).json({ error: error.message });
   }
 });
 
@@ -368,7 +379,7 @@ app.put('/departments/:id', authMiddleware, adminOnlyMiddleware, async (req, res
     const department = await updateDepartment(Number(req.params.id), req.body);
     return res.json({ department, division: department });
   } catch (error) {
-    return res.status(500).json({ error: error.message });
+    return res.status(error.statusCode || 500).json({ error: error.message });
   }
 });
 
@@ -377,7 +388,7 @@ app.delete('/departments/:id', authMiddleware, adminOnlyMiddleware, async (req, 
     const result = await deleteDepartment(Number(req.params.id));
     return res.json(result);
   } catch (error) {
-    return res.status(500).json({ error: error.message });
+    return res.status(error.statusCode || 500).json({ error: error.message });
   }
 });
 
@@ -395,7 +406,7 @@ app.post('/schools', authMiddleware, adminOnlyMiddleware, async (req, res) => {
     const school = await createSchool(req.body);
     return res.json({ school });
   } catch (error) {
-    return res.status(500).json({ error: error.message });
+    return res.status(error.statusCode || 500).json({ error: error.message });
   }
 });
 
@@ -404,7 +415,7 @@ app.put('/schools/:id', authMiddleware, adminOnlyMiddleware, async (req, res) =>
     const school = await updateSchool(Number(req.params.id), req.body);
     return res.json({ school });
   } catch (error) {
-    return res.status(500).json({ error: error.message });
+    return res.status(error.statusCode || 500).json({ error: error.message });
   }
 });
 
@@ -413,7 +424,7 @@ app.delete('/schools/:id', authMiddleware, adminOnlyMiddleware, async (req, res)
     const result = await deleteSchool(Number(req.params.id));
     return res.json(result);
   } catch (error) {
-    return res.status(500).json({ error: error.message });
+    return res.status(error.statusCode || 500).json({ error: error.message });
   }
 });
 
@@ -473,7 +484,7 @@ app.get('/interns/me/profile', authMiddleware, async (req, res) => {
     const intern = await getCurrentUserProfile(req.user.id);
     return res.json({ intern });
   } catch (error) {
-    return res.status(500).json({ error: error.message });
+    return res.status(error.statusCode || 500).json({ error: error.message });
   }
 });
 
@@ -490,7 +501,7 @@ app.put('/interns/me/profile', authMiddleware, async (req, res) => {
     const intern = await updateCurrentUserProfile(req.user.id, req.body);
     return res.json({ intern });
   } catch (error) {
-    return res.status(500).json({ error: error.message });
+    return res.status(error.statusCode || 500).json({ error: error.message });
   }
 });
 
@@ -610,7 +621,7 @@ app.post('/supervisors', authMiddleware, adminOnlyMiddleware, async (req, res) =
     return res.json({ supervisor });
   } catch (error) {
     console.error('Error creating supervisor:', error);
-    return res.status(500).json({ error: error.message });
+    return res.status(error.statusCode || 500).json({ error: error.message });
   }
 });
 
@@ -638,7 +649,7 @@ app.put('/supervisors/:id', authMiddleware, adminOnlyMiddleware, async (req, res
     const supervisor = await updateSupervisor(Number(req.params.id), req.body);
     return res.json({ supervisor });
   } catch (error) {
-    return res.status(500).json({ error: error.message });
+    return res.status(error.statusCode || 500).json({ error: error.message });
   }
 });
 
@@ -647,7 +658,7 @@ app.delete('/supervisors/:id', authMiddleware, adminOnlyMiddleware, async (req, 
     const result = await deleteSupervisor(Number(req.params.id));
     return res.json(result);
   } catch (error) {
-    return res.status(500).json({ error: error.message });
+    return res.status(error.statusCode || 500).json({ error: error.message });
   }
 });
 
@@ -661,7 +672,7 @@ app.post('/supervisors/:id/reset-password', authMiddleware, adminOnlyMiddleware,
     const result = await resetSupervisorPassword(Number(req.params.id), new_password);
     return res.json(result);
   } catch (error) {
-    return res.status(500).json({ error: error.message });
+    return res.status(error.statusCode || 500).json({ error: error.message });
   }
 });
 
@@ -961,7 +972,7 @@ app.get('/notifications', authMiddleware, async (req, res) => {
     const notifications = await getNotifications(req.user.id, isStaff);
     return res.json(notifications);
   } catch (error) {
-    return res.status(500).json({ error: error.message });
+    return res.status(error.statusCode || 500).json({ error: error.message });
   }
 });
 
@@ -971,7 +982,7 @@ app.patch('/notifications/:id/read', authMiddleware, async (req, res) => {
     const result = await markNotificationRead(Number(req.params.id), req.user.id, isStaff);
     return res.json(result);
   } catch (error) {
-    return res.status(500).json({ error: error.message });
+    return res.status(error.statusCode || 500).json({ error: error.message });
   }
 });
 
@@ -981,7 +992,7 @@ app.patch('/notifications/read-all', authMiddleware, async (req, res) => {
     const result = await markAllNotificationsRead(req.user.id, isStaff);
     return res.json(result);
   } catch (error) {
-    return res.status(500).json({ error: error.message });
+    return res.status(error.statusCode || 500).json({ error: error.message });
   }
 });
 
@@ -991,7 +1002,7 @@ app.delete('/notifications/clear', authMiddleware, async (req, res) => {
     const result = await clearNotifications(req.user.id, isStaff);
     return res.json(result);
   } catch (error) {
-    return res.status(500).json({ error: error.message });
+    return res.status(error.statusCode || 500).json({ error: error.message });
   }
 });
 
@@ -1004,8 +1015,18 @@ app.get('/evaluations', authMiddleware, async (req, res) => {
     const isStaff = ['admin', 'supervisor', 'superadmin'].includes(req.user.role);
     const canViewArchived = ['admin', 'superadmin'].includes(req.user.role);
     const includeArchived = canViewArchived && req.query.include_archived === 'true';
-    const evaluations = await getEvaluations(req.user.id, isStaff, divId, null, includeArchived);
-    return res.json({ evaluations });
+    const evaluations = await getEvaluations(
+      req.user.id,
+      isStaff,
+      divId,
+      null,
+      includeArchived,
+      {
+        page: Number(req.query.page) || 1,
+        limit: Number(req.query.limit) || 15,
+      },
+    );
+    return res.json(evaluations);
   } catch (error) {
     console.error('Error in GET /evaluations:', error);
     return res.status(error.statusCode || 500).json({ error: error.message });
@@ -1089,20 +1110,23 @@ app.get('/documents', authMiddleware, async (req, res) => {
       status: req.query.status,
       search: req.query.search,
       division_id: divId,
+      intern_id: req.query.intern_id,
+      page: Number(req.query.page) || 1,
+      limit: Number(req.query.limit) || 15,
     };
     const documents = await getDocuments(req.user.id, isAdmin, options);
-    return res.json({ documents });
+    return res.json(documents);
   } catch (error) {
     return res.status(error.statusCode || 500).json({ error: error.message });
   }
 });
 
-app.post('/documents/upload', authMiddleware, upload.single('file'), async (req, res) => {
+app.post('/documents/upload', authMiddleware, uploadSingle('file'), async (req, res) => {
   try {
     const document = await createDocument({ userId: req.user.id, file: req.file, document_type: req.body.document_type });
     return res.json({ document });
   } catch (error) {
-    return res.status(500).json({ error: error.message });
+    return res.status(error.statusCode || 500).json({ error: error.message });
   }
 });
 
@@ -1153,7 +1177,7 @@ app.get('/calendar-events', authMiddleware, async (req, res) => {
     const events = await getCalendarEvents({ year: Number(year), month: Number(month) });
     return res.json({ events });
   } catch (error) {
-    return res.status(500).json({ error: error.message });
+    return res.status(error.statusCode || 500).json({ error: error.message });
   }
 });
 
@@ -1165,7 +1189,7 @@ app.post('/calendar-events', authMiddleware, async (req, res) => {
     const event = await createCalendarEvent(req.body, req.user.id);
     return res.status(201).json({ event });
   } catch (error) {
-    return res.status(500).json({ error: error.message });
+    return res.status(error.statusCode || 500).json({ error: error.message });
   }
 });
 
@@ -1174,10 +1198,11 @@ app.put('/calendar-events/:id', authMiddleware, async (req, res) => {
     return res.status(403).json({ error: 'Permission denied' });
   }
   try {
+    await assertCalendarEventMutationAccess(Number(req.params.id), req.user);
     const event = await updateCalendarEvent(Number(req.params.id), req.body);
     return res.json({ event });
   } catch (error) {
-    return res.status(500).json({ error: error.message });
+    return res.status(error.statusCode || 500).json({ error: error.message });
   }
 });
 
@@ -1186,10 +1211,11 @@ app.delete('/calendar-events/:id', authMiddleware, async (req, res) => {
     return res.status(403).json({ error: 'Permission denied' });
   }
   try {
+    await assertCalendarEventMutationAccess(Number(req.params.id), req.user);
     const result = await deleteCalendarEvent(Number(req.params.id));
     return res.json(result);
   } catch (error) {
-    return res.status(500).json({ error: error.message });
+    return res.status(error.statusCode || 500).json({ error: error.message });
   }
 });
 
@@ -1635,7 +1661,7 @@ app.delete('/projects/:id', authMiddleware, async (req, res) => {
   }
 });
 
-app.post('/projects/:id/files', authMiddleware, upload.single('file'), async (req, res) => {
+app.post('/projects/:id/files', authMiddleware, uploadSingle('file'), async (req, res) => {
   try {
     const access = await assertCanUploadProjectFile(req.user, Number(req.params.id));
     const file = await uploadProjectFile({

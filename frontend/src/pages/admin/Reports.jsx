@@ -3,6 +3,7 @@ import { BarChart3, Download, Filter } from 'lucide-react';
 import api from '../../utils/api.js';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
+import { divisionLabel } from '../../utils/display.js';
 
 const toMinutes = (minutes, hours) => Number.isFinite(Number(minutes))
   ? Math.max(0, Math.round(Number(minutes)))
@@ -32,18 +33,26 @@ export default function Reports() {
     setLoading(true);
     try {
       const res = await api.get('/admin/reports/attendance', { params: filters });
-      setReport(res.data.report);
+      setReport(res.data.report || []);
     } catch {
+      setReport([]);
       toast.error('Failed to generate report.');
     } finally { setLoading(false); }
   };
+
+  useEffect(() => {
+    // A report belongs to the exact filter set used to generate it. Clear the
+    // previous result immediately when a filter changes so it cannot be
+    // exported under a different month, year, or division.
+    setReport([]);
+  }, [filters.month, filters.year, filters.division_id]);
 
   const exportCSV = () => {
     const headers = ['Full Name', 'School', 'Division', 'Days Present', 'Total Hours', 'Required Hours', 'Rendered Hours'];
     const rows = report.map(r => [
       r.full_name,
       r.school || '',
-      r.division_name || '',
+      divisionLabel(r.division_name),
       r.days_present,
       (toMinutes(r.total_minutes, r.total_hours) / 60).toFixed(2),
       r.required_hours,
@@ -132,7 +141,7 @@ export default function Reports() {
                   return (
                     <tr key={i}>
                       <td data-label="Intern Name" className="font-medium text-gray-800">{r.full_name}</td>
-                      <td data-label="Division" className="text-xs text-gray-500">{r.division_name || '—'}</td>
+                      <td data-label="Division" className="text-xs text-gray-500">{divisionLabel(r.division_name)}</td>
                       <td data-label="Days Present" className="text-center font-semibold">{r.days_present}</td>
                       <td data-label="Total Hours" className="text-center font-semibold">{formatDuration(toMinutes(r.total_minutes, r.total_hours))}</td>
                       <td data-label="Required" className="text-center text-gray-500">{r.required_hours}h</td>

@@ -6,6 +6,7 @@ import {
 import api from '../../utils/api.js';
 import Modal from '../../components/common/Modal.jsx';
 import toast from 'react-hot-toast';
+import { divisionLabel } from '../../utils/display.js';
 
 export default function AttendanceControl() {
   const [activeTab, setActiveTab] = useState('attendance');
@@ -461,7 +462,7 @@ export default function AttendanceControl() {
               <div key={acc.id} className="p-3 rounded-xl border border-gray-200 bg-gray-50/50 flex flex-col justify-between">
                 <div>
                   <p className="font-bold text-gray-800 text-xs truncate">{acc.full_name || acc.username}</p>
-                  <p className="text-[11px] text-gray-400 truncate">{acc.division_name || 'No Division'} • ID: {acc.student_id || acc.id}</p>
+                  <p className="text-[11px] text-gray-400 truncate">{divisionLabel(acc.division_name)} • ID: {acc.student_id || acc.id}</p>
                 </div>
                 <div className="mt-2 pt-2 border-t border-gray-200/60 flex items-center justify-between text-xs">
                   <span className="text-[11px] text-gray-500 font-medium">Profile:</span>
@@ -506,7 +507,7 @@ export default function AttendanceControl() {
           <div className="card overflow-hidden">
             <div className="p-4 border-b border-gray-100 flex items-center justify-between"><div><h2 className="font-bold text-gray-800 text-base" style={{ fontFamily: 'Outfit, sans-serif' }}>Administrator Accounts</h2><p className="text-xs text-gray-400">{adminAccounts.length} admin account{adminAccounts.length === 1 ? '' : 's'} available.</p></div><span className="text-xs font-semibold px-2.5 py-1 bg-blue-50 text-blue-700 rounded-full">Admin Only</span></div>
             {adminAccountsLoading ? <div className="py-10 text-center text-gray-500 text-sm">Loading admin accounts...</div> : adminAccounts.length === 0 ? <div className="py-10 text-center text-gray-400 text-sm">No admin accounts have been created yet.</div> : (
-              <div className="overflow-x-auto"><table className="table attendance-control-table"><thead><tr><th>Name</th><th>Username</th><th>Email</th><th>Contact</th><th>Status</th></tr></thead><tbody>{adminAccounts.map(account => <tr key={account.id}><td><p className="font-bold text-gray-800 text-sm">{account.full_name}</p><p className="text-[11px] text-gray-400">ID: #{account.id}</p></td><td className="text-sm text-gray-700">{account.username}</td><td className="text-sm text-gray-600">{account.email}</td><td className="text-sm text-gray-600">{account.phone || '—'}</td><td><span className={`badge ${account.status === 'active' ? 'badge-success' : 'badge-secondary'}`}>{account.status || 'active'}</span></td></tr>)}</tbody></table></div>
+              <div className="overflow-x-auto"><table className="table table-card-mobile attendance-control-admin-table"><thead><tr><th>Name</th><th>Username</th><th>Email</th><th>Contact</th><th>Status</th></tr></thead><tbody>{adminAccounts.map(account => <tr key={account.id}><td data-label="Name"><p className="font-bold text-gray-800 text-sm">{account.full_name}</p><p className="text-[11px] text-gray-400">ID: #{account.id}</p></td><td data-label="Username" className="text-sm text-gray-700">{account.username}</td><td data-label="Email" className="text-sm text-gray-600">{account.email}</td><td data-label="Contact" className="text-sm text-gray-600">{account.phone || '—'}</td><td data-label="Status"><span className={`badge ${account.status === 'active' ? 'badge-success' : 'badge-secondary'}`}>{account.status || 'active'}</span></td></tr>)}</tbody></table></div>
             )}
           </div>
         </div>
@@ -759,7 +760,7 @@ export default function AttendanceControl() {
                       <div className="min-w-0">
                         <p className="font-semibold text-gray-800 text-xs truncate">{acc.full_name || acc.username}</p>
                         <p className="text-[11px] text-gray-400 truncate">
-                          ID: {acc.student_id || acc.id} • {acc.division_name || 'No Division'}
+                          ID: {acc.student_id || acc.id} • {divisionLabel(acc.division_name)}
                         </p>
                       </div>
                     </div>

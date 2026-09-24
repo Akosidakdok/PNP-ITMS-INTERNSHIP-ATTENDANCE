@@ -5,6 +5,7 @@ import api from '../../utils/api.js';
 import { formatDistanceToNow } from 'date-fns';
 import QRDisplay from '../../components/qr/QRDisplay.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
+import { divisionLabel } from '../../utils/display.js';
 
 function StatCard({ icon: Icon, label, value, gradient, trend, to }) {
   const content = (
@@ -125,7 +126,7 @@ export default function AdminDashboard() {
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold text-gray-800 truncate">{log.full_name}</p>
-                    <p className="text-xs text-gray-500">{log.division_name || 'No division'}</p>
+                    <p className="text-xs text-gray-500">{divisionLabel(log.division_name)}</p>
                   </div>
                   <div className="text-right flex-shrink-0">
                     <span className={`badge ${log.scan_type === 'time_in' ? 'badge-time-in' : 'badge-time-out'}`}>

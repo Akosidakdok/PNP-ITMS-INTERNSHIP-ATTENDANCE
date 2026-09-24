@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Building2, PlusCircle, Edit2, Trash2, UserPlus, Users } from 'lucide-react';
 import api from '../../utils/api.js';
 import Modal from '../../components/common/Modal.jsx';
+import { fetchAllInterns } from '../../utils/interns.js';
 import toast from 'react-hot-toast';
 import { AVAILABLE_COURSES } from '../../utils/constants.js';
 
@@ -106,8 +107,8 @@ export default function Divisions() {
   const fetchInternsForDiv = async (divId) => {
     setInternsLoading(true);
     try {
-      const res = await api.get('/interns', { params: { division_id: divId, limit: 100 } });
-      setInterns(res.data.interns);
+      const divisionInterns = await fetchAllInterns({ division_id: divId });
+      setInterns(divisionInterns);
     } catch {
       toast.error('Failed to load interns.');
     } finally {
@@ -211,7 +212,7 @@ export default function Divisions() {
           <h1 className="text-xl sm:text-2xl font-bold text-gray-800" style={{ fontFamily: 'Outfit, sans-serif' }}>Divisions</h1>
           <p className="text-gray-500 text-sm">{divisions.length} divisions</p>
         </div>
-        <button id="create-dept-btn" className="btn btn-primary w-full sm:w-auto" onClick={openCreate}>
+        <button id="create-division-btn" className="btn btn-primary w-full sm:w-auto" onClick={openCreate}>
           <PlusCircle className="w-4 h-4" /> Add Division
         </button>
       </div>
@@ -259,7 +260,7 @@ export default function Divisions() {
         footer={
           <>
             <button className="btn btn-secondary" onClick={() => setModal(null)}>Cancel</button>
-            <button id="save-dept-btn" className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving ? 'Saving...' : 'Save'}</button>
+            <button id="save-division-btn" className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving ? 'Saving...' : 'Save'}</button>
           </>
         }
       >
@@ -275,7 +276,7 @@ export default function Divisions() {
         footer={
           <>
             <button className="btn btn-secondary" onClick={() => setModal(null)}>Cancel</button>
-            <button id="confirm-delete-dept-btn" className="btn btn-danger" onClick={handleDelete} disabled={saving}>{saving ? 'Deleting...' : 'Delete'}</button>
+            <button id="confirm-delete-division-btn" className="btn btn-danger" onClick={handleDelete} disabled={saving}>{saving ? 'Deleting...' : 'Delete'}</button>
           </>
         }
       >

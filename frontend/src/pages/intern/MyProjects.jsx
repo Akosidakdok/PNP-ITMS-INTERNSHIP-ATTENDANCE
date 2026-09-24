@@ -10,6 +10,7 @@ import { useAuth } from '../../context/AuthContext.jsx';
 import Modal from '../../components/common/Modal.jsx';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
+import { divisionLabel } from '../../utils/display.js';
 
 const FILE_CATEGORIES = [
   { id: 'documentation', label: 'Documentation', icon: FileText, color: 'text-blue-600 bg-blue-50 border-blue-200' },
@@ -639,7 +640,7 @@ export default function MyProjects() {
                   Project Leader
                 </div>
                 <p className="mt-2 font-bold text-slate-900">{quickViewProject.leader_name || 'Unassigned'}</p>
-                <p className="mt-0.5 text-xs text-slate-500">{quickViewProject.leader_division || 'No division assigned'}</p>
+                <p className="mt-0.5 text-xs text-slate-500">{divisionLabel(quickViewProject.leader_division)}</p>
               </div>
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                 <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
@@ -875,7 +876,7 @@ export default function MyProjects() {
                       className="w-full px-3.5 py-2 text-left text-xs hover:bg-slate-50 flex items-center justify-between transition-colors"
                     >
                       <span className="font-semibold text-slate-800">{i.full_name}</span>
-                      <span className="text-[10px] text-slate-500 bg-slate-100 px-2 py-0.5 rounded font-medium">{i.division_name || 'Intern'}</span>
+                      <span className="text-[10px] text-slate-500 bg-slate-100 px-2 py-0.5 rounded font-medium">{divisionLabel(i.division_name)}</span>
                     </button>
                   ))}
                 </div>

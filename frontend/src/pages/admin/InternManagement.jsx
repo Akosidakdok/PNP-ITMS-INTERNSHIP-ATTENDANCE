@@ -8,6 +8,7 @@ import { useAuth } from '../../context/AuthContext.jsx';
 import { AVAILABLE_COURSES } from '../../utils/constants.js';
 import FaceRegistrationModal from '../../components/face/FaceRegistrationModal.jsx';
 import BulkDTROverrideModal from '../../components/dtr/BulkDTROverrideModal.jsx';
+import { divisionLabel } from '../../utils/display.js';
 
 const INIT_FORM = {
   username: '', password: '', first_name: '', middle_name: '', last_name: '', name_suffix: '', email: '', phone: '', 
@@ -400,7 +401,7 @@ export default function InternManagement() {
         </div>
       )
     },
-    { key: 'division_name', label: 'Division', render: v => v || <span className="text-gray-400">—</span> },
+    { key: 'division_name', label: 'Division', render: v => divisionLabel(v) },
     { key: 'school', label: 'School', render: v => <span className="text-xs text-gray-600">{v || '—'}</span> },
     {
       key: 'rendered_hours', label: 'Progress',
@@ -724,7 +725,7 @@ export default function InternManagement() {
                 value={useAuth().user?.division_id || ''}
                 disabled
               >
-                <option value={useAuth().user?.division_id}>{useAuth().user?.division_name || 'Your Division'}</option>
+                <option value={useAuth().user?.division_id}>{divisionLabel(useAuth().user?.division_name)}</option>
               </select>
             ) : (
               <select
@@ -934,7 +935,7 @@ export default function InternManagement() {
                 </div>
                 <p className="text-xs text-gray-600 mt-1">{request.reason}</p>
                 <p className="text-[10px] text-gray-400 mt-1">
-                  {request.intern?.division_name || 'No division'} · {new Date(request.created_at).toLocaleString()}
+                  {divisionLabel(request.intern?.division_name)} · {new Date(request.created_at).toLocaleString()}
                   {request.reviewer_name ? ` · Reviewed by ${request.reviewer_name}` : ''}
                 </p>
                 {request.review_remarks && (

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { GraduationCap, PlusCircle, Edit2, Trash2, Users } from 'lucide-react';
 import api from '../../utils/api.js';
 import Modal from '../../components/common/Modal.jsx';
+import { fetchAllInterns } from '../../utils/interns.js';
 import toast from 'react-hot-toast';
 
 export default function Schools() {
@@ -61,8 +62,8 @@ export default function Schools() {
   const fetchInternsForSchool = async (schoolId) => {
     setInternsLoading(true);
     try {
-      const res = await api.get('/interns', { params: { school_id: schoolId, limit: 100 } });
-      setInterns(res.data.interns || []);
+      const schoolInterns = await fetchAllInterns({ school_id: schoolId });
+      setInterns(schoolInterns);
     } catch (err) {
       const msg = err?.response?.data?.error || 'Failed to load interns for this school.';
       toast.error(msg);

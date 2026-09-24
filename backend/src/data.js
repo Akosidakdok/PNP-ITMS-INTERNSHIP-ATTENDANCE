@@ -5,6 +5,7 @@ import { supabase } from './supabaseClient.js';
 import { getPhtDateKey, getPhtDayBoundsUtc } from './utils/attendanceTime.js';
 import { buildDtrRecords, summarizeDtrRecords } from './utils/dtrRecords.js';
 import { getAssignedProfileForAccount } from './services/attendanceControlService.js';
+import { validateUploadFile } from './utils/fileValidation.js';
 
 const INTERN_ROLE = 'intern';
 const ADMIN_ROLE = 'admin';
@@ -49,6 +50,126 @@ const EVALUATION_UPDATE_FIELDS = new Set([
   'communication',
   'initiative',
 ]);
+const EVALUATION_SCORE_FIELDS = [
+  'overall_score',
+  'work_quality',
+  'punctuality',
+  'teamwork',
+  'communication',
+  'initiative',
+];
+const EVALUATION_RATINGS = new Set([
+  'Outstanding',
+  'Very Satisfactory',
+  'Satisfactory',
+  'Fair',
+  'Needs Improvement',
+  'Poor',
+]);
+
+function validationError(message) {
+  const error = new Error(message);
+  error.statusCode = 400;
+  return error;
+}
+
+function positiveId(value, label = 'ID') {
+  const id = Number(value);
+  if (!Number.isInteger(id) || id <= 0) throw validationError(`Valid ${label} is required`);
+  return id;
+}
+
+function normalizedName(value, label) {
+  const name = String(value ?? '').trim();
+  if (!name) throw validationError(`${label} is required`);
+  if (name.length > 200) throw validationError(`${label} must be 200 characters or fewer`);
+  return name;
+}
+
+function normalizedOptionalText(value, label, maxLength = 500) {
+  if (value === undefined || value === null) return value === null ? null : undefined;
+  const text = String(value).trim();
+  if (text.length > maxLength) throw validationError(`${label} must be ${maxLength} characters or fewer`);
+  return text;
+}
+
+function validatePassword(password, label = 'Password') {
+  if (typeof password !== 'string' || password.length < 8) {
+    throw validationError(`${label} must be at least 8 characters`);
+  }
+  if (password.length > 128) throw validationError(`${label} must be 128 characters or fewer`);
+}
+
+function validateEmail(email) {
+  const normalized = String(email ?? '').trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized) || normalized.length > 254) {
+    throw validationError('A valid email address is required');
+  }
+  return normalized;
+}
+
+function validateDateInput(value, label) {
+  if (value === undefined || value === null || value === '') return value;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value))) {
+    throw validationError(`${label} must use YYYY-MM-DD format`);
+  }
+  const date = new Date(`${value}T00:00:00Z`);
+  if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== String(value)) {
+    throw validationError(`${label} is not a valid calendar date`);
+  }
+  return value;
+}
+
+function assertAllowedFields(payload, allowedFields, label) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    throw validationError(`${label} payload must be an object`);
+  }
+  const unsupported = Object.keys(payload).filter(field => !allowedFields.has(field));
+  if (unsupported.length > 0) throw validationError(`Unsupported ${label} field(s): ${unsupported.join(', ')}`);
+}
+
+const ACCOUNT_INPUT_FIELDS = new Set([
+  'username', 'password', 'password_hash', 'full_name', 'first_name', 'middle_name', 'last_name', 'name_suffix',
+  'email', 'phone', 'home_address', 'emergency_name', 'emergency_relation', 'emergency_phone', 'school',
+  'school_id', 'course', 'division_id', 'division_name', 'department_id', 'department_name', 'status',
+  'start_date', 'end_date', 'required_hours', 'student_id', 'year_level', 'face_embedding', 'face_photo',
+  'face_registered', 'face_registered_at', 'self_face_enrollment_available', 'rendered_hours', 'rendered_minutes',
+  'role', 'id', 'created_at',
+]);
+
+function normalizeDivisionPayload(payload, { partial = false } = {}) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    throw validationError('Division payload must be an object');
+  }
+  const allowed = new Set(['name', 'description', 'head_name']);
+  const unsupported = Object.keys(payload).filter(field => !allowed.has(field));
+  if (unsupported.length > 0) throw validationError(`Unsupported division field(s): ${unsupported.join(', ')}`);
+
+  const normalized = {};
+  if (!partial || Object.prototype.hasOwnProperty.call(payload, 'name')) {
+    normalized.name = normalizedName(payload.name, 'Division name');
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, 'description')) {
+    normalized.description = normalizedOptionalText(payload.description, 'Division description');
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, 'head_name')) {
+    normalized.head_name = normalizedOptionalText(payload.head_name, 'Division head name', 200);
+  }
+  if (Object.keys(normalized).length === 0) throw validationError('At least one division field is required');
+  return normalized;
+}
+
+function normalizeSchoolPayload(payload, { partial = false } = {}) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    throw validationError('School payload must be an object');
+  }
+  const unsupported = Object.keys(payload).filter(field => field !== 'name');
+  if (unsupported.length > 0) throw validationError(`Unsupported school field(s): ${unsupported.join(', ')}`);
+  if (!partial || Object.prototype.hasOwnProperty.call(payload, 'name')) {
+    return { name: normalizedName(payload.name, 'School name') };
+  }
+  throw validationError('School name is required');
+}
 
 function pickEvaluationFields(payload, allowedFields) {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
@@ -67,6 +188,82 @@ function pickEvaluationFields(payload, allowedFields) {
   return Object.fromEntries(
     Object.entries(payload).filter(([, value]) => value !== undefined)
   );
+}
+
+async function hydrateDivisionNames(accounts = []) {
+  if (!Array.isArray(accounts) || accounts.length === 0) return accounts;
+
+  const divisionIds = [...new Set(
+    accounts
+      .map(account => account?.division_id ?? account?.department_id)
+      .map(Number)
+      .filter(id => Number.isInteger(id) && id > 0)
+  )];
+
+  if (divisionIds.length === 0) {
+    return accounts.map(account => ({
+      ...account,
+      division_id: account?.division_id ?? account?.department_id ?? null,
+      division_name: account?.division_name ?? account?.department_name ?? null,
+    }));
+  }
+
+  let { data: divisions, error } = await supabase
+    .from('divisions')
+    .select('id, name')
+    .in('id', divisionIds);
+
+  // Keep the response compatible with deployments that still use the old
+  // table while the division migration is being rolled out.
+  if (error) {
+    const fallback = await supabase
+      .from('departments')
+      .select('id, name')
+      .in('id', divisionIds);
+    if (!fallback.error) {
+      divisions = fallback.data;
+      error = null;
+    }
+  }
+
+  if (error) throw error;
+
+  const namesById = new Map((divisions || []).map(division => [Number(division.id), division.name]));
+  return accounts.map(account => {
+    const divisionId = account?.division_id ?? account?.department_id ?? null;
+    return {
+      ...account,
+      division_id: divisionId,
+      // Prefer the canonical division row over the denormalized account copy.
+      division_name: namesById.get(Number(divisionId))
+        || account?.division_name
+        || account?.department_name
+        || null,
+    };
+  });
+}
+
+function normalizeEvaluationFields(fields) {
+  const normalized = { ...fields };
+  for (const field of EVALUATION_SCORE_FIELDS) {
+    if (normalized[field] === undefined || normalized[field] === null || normalized[field] === '') continue;
+    const value = Number(normalized[field]);
+    if (!Number.isFinite(value) || value < 0 || value > 100) {
+      const validationError = new Error(`${field} must be a number between 0 and 100`);
+      validationError.statusCode = 400;
+      throw validationError;
+    }
+    normalized[field] = value;
+  }
+
+  if (normalized.overall_rating !== undefined
+    && !EVALUATION_RATINGS.has(String(normalized.overall_rating))) {
+    const validationError = new Error('Invalid evaluation rating');
+    validationError.statusCode = 400;
+    throw validationError;
+  }
+
+  return normalized;
 }
 
 async function addCalculatedRenderedHours(interns = []) {
@@ -139,14 +336,15 @@ export async function getDepartments() {
 }
 
 export async function createDivision(payload) {
+  const normalizedPayload = normalizeDivisionPayload(payload);
   let { data, error } = await supabase
     .from('divisions')
-    .insert([{ ...payload }])
+    .insert([normalizedPayload])
     .select()
     .single();
 
   if (error) {
-    const fallback = await supabase.from('departments').insert([{ ...payload }]).select().single();
+    const fallback = await supabase.from('departments').insert([normalizedPayload]).select().single();
     if (!fallback.error) {
       data = fallback.data;
       error = null;
@@ -162,15 +360,17 @@ export async function createDepartment(payload) {
 }
 
 export async function updateDivision(id, payload) {
+  const normalizedId = positiveId(id, 'division ID');
+  const normalizedPayload = normalizeDivisionPayload(payload, { partial: true });
   let { data, error } = await supabase
     .from('divisions')
-    .update({ ...payload })
-    .eq('id', id)
+    .update(normalizedPayload)
+    .eq('id', normalizedId)
     .select()
     .single();
 
   if (error) {
-    const fallback = await supabase.from('departments').update({ ...payload }).eq('id', id).select().single();
+    const fallback = await supabase.from('departments').update(normalizedPayload).eq('id', normalizedId).select().single();
     if (!fallback.error) {
       data = fallback.data;
       error = null;
@@ -186,13 +386,14 @@ export async function updateDepartment(id, payload) {
 }
 
 export async function deleteDivision(id) {
+  const normalizedId = positiveId(id, 'division ID');
   let { error } = await supabase
     .from('divisions')
     .delete()
-    .eq('id', id);
+    .eq('id', normalizedId);
 
   if (error) {
-    const fallback = await supabase.from('departments').delete().eq('id', id);
+    const fallback = await supabase.from('departments').delete().eq('id', normalizedId);
     if (!fallback.error) error = null;
   }
 
@@ -205,14 +406,15 @@ export async function deleteDepartment(id) {
 }
 
 export async function findDivisionById(id) {
+  const normalizedId = positiveId(id, 'division ID');
   let { data, error } = await supabase
     .from('divisions')
     .select('*')
-    .eq('id', id)
+    .eq('id', normalizedId)
     .single();
 
   if (error) {
-    const fallback = await supabase.from('departments').select('*').eq('id', id).single();
+    const fallback = await supabase.from('departments').select('*').eq('id', normalizedId).single();
     if (!fallback.error) {
       data = fallback.data;
       error = null;
@@ -257,9 +459,10 @@ export async function getSchools() {
 }
 
 export async function createSchool(payload) {
+  const normalizedPayload = normalizeSchoolPayload(payload);
   const { data, error } = await supabase
     .from('schools')
-    .insert([{ ...payload }])
+    .insert([normalizedPayload])
     .select()
     .single();
 
@@ -268,10 +471,12 @@ export async function createSchool(payload) {
 }
 
 export async function updateSchool(id, payload) {
+  const normalizedId = positiveId(id, 'school ID');
+  const normalizedPayload = normalizeSchoolPayload(payload, { partial: true });
   const { data, error } = await supabase
     .from('schools')
-    .update({ ...payload })
-    .eq('id', id)
+    .update(normalizedPayload)
+    .eq('id', normalizedId)
     .select()
     .single();
 
@@ -280,20 +485,22 @@ export async function updateSchool(id, payload) {
 }
 
 export async function deleteSchool(id) {
+  const normalizedId = positiveId(id, 'school ID');
   const { error } = await supabase
     .from('schools')
     .delete()
-    .eq('id', id);
+    .eq('id', normalizedId);
 
   if (error) throw error;
   return { success: true };
 }
 
 export async function findSchoolById(id) {
+  const normalizedId = positiveId(id, 'school ID');
   const { data, error } = await supabase
     .from('schools')
     .select('*')
-    .eq('id', id)
+    .eq('id', normalizedId)
     .single();
 
   if (error && error.code !== 'PGRST116') throw error;
@@ -301,6 +508,8 @@ export async function findSchoolById(id) {
 }
 
 export async function getInterns({ search, page = 1, limit = 10, division_id, department_id, school_id, status, sortBy = 'full_name', sortOrder = 'asc' } = {}) {
+  const safePage = Math.max(1, Number(page) || 1);
+  const safeLimit = Math.min(100, Math.max(1, Number(limit) || 10));
   let query = supabase
     .from('accounts')
     .select(INTERN_LIST_FIELDS, { count: 'exact' })
@@ -319,13 +528,13 @@ export async function getInterns({ search, page = 1, limit = 10, division_id, de
     query = query.eq('school_id', school_id);
   }
 
-  if (status) {
+  if (status && status !== 'all') {
     if (status === 'active') {
       query = query.neq('status', 'archived');
     } else {
       query = query.eq('status', status);
     }
-  } else {
+  } else if (status !== 'all') {
     query = query.neq('status', 'archived');
   }
 
@@ -338,31 +547,32 @@ export async function getInterns({ search, page = 1, limit = 10, division_id, de
     query = query.order(sortBy || 'full_name', { ascending: isAscending });
   }
 
-  const from = (page - 1) * limit;
-  const to = from + limit - 1;
+  const from = (safePage - 1) * safeLimit;
+  const to = from + safeLimit - 1;
   query = query.range(from, to);
 
   const { data, error, count } = await query;
   if (error) throw error;
-  const interns = await addCalculatedRenderedHours(data || []);
+  const interns = await hydrateDivisionNames(await addCalculatedRenderedHours(data || []));
   return { interns, total: count || 0 };
 }
 
 export async function getInternById(id) {
+  const normalizedId = positiveId(id, 'intern ID');
   const legacyFields = 'id, username, full_name, first_name, middle_name, last_name, name_suffix, email, role, school, course, department_id, department_name, status, start_date, end_date, required_hours, rendered_hours, student_id, year_level, phone, home_address, emergency_name, emergency_relation, emergency_phone';
   try {
     const { data, error } = await supabase
       .from('accounts')
       .select(`${INTERN_LIST_FIELDS}`)
-      .eq('id', id)
+      .eq('id', normalizedId)
       .eq('role', INTERN_ROLE)
       .single();
     if (error) throw error;
-    const [intern] = await addCalculatedRenderedHours([{
+    const [intern] = await hydrateDivisionNames(await addCalculatedRenderedHours([{
       ...data,
       division_id: data.division_id ?? data.department_id ?? null,
       division_name: data.division_name ?? data.department_name ?? null,
-    }]);
+    }]));
     if (intern) {
       try {
         intern.assigned_profile = await getAssignedProfileForAccount(intern.id);
@@ -375,18 +585,18 @@ export async function getInternById(id) {
     const { data, error } = await supabase
       .from('accounts')
       .select(legacyFields)
-      .eq('id', id)
+      .eq('id', normalizedId)
       .eq('role', INTERN_ROLE)
       .single();
     if (error) throw error;
-    const [intern] = await addCalculatedRenderedHours([{
+    const [intern] = await hydrateDivisionNames(await addCalculatedRenderedHours([{
       ...data,
       division_id: data.division_id ?? data.department_id ?? null,
       division_name: data.division_name ?? data.department_name ?? null,
       face_registered: false,
       face_registered_at: null,
       self_face_enrollment_available: false,
-    }]);
+    }]));
     if (intern) {
       try {
         intern.assigned_profile = await getAssignedProfileForAccount(intern.id);
@@ -399,6 +609,7 @@ export async function getInternById(id) {
 }
 
 export async function createIntern(payload) {
+  assertAllowedFields(payload, ACCOUNT_INPUT_FIELDS, 'intern');
   const {
     password,
     division_id,
@@ -417,19 +628,46 @@ export async function createIntern(payload) {
     created_at: _createdAt,
     ...rest
   } = payload;
+  if (!rest.first_name?.trim() || !rest.last_name?.trim()) {
+    throw validationError('First name and last name are required');
+  }
+  rest.username = String(rest.username || '').trim().toLowerCase();
+  if (!/^[a-z0-9._-]{3,50}$/.test(rest.username)) {
+    throw validationError('Username must be 3-50 characters using letters, numbers, dots, underscores, or hyphens');
+  }
+  rest.email = validateEmail(rest.email);
   if (rest.first_name || rest.last_name) {
     rest.full_name = [rest.first_name, rest.middle_name, rest.last_name, rest.name_suffix].filter(Boolean).join(' ');
   }
-  if (!password) throw new Error('Password is required');
+  validatePassword(password, 'Initial password');
+
+  if (rest.status && !['active', 'inactive', 'archived'].includes(rest.status)) {
+    throw validationError('Invalid intern status');
+  }
+  validateDateInput(rest.start_date, 'Start date');
+  validateDateInput(rest.end_date, 'End date');
+  if (rest.start_date && rest.end_date && rest.end_date < rest.start_date) {
+    throw validationError('End date cannot be before start date');
+  }
+  if (rest.required_hours !== undefined && (!Number.isFinite(Number(rest.required_hours)) || Number(rest.required_hours) < 0 || Number(rest.required_hours) > 10000)) {
+    throw validationError('Required hours must be between 0 and 10000');
+  }
+
+  const suppliedDivisionName = rest.division_name || rest.department_name || null;
+  delete rest.division_name;
+  delete rest.department_name;
 
   const password_hash = await bcrypt.hash(password, 10);
   
-  const divId = division_id || department_id ? Number(division_id || department_id) : null;
+  const rawDivId = division_id || department_id;
+  const divId = rawDivId ? positiveId(rawDivId, 'division ID') : null;
   const division = divId ? await findDivisionById(divId) : null;
-  const divName = division?.name || rest.division_name || null;
+  if (divId && !division) throw validationError('Selected division was not found');
+  const divName = division?.name || suppliedDivisionName;
 
   const schId = school_id && school_id !== '' ? Number(school_id) : null;
   const school = schId ? await findSchoolById(schId) : null;
+  if (schId && !school) throw validationError('Selected school was not found');
   const schoolName = school?.name || rest.school || null;
 
   const { data, error } = await supabase
@@ -452,6 +690,8 @@ export async function createIntern(payload) {
 }
 
 export async function updateIntern(id, payload) {
+  const normalizedId = positiveId(id, 'intern ID');
+  assertAllowedFields(payload, ACCOUNT_INPUT_FIELDS, 'intern');
   const {
     password,
     division_id,
@@ -470,6 +710,29 @@ export async function updateIntern(id, payload) {
     created_at: _createdAt,
     ...rest
   } = payload;
+  if (rest.email !== undefined) rest.email = validateEmail(rest.email);
+  if (rest.username !== undefined) {
+    rest.username = String(rest.username).trim().toLowerCase();
+    if (!/^[a-z0-9._-]{3,50}$/.test(rest.username)) {
+      throw validationError('Username must be 3-50 characters using letters, numbers, dots, underscores, or hyphens');
+    }
+  }
+  if (rest.status !== undefined && !['active', 'inactive', 'archived'].includes(rest.status)) {
+    throw validationError('Invalid intern status');
+  }
+  validateDateInput(rest.start_date, 'Start date');
+  validateDateInput(rest.end_date, 'End date');
+  if (rest.start_date && rest.end_date && rest.end_date < rest.start_date) {
+    throw validationError('End date cannot be before start date');
+  }
+  if (rest.required_hours !== undefined && (!Number.isFinite(Number(rest.required_hours)) || Number(rest.required_hours) < 0 || Number(rest.required_hours) > 10000)) {
+    throw validationError('Required hours must be between 0 and 10000');
+  }
+  if (password !== undefined && password !== '') validatePassword(password, 'Password');
+
+  const suppliedDivisionName = rest.division_name || rest.department_name || null;
+  delete rest.division_name;
+  delete rest.department_name;
   if (rest.first_name || rest.last_name) {
     rest.full_name = [rest.first_name, rest.middle_name, rest.last_name, rest.name_suffix].filter(Boolean).join(' ');
   }
@@ -493,15 +756,17 @@ export async function updateIntern(id, payload) {
   // Supabase: in some deployed schemas it is a generated/read-only column.
   const rawDivisionId = division_id !== undefined ? division_id : department_id;
   if (rawDivisionId !== undefined) {
-    const divisionId = rawDivisionId && rawDivisionId !== '' ? Number(rawDivisionId) : null;
+    const divisionId = rawDivisionId && rawDivisionId !== '' ? positiveId(rawDivisionId, 'division ID') : null;
     const division = divisionId ? await findDivisionById(divisionId) : null;
+    if (divisionId && !division) throw validationError('Selected division was not found');
     updates.division_id = divisionId;
-    updates.division_name = division?.name || rest.division_name || rest.department_name || null;
+    updates.division_name = divisionId ? (division?.name || suppliedDivisionName) : null;
   }
 
   if (school_id !== undefined) {
-    const schId = school_id && school_id !== '' ? Number(school_id) : null;
+    const schId = school_id && school_id !== '' ? positiveId(school_id, 'school ID') : null;
     const school = schId ? await findSchoolById(schId) : null;
+    if (schId && !school) throw validationError('Selected school was not found');
     updates.school_id = schId;
     updates.school = school?.name || rest.school || null;
   }
@@ -509,7 +774,7 @@ export async function updateIntern(id, payload) {
   const { data, error } = await supabase
     .from('accounts')
     .update(updates)
-    .eq('id', id)
+    .eq('id', normalizedId)
     .eq('role', INTERN_ROLE)
     .select('id, username, full_name, first_name, middle_name, last_name, name_suffix, email, role, school, school_id, course, division_id, division_name, status, start_date, end_date, required_hours, rendered_hours, student_id, year_level, phone, home_address, emergency_name, emergency_relation, emergency_phone')
     .single();
@@ -603,10 +868,11 @@ export async function updateCurrentUserUsername(id, username) {
 }
 
 export async function deleteIntern(id) {
+  const normalizedId = positiveId(id, 'intern ID');
   const { error } = await supabase
     .from('accounts')
     .delete()
-    .eq('id', id)
+    .eq('id', normalizedId)
     .eq('role', INTERN_ROLE);
 
   if (error) throw error;
@@ -614,11 +880,13 @@ export async function deleteIntern(id) {
 }
 
 export async function resetInternPassword(id, newPassword) {
+  const normalizedId = positiveId(id, 'intern ID');
+  validatePassword(newPassword, 'New password');
   const password_hash = await bcrypt.hash(newPassword, 10);
   const { error } = await supabase
     .from('accounts')
     .update({ password_hash })
-    .eq('id', id)
+    .eq('id', normalizedId)
     .eq('role', INTERN_ROLE);
 
   if (error) throw error;
@@ -640,7 +908,7 @@ export async function getCurrentUserProfile(userId) {
       if (error.code === 'PGRST116') return null;
       throw error;
     }
-    const [intern] = await addCalculatedRenderedHours([data]);
+    const [intern] = await hydrateDivisionNames(await addCalculatedRenderedHours([data]));
     if (intern) {
       try {
         intern.assigned_profile = await getAssignedProfileForAccount(intern.id);
@@ -660,12 +928,12 @@ export async function getCurrentUserProfile(userId) {
       if (error.code === 'PGRST116') return null;
       throw error;
     }
-    const [intern] = await addCalculatedRenderedHours([{
+    const [intern] = await hydrateDivisionNames(await addCalculatedRenderedHours([{
       ...data,
       face_registered: false,
       face_registered_at: null,
       self_face_enrollment_available: false,
-    }]);
+    }]));
     if (intern) {
       try {
         intern.assigned_profile = await getAssignedProfileForAccount(intern.id);
@@ -682,7 +950,11 @@ export async function updateCurrentUserProfile(userId, updates) {
     Object.entries(updates || {}).filter(([key]) => SELF_PROFILE_EDITABLE_FIELDS.has(key))
   );
   if (Object.keys(payload).length === 0) {
-    throw new Error('No editable profile fields were provided');
+    throw validationError('No editable profile fields were provided');
+  }
+  if (payload.email !== undefined) payload.email = validateEmail(payload.email);
+  for (const field of ['phone', 'home_address', 'emergency_name', 'emergency_relation', 'emergency_phone']) {
+    if (payload[field] !== undefined) payload[field] = normalizedOptionalText(payload[field], field.replaceAll('_', ' '), 500);
   }
 
   const baseFields = INTERN_LIST_FIELDS;
@@ -696,7 +968,7 @@ export async function updateCurrentUserProfile(userId, updates) {
       .single();
 
     if (error) throw error;
-    const [intern] = await addCalculatedRenderedHours([data]);
+    const [intern] = await hydrateDivisionNames(await addCalculatedRenderedHours([data]));
     return intern;
   } catch (err) {
     const { data, error } = await supabase
@@ -708,17 +980,19 @@ export async function updateCurrentUserProfile(userId, updates) {
       .single();
 
     if (error) throw error;
-    const [intern] = await addCalculatedRenderedHours([{
+    const [intern] = await hydrateDivisionNames(await addCalculatedRenderedHours([{
       ...data,
       face_registered: false,
       face_registered_at: null,
       self_face_enrollment_available: false,
-    }]);
+    }]));
     return intern;
   }
 }
 
 export async function changePassword(userId, currentPassword, newPassword) {
+  if (typeof currentPassword !== 'string' || !currentPassword) throw validationError('Current password is required');
+  validatePassword(newPassword, 'New password');
   const { data, error } = await supabase
     .from('accounts')
     .select('password_hash')
@@ -740,6 +1014,10 @@ export async function changePassword(userId, currentPassword, newPassword) {
 }
 
 export async function getAttendanceLogs({ status, date, page = 1, limit = 15, division_id, department_id } = {}) {
+  const safePage = Math.max(1, Number(page) || 1);
+  const safeLimit = Math.min(100, Math.max(1, Number(limit) || 15));
+  if (status && !['pending', 'approved', 'rejected'].includes(status)) throw validationError('Invalid attendance status');
+  if (date) validateDateInput(date, 'Attendance date');
   let query = supabase
     .from('attendance_logs')
     .select('*, attendance_photos(photo)', { count: 'exact' })
@@ -765,8 +1043,8 @@ export async function getAttendanceLogs({ status, date, page = 1, limit = 15, di
     query = query.in('intern_id', internIds);
   }
 
-  const from = (page - 1) * limit;
-  const to = from + limit - 1;
+  const from = (safePage - 1) * safeLimit;
+  const to = from + safeLimit - 1;
   const { data, error, count } = await query.range(from, to);
 
   if (error) throw error;
@@ -776,10 +1054,11 @@ export async function getAttendanceLogs({ status, date, page = 1, limit = 15, di
   if (internIds.length > 0) {
     const { data: accounts, error: accountsError } = await supabase
       .from('accounts')
-      .select('id, full_name, division_name')
+      .select('id, full_name, division_id, division_name')
       .in('id', internIds);
     if (!accountsError && accounts) {
-      accountsMap = accounts.reduce((acc, accObj) => {
+      const canonicalAccounts = await hydrateDivisionNames(accounts);
+      accountsMap = canonicalAccounts.reduce((acc, accObj) => {
         acc[accObj.id] = accObj;
         return acc;
       }, {});
@@ -956,10 +1235,11 @@ export async function getAdminDashboardStats() {
   if (internIds.length > 0) {
     const { data: accounts, error: accountsError } = await supabase
       .from('accounts')
-      .select('id, full_name, division_name')
+      .select('id, full_name, division_id, division_name')
       .in('id', internIds);
     if (!accountsError && accounts) {
-      accountsMap = accounts.reduce((acc, accObj) => {
+      const canonicalAccounts = await hydrateDivisionNames(accounts);
+      accountsMap = canonicalAccounts.reduce((acc, accObj) => {
         acc[accObj.id] = accObj;
         return acc;
       }, {});
@@ -1000,7 +1280,7 @@ export async function getAdminDashboardStats() {
 }
 
 export async function getSupervisorDashboardStats(user) {
-  const divId = user.division_id || user.department_id;
+  const divId = user?.division_id || user?.department_id;
   if (!user || user.role !== 'supervisor' || !divId) {
     throw new Error('Permission denied or supervisor is not assigned to a division.');
   }
@@ -1076,10 +1356,11 @@ export async function getSupervisorDashboardStats(user) {
   if (departmentInternIds.length > 0) {
     const { data: accounts, error: accountsError } = await supabase
       .from('accounts')
-      .select('id, full_name, division_name')
+      .select('id, full_name, division_id, division_name')
       .in('id', departmentInternIds);
     if (!accountsError && accounts) {
-      accountsMap = accounts.reduce((acc, accObj) => {
+      const canonicalAccounts = await hydrateDivisionNames(accounts);
+      accountsMap = canonicalAccounts.reduce((acc, accObj) => {
         acc[accObj.id] = accObj;
         return acc;
       }, {});
@@ -1123,8 +1404,9 @@ export async function getAttendanceReport({ month, year, division_id, department
     internQuery = internQuery.eq('division_id', divId);
   }
 
-  const { data: interns, error: internsError } = await internQuery;
+  const { data: rawInterns, error: internsError } = await internQuery;
   if (internsError) throw internsError;
+  const interns = await hydrateDivisionNames(rawInterns || []);
 
   const reportData = await Promise.all(
     interns.map(async (intern) => {
@@ -1417,11 +1699,8 @@ export async function getNotifications(userId, isAdmin) {
     .from('notifications')
     .select('*')
     .neq('title', '__CLEARED__')
+    .eq('user_id', userId)
     .order('created_at', { ascending: false });
-
-  if (!isAdmin) {
-    query = query.eq('user_id', userId);
-  }
 
   const { data, error } = await query;
   if (error) throw error;
@@ -1431,27 +1710,29 @@ export async function getNotifications(userId, isAdmin) {
 }
 
 export async function markNotificationRead(notificationId, userId, isAdmin) {
-  let query = supabase.from('notifications').update({ is_read: true }).eq('id', notificationId);
-  if (!isAdmin) query = query.eq('user_id', userId);
+  const query = supabase
+    .from('notifications')
+    .update({ is_read: true })
+    .eq('id', positiveId(notificationId, 'notification ID'))
+    .eq('user_id', userId);
   const { error } = await query;
   if (error) throw error;
   return { success: true };
 }
 
 export async function markAllNotificationsRead(userId, isAdmin) {
-  let query = supabase.from('notifications').update({ is_read: true }).neq('title', '__CLEARED__');
-  if (!isAdmin) {
-    query = query.eq('user_id', userId);
-  } else {
-    query = query.neq('id', 0);
-  }
+  const query = supabase
+    .from('notifications')
+    .update({ is_read: true })
+    .neq('title', '__CLEARED__')
+    .eq('user_id', userId);
   const { error } = await query;
   if (error) throw error;
   return { success: true };
 }
 
 export async function clearNotifications(userId, isAdmin) {
-  if (!isAdmin && userId) {
+  if (userId) {
     const { error: delError } = await supabase
       .from('notifications')
       .delete()
@@ -1459,20 +1740,19 @@ export async function clearNotifications(userId, isAdmin) {
 
     if (delError) throw delError;
 
-    await supabase.from('notifications').insert([{
+    const { error: markerError } = await supabase.from('notifications').insert([{
       user_id: userId,
       title: '__CLEARED__',
       message: new Date().toISOString(),
       is_read: true,
       created_at: new Date().toISOString(),
     }]);
+    if (markerError) throw markerError;
 
     return { success: true };
-  } else {
-    const { error } = await supabase.from('notifications').delete().neq('id', 0);
-    if (error) throw error;
-    return { success: true };
   }
+
+  return { success: true };
 }
 
 export async function getEvaluations(
@@ -1481,10 +1761,11 @@ export async function getEvaluations(
   division_id = null,
   department_id = null,
   includeArchived = false,
+  { page = 1, limit = 15 } = {},
 ) {
   let query = supabase
     .from('evaluations')
-    .select('*')
+    .select('*', { count: 'exact' })
     .order('evaluation_date', { ascending: false });
 
   // Archived evaluations are restricted to the admin evaluation-management view.
@@ -1505,12 +1786,16 @@ export async function getEvaluations(
       .eq('role', 'intern');
     const internIds = accounts ? accounts.map(a => a.id) : [];
     if (internIds.length === 0) {
-      return [];
+      return { evaluations: [], total: 0, page, limit };
     }
     query = query.in('intern_id', internIds);
   }
 
-  const { data, error } = await query;
+  const safePage = Math.max(1, Number(page) || 1);
+  const safeLimit = Math.min(100, Math.max(1, Number(limit) || 15));
+  const from = (safePage - 1) * safeLimit;
+  const to = from + safeLimit - 1;
+  const { data, error, count } = await query.range(from, to);
   if (error) throw error;
 
   const evaluations = data || [];
@@ -1529,14 +1814,19 @@ export async function getEvaluations(
     }
   }
 
-  return evaluations.map(e => ({
+  return {
+    evaluations: evaluations.map(e => ({
     ...e,
     full_name: accountsMap[e.intern_id]?.full_name || 'Unknown Intern'
-  }));
+    })),
+    total: count || 0,
+    page: safePage,
+    limit: safeLimit,
+  };
 }
 
 export async function createEvaluation(payload, evaluatorId, evaluatorName) {
-  const fields = pickEvaluationFields(payload, EVALUATION_CREATE_FIELDS);
+  const fields = normalizeEvaluationFields(pickEvaluationFields(payload, EVALUATION_CREATE_FIELDS));
   const internId = Number(fields.intern_id);
   if (!Number.isInteger(internId) || internId <= 0) {
     const error = new Error('A valid intern is required');
@@ -1564,7 +1854,7 @@ export async function createEvaluation(payload, evaluatorId, evaluatorName) {
 }
 
 export async function updateEvaluation(id, payload) {
-  const updates = pickEvaluationFields(payload, EVALUATION_UPDATE_FIELDS);
+  const updates = normalizeEvaluationFields(pickEvaluationFields(payload, EVALUATION_UPDATE_FIELDS));
   if (Object.keys(updates).length === 0) {
     const error = new Error('At least one editable evaluation field is required');
     error.statusCode = 400;
@@ -1598,7 +1888,7 @@ export async function setEvaluationArchived(id, archived, actorId, reason = '') 
   const { data, error } = await supabase
     .from('evaluations')
     .update(updates)
-    .eq('id', id)
+    .eq('id', normalizedId)
     .select()
     .single();
 
@@ -1610,7 +1900,7 @@ export async function deleteEvaluation(id) {
   const { data, error } = await supabase
     .from('evaluations')
     .delete()
-    .eq('id', id)
+    .eq('id', normalizedId)
     .select('id')
     .single();
 
@@ -1618,14 +1908,20 @@ export async function deleteEvaluation(id) {
   return data;
 }
 
-export async function getDocuments(userId, isAdmin, { status, search, division_id, department_id } = {}) {
+export async function getDocuments(
+  userId,
+  isAdmin,
+  { status, search, division_id, department_id, intern_id, page = 1, limit = 15 } = {},
+) {
   let query = supabase
     .from('documents')
-    .select('*, account:accounts(full_name)')
+    .select('*, account:accounts(full_name)', { count: 'exact' })
     .order('upload_date', { ascending: false });
 
   if (!isAdmin) {
     query = query.eq('intern_id', userId);
+  } else if (intern_id) {
+    query = query.eq('intern_id', Number(intern_id));
   }
 
   const divId = division_id || department_id;
@@ -1643,7 +1939,8 @@ export async function getDocuments(userId, isAdmin, { status, search, division_i
     }
   }
 
-  if (status) {
+  if (status && status !== 'all') {
+    if (!['pending', 'accepted', 'revision'].includes(status)) throw validationError('Invalid document status');
     query = query.eq('status', status);
   }
 
@@ -1651,10 +1948,14 @@ export async function getDocuments(userId, isAdmin, { status, search, division_i
     query = query.or(`original_name.ilike.%${search}%,document_type.ilike.%${search}%`);
   }
 
-  const { data: documents, error } = await query;
+  const safePage = Math.max(1, Number(page) || 1);
+  const safeLimit = Math.min(100, Math.max(1, Number(limit) || 15));
+  const from = (safePage - 1) * safeLimit;
+  const to = from + safeLimit - 1;
+  const { data: documents, error, count } = await query.range(from, to);
   if (error) throw error;
 
-  return Promise.all((documents || []).map(async doc => {
+  const mappedDocuments = await Promise.all((documents || []).map(async doc => {
     const { data: signedUrlData, error: signedUrlError } = await supabase
       .storage
       .from('documents')
@@ -1670,13 +1971,23 @@ export async function getDocuments(userId, isAdmin, { status, search, division_i
       url_expires_in: 15 * 60,
     };
   }));
+
+  return {
+    documents: mappedDocuments,
+    total: count || 0,
+    page: safePage,
+    limit: safeLimit,
+  };
 }
 
 export async function updateDocumentStatus(id, status, adminRemarks) {
+  const normalizedId = positiveId(id, 'document ID');
+  if (!['pending', 'accepted', 'revision'].includes(status)) throw validationError('Invalid document status');
+  const remarks = normalizedOptionalText(adminRemarks, 'Admin remarks', 2000) || '';
   const { data, error } = await supabase
     .from('documents')
-    .update({ status, admin_remarks: adminRemarks })
-    .eq('id', id)
+    .update({ status, admin_remarks: remarks })
+    .eq('id', normalizedId)
     .select()
     .single();
 
@@ -1685,13 +1996,14 @@ export async function updateDocumentStatus(id, status, adminRemarks) {
 }
 
 export async function createDocument({ userId, file, document_type }) {
-  if (!file) throw new Error('File upload is required');
+  const { originalName, extension } = validateUploadFile(file);
   if (!ALLOWED_DOCUMENT_TYPES.has(document_type)) {
-    throw new Error('Unsupported document type');
+    const validationError = new Error('Unsupported document type');
+    validationError.statusCode = 400;
+    throw validationError;
   }
-  const { originalname, mimetype, size, buffer } = file;
-  const fileExtension = originalname.split('.').pop();
-  const newFileName = `${uuidv4()}.${fileExtension}`;
+  const { mimetype, size, buffer } = file;
+  const newFileName = `${uuidv4()}.${extension}`;
   const filePath = `user-documents/${userId}/${newFileName}`;
 
   const { error: uploadError } = await supabase
@@ -1712,7 +2024,7 @@ export async function createDocument({ userId, file, document_type }) {
     .insert([{
       intern_id: userId,
       document_type,
-      original_name: originalname,
+      original_name: originalName,
       file_name: newFileName,
       file_type: mimetype.split('/').pop(),
       file_size: size,
@@ -1728,10 +2040,11 @@ export async function createDocument({ userId, file, document_type }) {
 }
 
 export async function deleteDocument(id, userId, isAdmin) {
+  const normalizedId = positiveId(id, 'document ID');
   const { data: doc, error: findError } = await supabase
     .from('documents')
     .select('file_path, intern_id')
-    .eq('id', id)
+    .eq('id', normalizedId)
     .single();
 
   if (findError) throw findError;
@@ -1742,18 +2055,22 @@ export async function deleteDocument(id, userId, isAdmin) {
     console.warn(`Could not delete file from storage: ${storageError.message}`);
   }
 
-  const { error } = await supabase.from('documents').delete().eq('id', id);
+  const { error } = await supabase.from('documents').delete().eq('id', normalizedId);
   if (error) throw error;
   return { success: true };
 }
 
 export async function getCalendarEvents({ year, month }) {
-  if (!year || !month) throw new Error('Year and month are required');
+  const yearNumber = Number(year);
+  const monthNumber = Number(month);
+  if (!Number.isInteger(yearNumber) || yearNumber < 2000 || yearNumber > 2100 || !Number.isInteger(monthNumber) || monthNumber < 1 || monthNumber > 12) {
+    throw validationError('A valid calendar year and month are required');
+  }
 
   const pad = (n) => String(n).padStart(2, '0');
-  const startStr = `${year}-${pad(month)}-01`;
-  const lastDay = new Date(Date.UTC(Number(year), Number(month), 0)).getUTCDate();
-  const endStr = `${year}-${pad(month)}-${pad(lastDay)}`;
+  const startStr = `${yearNumber}-${pad(monthNumber)}-01`;
+  const lastDay = new Date(Date.UTC(yearNumber, monthNumber, 0)).getUTCDate();
+  const endStr = `${yearNumber}-${pad(monthNumber)}-${pad(lastDay)}`;
 
   const { data, error } = await supabase
     .from('calendar_events')
@@ -1764,6 +2081,35 @@ export async function getCalendarEvents({ year, month }) {
 
   if (error) throw error;
   return data || [];
+}
+
+export async function assertCalendarEventMutationAccess(eventId, user) {
+  const normalizedId = Number(eventId);
+  if (!Number.isInteger(normalizedId) || normalizedId <= 0) {
+    const validationError = new Error('Valid calendar event ID is required');
+    validationError.statusCode = 400;
+    throw validationError;
+  }
+
+  const { data: event, error } = await supabase
+    .from('calendar_events')
+    .select('id, created_by')
+    .eq('id', normalizedId)
+    .single();
+
+  if (error || !event) {
+    const notFoundError = new Error('Calendar event not found');
+    notFoundError.statusCode = 404;
+    throw notFoundError;
+  }
+
+  if (user?.role === 'supervisor' && Number(event.created_by) !== Number(user.id)) {
+    const permissionError = new Error('Supervisors may only manage calendar events they created');
+    permissionError.statusCode = 403;
+    throw permissionError;
+  }
+
+  return event;
 }
 
 export async function broadcastCalendarEventNotification(event) {
@@ -1800,11 +2146,22 @@ export async function broadcastCalendarEventNotification(event) {
 }
 
 export async function createCalendarEvent(payload, userId) {
+  const allowedTypes = new Set(['holiday', 'announcement', 'memo', 'suspension']);
+  const title = String(payload?.title || '').trim();
+  const eventDate = String(payload?.event_date || '').trim();
+  const eventType = String(payload?.event_type || '').trim();
+  if (!title || !eventDate || !allowedTypes.has(eventType)) {
+    const validationError = new Error('Title, valid event date, and event type are required');
+    validationError.statusCode = 400;
+    throw validationError;
+  }
+  validateDateInput(eventDate, 'Event date');
+
   const eventRow = {
-    title: payload.title,
-    description: payload.description || '',
-    event_date: payload.event_date,
-    event_type: payload.event_type,
+    title,
+    description: String(payload.description || '').trim(),
+    event_date: eventDate,
+    event_type: eventType,
     created_by: userId,
     created_at: new Date().toISOString(),
   };
@@ -1825,10 +2182,29 @@ export async function createCalendarEvent(payload, userId) {
 }
 
 export async function updateCalendarEvent(id, payload) {
+  const allowedTypes = new Set(['holiday', 'announcement', 'memo', 'suspension']);
+  const updates = {};
+  if (payload?.title !== undefined) updates.title = String(payload.title || '').trim();
+  if (payload?.description !== undefined) updates.description = String(payload.description || '').trim();
+  if (payload?.event_date !== undefined) updates.event_date = String(payload.event_date || '').trim();
+  if (payload?.event_type !== undefined) updates.event_type = String(payload.event_type || '').trim();
+
+  if (updates.title === '' || updates.event_date === '' || (updates.event_type && !allowedTypes.has(updates.event_type))) {
+    const validationError = new Error('Calendar event fields are invalid');
+    validationError.statusCode = 400;
+    throw validationError;
+  }
+  if (updates.event_date !== undefined) validateDateInput(updates.event_date, 'Event date');
+  if (Object.keys(updates).length === 0) {
+    const validationError = new Error('At least one calendar event field is required');
+    validationError.statusCode = 400;
+    throw validationError;
+  }
+
   const { data, error } = await supabase
     .from('calendar_events')
-    .update(payload)
-    .eq('id', id)
+    .update(updates)
+    .eq('id', positiveId(id, 'calendar event ID'))
     .select()
     .single();
   if (error) throw error;
@@ -1836,16 +2212,19 @@ export async function updateCalendarEvent(id, payload) {
 }
 
 export async function deleteCalendarEvent(id) {
+  const normalizedId = positiveId(id, 'calendar event ID');
   const { error } = await supabase
     .from('calendar_events')
     .delete()
-    .eq('id', id);
+    .eq('id', normalizedId);
 
   if (error) throw error;
   return { success: true };
 }
 
 export async function getSupervisors({ search, page = 1, limit = 10, division_id, department_id } = {}) {
+  const safePage = Math.max(1, Number(page) || 1);
+  const safeLimit = Math.min(100, Math.max(1, Number(limit) || 10));
   let query = supabase
     .from('accounts')
     .select('*', { count: 'exact' })
@@ -1861,8 +2240,8 @@ export async function getSupervisors({ search, page = 1, limit = 10, division_id
     query = query.eq('division_id', divId);
   }
 
-  const from = (page - 1) * limit;
-  const to = from + limit - 1;
+  const from = (safePage - 1) * safeLimit;
+  const to = from + safeLimit - 1;
   query = query.range(from, to);
 
   const { data, error, count } = await query;
@@ -1896,20 +2275,22 @@ export async function createAdminAccount(payload = {}) {
     validationError.statusCode = 400;
     throw validationError;
   }
-  if (password.length < 8) {
-    const validationError = new Error('Password must be at least 8 characters');
-    validationError.statusCode = 400;
-    throw validationError;
+  const normalizedUsername = username.trim().toLowerCase();
+  if (!/^[a-z0-9._-]{3,50}$/.test(normalizedUsername)) {
+    throw validationError('Username must be 3-50 characters using letters, numbers, dots, underscores, or hyphens');
   }
+  validatePassword(password);
+  const normalizedEmail = validateEmail(email);
+  if (!['active', 'inactive', 'archived'].includes(status)) throw validationError('Invalid account status');
 
   const password_hash = await bcrypt.hash(password, 10);
   const { data, error } = await supabase
     .from('accounts')
     .insert([{
-      username: username.trim(),
+      username: normalizedUsername,
       password_hash,
       full_name: full_name.trim(),
-      email: email.trim().toLowerCase(),
+      email: normalizedEmail,
       phone: phone?.trim() || null,
       status,
       role: ADMIN_ROLE,
@@ -1922,10 +2303,11 @@ export async function createAdminAccount(payload = {}) {
 }
 
 export async function getSupervisorById(id) {
+  const normalizedId = positiveId(id, 'supervisor ID');
   const { data, error } = await supabase
     .from('accounts')
     .select('*')
-    .eq('id', id)
+    .eq('id', normalizedId)
     .eq('role', 'supervisor')
     .single();
 
@@ -1934,17 +2316,29 @@ export async function getSupervisorById(id) {
 }
 
 export async function createSupervisor(payload) {
-  const { password, division_id, department_id, ...rest } = payload;
+  assertAllowedFields(payload, ACCOUNT_INPUT_FIELDS, 'supervisor');
+  const { password, division_id, department_id, role: _role, id: _id, created_at: _createdAt, password_hash: _passwordHash, ...rest } = payload;
+  if (!rest.full_name?.trim() && !(rest.first_name?.trim() && rest.last_name?.trim())) {
+    throw validationError('Full name is required');
+  }
+  rest.username = String(rest.username || '').trim().toLowerCase();
+  if (!/^[a-z0-9._-]{3,50}$/.test(rest.username)) {
+    throw validationError('Username must be 3-50 characters using letters, numbers, dots, underscores, or hyphens');
+  }
+  rest.email = validateEmail(rest.email);
   if (rest.first_name || rest.last_name) {
     rest.full_name = [rest.first_name, rest.middle_name, rest.last_name, rest.name_suffix].filter(Boolean).join(' ');
   }
-  if (!password) throw new Error('Password is required');
+  validatePassword(password, 'Initial password');
 
   const password_hash = await bcrypt.hash(password, 10);
   const rawDivId = division_id || department_id;
-  const divId = rawDivId && rawDivId !== '' ? Number(rawDivId) : null;
+  const divId = rawDivId && rawDivId !== '' ? positiveId(rawDivId, 'division ID') : null;
   const division = divId ? await findDivisionById(divId) : null;
+  if (divId && !division) throw validationError('Selected division was not found');
   const divName = division?.name || rest.division_name || rest.department_name || null;
+  delete rest.division_name;
+  delete rest.department_name;
 
   const { data, error } = await supabase
     .from('accounts')
@@ -1957,10 +2351,22 @@ export async function createSupervisor(payload) {
 }
 
 export async function updateSupervisor(id, payload) {
-  const { password, division_id, department_id, ...rest } = payload;
+  const normalizedId = positiveId(id, 'supervisor ID');
+  assertAllowedFields(payload, ACCOUNT_INPUT_FIELDS, 'supervisor');
+  const { password, division_id, department_id, role: _role, id: _id, created_at: _createdAt, password_hash: _passwordHash, ...rest } = payload;
+  if (rest.email !== undefined) rest.email = validateEmail(rest.email);
+  if (rest.username !== undefined) {
+    rest.username = String(rest.username).trim().toLowerCase();
+    if (!/^[a-z0-9._-]{3,50}$/.test(rest.username)) {
+      throw validationError('Username must be 3-50 characters using letters, numbers, dots, underscores, or hyphens');
+    }
+  }
   if (rest.first_name || rest.last_name) {
     rest.full_name = [rest.first_name, rest.middle_name, rest.last_name, rest.name_suffix].filter(Boolean).join(' ');
   }
+  const suppliedDivisionName = rest.division_name || rest.department_name || null;
+  delete rest.division_name;
+  delete rest.department_name;
   const updates = { ...rest };
   if (rest.first_name !== undefined || rest.last_name !== undefined) {
     const fn = rest.first_name || '';
@@ -1972,22 +2378,24 @@ export async function updateSupervisor(id, payload) {
     }
   }
 
-  if (password) {
+  if (password !== undefined && password !== '') {
+    validatePassword(password, 'Password');
     updates.password_hash = await bcrypt.hash(password, 10);
   }
 
   const rawDivId = division_id !== undefined ? division_id : department_id;
   if (rawDivId !== undefined) {
-    const divId = rawDivId && rawDivId !== '' ? Number(rawDivId) : null;
+    const divId = rawDivId && rawDivId !== '' ? positiveId(rawDivId, 'division ID') : null;
     const division = divId ? await findDivisionById(divId) : null;
-    updates.division_name = division?.name || null;
+    if (divId && !division) throw validationError('Selected division was not found');
+    updates.division_name = divId ? (division?.name || suppliedDivisionName) : null;
     updates.division_id = divId;
   }
 
   const { data, error } = await supabase
     .from('accounts')
     .update(updates)
-    .eq('id', id)
+    .eq('id', normalizedId)
     .eq('role', 'supervisor')
     .select('*')
     .single();
@@ -1997,10 +2405,11 @@ export async function updateSupervisor(id, payload) {
 }
 
 export async function deleteSupervisor(id) {
+  const normalizedId = positiveId(id, 'supervisor ID');
   const { error } = await supabase
     .from('accounts')
     .delete()
-    .eq('id', id)
+    .eq('id', normalizedId)
     .eq('role', 'supervisor');
 
   if (error) throw error;
@@ -2008,11 +2417,13 @@ export async function deleteSupervisor(id) {
 }
 
 export async function resetSupervisorPassword(id, newPassword) {
+  const normalizedId = positiveId(id, 'supervisor ID');
+  validatePassword(newPassword, 'New password');
   const password_hash = await bcrypt.hash(newPassword, 10);
   const { error } = await supabase
     .from('accounts')
     .update({ password_hash })
-    .eq('id', id)
+    .eq('id', normalizedId)
     .eq('role', 'supervisor');
 
   if (error) throw error;
@@ -2242,10 +2653,9 @@ export async function deleteProject(id, userId, isAdmin) {
 }
 
 export async function uploadProjectFile({ projectId, userId, uploaderName, file, fileCategory }) {
-  if (!file) throw new Error('File upload is required');
-  const { originalname, mimetype, size, buffer } = file;
-  const fileExtension = originalname.split('.').pop();
-  const newFileName = `${uuidv4()}.${fileExtension}`;
+  const { originalName, extension } = validateUploadFile(file);
+  const { mimetype, size, buffer } = file;
+  const newFileName = `${uuidv4()}.${extension}`;
   const filePath = `project-files/${projectId}/${newFileName}`;
 
   const { error: uploadError } = await supabase
@@ -2268,7 +2678,7 @@ export async function uploadProjectFile({ projectId, userId, uploaderName, file,
       uploaded_by: userId,
       uploader_name: uploaderName || 'Intern',
       file_category: fileCategory || 'documentation',
-      original_name: originalname,
+      original_name: originalName,
       file_name: newFileName,
       file_type: mimetype.split('/').pop(),
       file_size: size,

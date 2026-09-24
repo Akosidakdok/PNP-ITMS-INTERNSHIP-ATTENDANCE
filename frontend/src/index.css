@@ -2191,6 +2191,14 @@ body {
   .intern-evaluation-page .table-responsive table {
     min-width: 34rem !important;
   }
+  .evaluation-detail-field {
+    min-width: 0;
+  }
+  .evaluation-detail-value {
+    min-width: 0 !important;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
   .intern-profile-page h1 {
     font-size: 1.25rem;
     line-height: 1.3;
@@ -2342,6 +2350,22 @@ body {
     text-transform: uppercase;
   }
   .admin-evaluation-detail-table td:first-child { text-align: left !important; }
+
+  /* Evaluation metadata uses underlined values on desktop. Let each value
+     wrap below its label on phones instead of forcing a 200px inline field. */
+  .evaluation-detail-field {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.25rem;
+  }
+  .evaluation-detail-value {
+    flex: 1 1 100%;
+    min-width: 0 !important;
+    max-width: 100%;
+    margin-left: 0 !important;
+    overflow-wrap: anywhere;
+  }
 
   /* Project Directory has its own outer padding in addition to page padding. */
   .admin-project-directory { padding: 0.25rem !important; }

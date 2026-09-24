@@ -149,17 +149,17 @@ export default function MyEvaluation() {
 
               {/* Trainee / Evaluator Info */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2.5 text-xs border border-gray-300 rounded-xl p-4 bg-gray-50/50">
-                <div>
+                <div className="evaluation-detail-field">
                   <span className="font-bold text-gray-700">Trainee Name:</span>
-                  <span className="ml-2 border-b border-gray-400 pb-0.5 inline-block min-w-[200px] font-semibold">{ev.full_name}</span>
+                  <span className="evaluation-detail-value ml-2 border-b border-gray-400 pb-0.5 inline-block min-w-[200px] font-semibold">{ev.full_name}</span>
                 </div>
-                <div>
+                <div className="evaluation-detail-field">
                   <span className="font-bold text-gray-700">Evaluator/Supervisor:</span>
-                  <span className="ml-2 border-b border-gray-400 pb-0.5 inline-block min-w-[200px] font-semibold">{ev.evaluator_name}</span>
+                  <span className="evaluation-detail-value ml-2 border-b border-gray-400 pb-0.5 inline-block min-w-[200px] font-semibold">{ev.evaluator_name}</span>
                 </div>
-                <div className="md:col-span-2">
+                <div className="evaluation-detail-field md:col-span-2">
                   <span className="font-bold text-gray-700">Evaluation Date:</span>
-                  <span className="ml-2 border-b border-gray-400 pb-0.5 inline-block min-w-[200px] font-semibold">
+                  <span className="evaluation-detail-value ml-2 border-b border-gray-400 pb-0.5 inline-block min-w-[200px] font-semibold">
                     {ev.evaluation_date ? format(new Date(ev.evaluation_date), 'MMMM dd, yyyy') : '—'}
                   </span>
                 </div>

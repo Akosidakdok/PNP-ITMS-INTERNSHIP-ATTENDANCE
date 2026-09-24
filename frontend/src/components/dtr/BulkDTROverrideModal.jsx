@@ -2,7 +2,9 @@ import { useState, useEffect, useMemo } from 'react';
 import { Calendar, Users, CheckSquare, Square, AlertCircle, Clock, Filter, Search, Check } from 'lucide-react';
 import Modal from '../common/Modal.jsx';
 import api from '../../utils/api.js';
+import { fetchAllInterns } from '../../utils/interns.js';
 import toast from 'react-hot-toast';
+import { divisionLabel } from '../../utils/display.js';
 
 const getPhtTodayKey = () => {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila' }).format(new Date());
@@ -43,11 +45,11 @@ export default function BulkDTROverrideModal({
 
     setLoadingData(true);
     Promise.all([
-      api.get('/interns', { params: { limit: 300 } }),
+      fetchAllInterns(),
       api.get('/divisions')
     ])
       .then(([internsRes, divRes]) => {
-        const activeInterns = (internsRes.data.interns || []).filter(i => i.status !== 'archived');
+        const activeInterns = (internsRes || []).filter(i => i.status !== 'archived');
         setInterns(activeInterns);
         setDivisions(divRes.data.divisions || []);
       })
@@ -364,7 +366,7 @@ export default function BulkDTROverrideModal({
                           />
                           <div>
                             <span className="font-semibold text-gray-800">{i.full_name}</span>
-                            <span className="text-gray-400 ml-1.5 text-[11px]">({i.division_name || 'No Division'})</span>
+                            <span className="text-gray-400 ml-1.5 text-[11px]">({divisionLabel(i.division_name)})</span>
                           </div>
                         </div>
                         <span className="text-[11px] text-gray-400 font-mono">{i.student_id || ''}</span>

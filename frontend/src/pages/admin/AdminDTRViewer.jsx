@@ -8,6 +8,8 @@ import DTREditModal from '../../components/dtr/DTREditModal.jsx';
 import DTRHistoryModal from '../../components/dtr/DTRHistoryModal.jsx';
 import DTRBatchAlterModal from '../../components/dtr/DTRBatchAlterModal.jsx';
 import BulkDTROverrideModal from '../../components/dtr/BulkDTROverrideModal.jsx';
+import { fetchAllInterns } from '../../utils/interns.js';
+import { divisionLabel } from '../../utils/display.js';
 import toast from 'react-hot-toast';
 
 const getPhtTodayKey = () => {
@@ -65,10 +67,8 @@ export default function AdminDTRViewer() {
 
   // Load interns list
   useEffect(() => {
-    api.get('/interns', { params: { limit: 100 } })
-      .then(res => {
-        setInterns(res.data.interns || []);
-      })
+    fetchAllInterns()
+      .then(setInterns)
       .catch(() => toast.error('Failed to load interns list'));
   }, []);
 
@@ -266,7 +266,7 @@ export default function AdminDTRViewer() {
               <option value="">Select intern...</option>
               {filteredInterns.map(i => (
                 <option key={i.id} value={i.id}>
-                  {i.full_name} ({i.division_name || 'No Division'})
+                  {i.full_name} ({divisionLabel(i.division_name)})
                 </option>
               ))}
             </select>
@@ -344,7 +344,7 @@ export default function AdminDTRViewer() {
                 <div className="text-xs text-gray-600 space-y-1">
                   <p><span className="font-bold text-gray-800">School:</span> {selectedInternData.school || '—'}</p>
                   <p><span className="font-bold text-gray-800">Course:</span> {selectedInternData.course || '—'}</p>
-                  <p><span className="font-bold text-gray-800">Division:</span> {selectedInternData.division_name || '—'}</p>
+                  <p><span className="font-bold text-gray-800">Division:</span> {divisionLabel(selectedInternData.division_name)}</p>
                   <p><span className="font-bold text-gray-800">Required:</span> {selectedInternData.required_hours || 0} Hrs</p>
                 </div>
               </div>

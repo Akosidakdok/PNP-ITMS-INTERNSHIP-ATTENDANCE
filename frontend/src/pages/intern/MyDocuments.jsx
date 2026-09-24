@@ -28,7 +28,7 @@ export default function MyDocuments() {
   const fetchDocs = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await api.get('/documents');
+      const res = await api.get('/documents', { params: { limit: 100 } });
       setDocs(res.data.documents);
     } catch { toast.error('Failed to load documents'); }
     finally { setLoading(false); }

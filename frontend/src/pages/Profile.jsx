@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import { User, Mail, Phone, MapPin, ShieldAlert, Award, School, Building2, Calendar, Lock, ShieldCheck, UserCheck, History, RefreshCw } from 'lucide-react';
 import Modal from '../components/common/Modal.jsx';
 import FaceRegistrationModal from '../components/face/FaceRegistrationModal.jsx';
+import { divisionLabel } from '../utils/display.js';
 
 export default function Profile({ role }) {
   const { user, refreshUser } = useAuth();
@@ -548,7 +549,7 @@ export default function Profile({ role }) {
                   <p className="deployment-card-label text-[10px] font-bold uppercase tracking-wider mb-1">Designated Division</p>
                   <div className="deployment-card-division mt-1 px-3 py-2 border rounded-lg">
                     <p className="deployment-card-division-value font-bold text-xs tracking-wide">
-                      {profile.division_name || '—'}
+                      {divisionLabel(profile.division_name)}
                     </p>
                   </div>
                 </div>
