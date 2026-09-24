@@ -2464,6 +2464,26 @@ body {
     min-width: 0 !important;
     padding: 0.25rem !important;
   }
+  /* The official seven-column sheet is a print/export layout. Keep it out of
+     the phone UI so it cannot collapse into overlapping cells. */
+  .dtr-official-sheet {
+    display: none !important;
+  }
+  .dtr-print__canvas.dtr-export-mode {
+    width: 760px !important;
+    min-width: 760px !important;
+    max-width: none !important;
+    padding: 10mm !important;
+  }
+  .dtr-print__canvas.dtr-export-mode .dtr-official-sheet {
+    display: block !important;
+    width: 100% !important;
+    max-width: 760px !important;
+  }
+  .dtr-print__canvas.dtr-export-mode .dtr-official-table {
+    width: 100% !important;
+    min-width: 600px !important;
+  }
   .dtr-mobile-list {
     width: 100%;
     min-width: 0;
@@ -2506,6 +2526,12 @@ body {
     min-width: 0 !important;
     max-width: 100% !important;
     padding: 1rem !important;
+  }
+  .dtr-preview-card.dtr-preview-export-mode {
+    width: 600px !important;
+    min-width: 600px !important;
+    max-width: none !important;
+    padding: 28px !important;
   }
   .dtr-preview-card > div:first-child {
     gap: 0.4rem;
@@ -2637,6 +2663,8 @@ body {
     page-break-after: avoid !important;
     page-break-before: avoid !important;
   }
+  #dtr-print-root .dtr-official-sheet { display: block !important; }
+  #dtr-print-root .dtr-mobile-list { display: none !important; }
 
   @page {
     size: auto;

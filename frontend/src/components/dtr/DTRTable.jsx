@@ -255,7 +255,7 @@ export default function DTRTable({
       {/* ── DESKTOP PRINT VIEW ── */}
       <div
         id="dtr-sheet-content"
-        className="block"
+        className="block dtr-official-sheet"
         style={{
           fontFamily: 'Arial, sans-serif',
           fontSize: '11px',
@@ -393,7 +393,7 @@ export default function DTRTable({
         Removed: AM Time Out, AM Sig(2), PM Time In, PM Sig(1)
       */}
       <div className="overflow-x-auto w-full">
-        <table style={{
+        <table className="dtr-official-table" style={{
           width: '100%',
           minWidth: '600px',
           borderCollapse: 'collapse',

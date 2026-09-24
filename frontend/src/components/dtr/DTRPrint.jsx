@@ -5,6 +5,57 @@ import toast from 'react-hot-toast';
 import domtoimage from 'dom-to-image-more';
 import { jsPDF } from 'jspdf';
 
+const DTR_EXPORT_WIDTH = 760;
+
+function waitForNextPaint() {
+  return new Promise(resolve => window.requestAnimationFrame(resolve));
+}
+
+async function captureDtrPng(element) {
+  const noPrintElements = element.querySelectorAll('.no-print');
+  const originalDisplays = [];
+  const scrollableElements = element.querySelectorAll('.overflow-x-auto');
+  const originalOverflows = [];
+
+  // The export class restores the official sheet width on phones before the
+  // DOM is cloned. Without it, mobile CSS collapses the seven-column sheet.
+  element.classList.add('dtr-export-mode');
+
+  try {
+    noPrintElements.forEach(node => {
+      originalDisplays.push(node.style.display);
+      node.style.display = 'none';
+    });
+
+    scrollableElements.forEach(node => {
+      originalOverflows.push(node.style.overflowX);
+      node.style.overflowX = 'visible';
+    });
+
+    await waitForNextPaint();
+
+    return await domtoimage.toPng(element, {
+      bgcolor: '#ffffff',
+      scale: 2,
+      width: DTR_EXPORT_WIDTH,
+      style: {
+        transform: 'scale(1)',
+        transformOrigin: 'top left',
+        margin: '0',
+        width: `${DTR_EXPORT_WIDTH}px`,
+      }
+    });
+  } finally {
+    noPrintElements.forEach((node, idx) => {
+      node.style.display = originalDisplays[idx];
+    });
+    scrollableElements.forEach((node, idx) => {
+      node.style.overflowX = originalOverflows[idx];
+    });
+    element.classList.remove('dtr-export-mode');
+  }
+}
+
 export default function DTRPrint({
   records,
   intern,
@@ -33,44 +84,7 @@ export default function DTRPrint({
     const toastId = toast.loading('Generating official DTR document (PDF)...');
     
     try {
-      // Temporarily hide .no-print elements inside the printable area
-      const noPrintElements = el.querySelectorAll('.no-print');
-      const originalDisplays = [];
-      noPrintElements.forEach(node => {
-        originalDisplays.push(node.style.display);
-        node.style.display = 'none';
-      });
-
-      // Temporarily disable scrollbars on any element to avoid them appearing in the PDF
-      const scrollableElements = el.querySelectorAll('.overflow-x-auto');
-      const originalOverflows = [];
-      scrollableElements.forEach(node => {
-        originalOverflows.push(node.style.overflowX);
-        node.style.overflowX = 'visible';
-      });
-
-      // Use dom-to-image-more with crisp 2x resolution and exact 760px document width
-      const imgData = await domtoimage.toPng(el, {
-        bgcolor: '#ffffff',
-        scale: 2,
-        width: 760,
-        style: {
-          transform: 'scale(1)',
-          transformOrigin: 'top left',
-          margin: '0',
-          width: '760px',
-        }
-      });
-
-      // Restore .no-print elements
-      noPrintElements.forEach((node, idx) => {
-        node.style.display = originalDisplays[idx];
-      });
-
-      // Restore scrollbars
-      scrollableElements.forEach((node, idx) => {
-        node.style.overflowX = originalOverflows[idx];
-      });
+      const imgData = await captureDtrPng(el);
 
       // Determine dimensions according to selected format
       let jsPdfFormat = 'a4';
@@ -142,38 +156,7 @@ export default function DTRPrint({
     const toastId = toast.loading('Generating DTR sheet image...');
 
     try {
-      const noPrintElements = el.querySelectorAll('.no-print');
-      const originalDisplays = [];
-      noPrintElements.forEach(node => {
-        originalDisplays.push(node.style.display);
-        node.style.display = 'none';
-      });
-
-      const scrollableElements = el.querySelectorAll('.overflow-x-auto');
-      const originalOverflows = [];
-      scrollableElements.forEach(node => {
-        originalOverflows.push(node.style.overflowX);
-        node.style.overflowX = 'visible';
-      });
-
-      const imgData = await domtoimage.toPng(el, {
-        bgcolor: '#ffffff',
-        scale: 2,
-        width: 760,
-        style: {
-          transform: 'scale(1)',
-          transformOrigin: 'top left',
-          margin: '0',
-          width: '760px',
-        }
-      });
-
-      noPrintElements.forEach((node, idx) => {
-        node.style.display = originalDisplays[idx];
-      });
-      scrollableElements.forEach((node, idx) => {
-        node.style.overflowX = originalOverflows[idx];
-      });
+      const imgData = await captureDtrPng(el);
 
       const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
       const fname = intern

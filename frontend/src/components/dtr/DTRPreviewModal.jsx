@@ -156,28 +156,28 @@ export default function DTRPreviewModal({
 
     setIsExporting(true);
     const toastId = toast.loading('Generating official DTR preview image...');
+    const noExportEls = el.querySelectorAll('.no-export');
+    const originalDisplays = [];
+    el.classList.add('dtr-preview-export-mode');
 
     try {
       // Temporarily hide elements with .no-export
-      const noExportEls = el.querySelectorAll('.no-export');
-      const originalDisplays = [];
       noExportEls.forEach(node => {
         originalDisplays.push(node.style.display);
         node.style.display = 'none';
       });
 
+      await new Promise(resolve => window.requestAnimationFrame(resolve));
+
       const dataUrl = await domtoimage.toPng(el, {
         bgcolor: '#ffffff',
         scale: 2, // High resolution
+        width: 600,
         style: {
           transform: 'scale(1)',
           transformOrigin: 'top left',
+          width: '600px',
         },
-      });
-
-      // Restore hidden elements
-      noExportEls.forEach((node, idx) => {
-        node.style.display = originalDisplays[idx];
       });
 
       const internNameSlug = (intern?.full_name || 'Intern').replace(/\s+/g, '_');
@@ -195,6 +195,10 @@ export default function DTRPreviewModal({
       toast.dismiss(toastId);
       toast.error(`Failed to export image: ${err.message || 'Unknown error'}`);
     } finally {
+      noExportEls.forEach((node, idx) => {
+        node.style.display = originalDisplays[idx];
+      });
+      el.classList.remove('dtr-preview-export-mode');
       setIsExporting(false);
     }
   };
