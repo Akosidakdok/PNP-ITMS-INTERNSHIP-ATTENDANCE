@@ -24,6 +24,7 @@ import {
   getAccountsWithProfiles,
   assignProfileToAccounts,
   removeAccountProfileAssignment,
+  setIndividualAttendanceControl,
   editDtrRecord,
   deleteDtrAttendance,
   getDtrEditHistory,
@@ -960,6 +961,18 @@ app.post('/admin/attendance-control/assignments', authMiddleware, superadminMidd
 app.delete('/admin/attendance-control/assignments/:accountId', authMiddleware, superadminMiddleware, async (req, res) => {
   try {
     const result = await removeAccountProfileAssignment(Number(req.params.accountId));
+    return res.json(result);
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message });
+  }
+});
+
+app.post('/admin/attendance-control/individual/:accountId', authMiddleware, superadminMiddleware, async (req, res) => {
+  try {
+    const result = await setIndividualAttendanceControl(Number(req.params.accountId), {
+      ...req.body,
+      assigned_by: req.user.id,
+    });
     return res.json(result);
   } catch (error) {
     return res.status(error.statusCode || 500).json({ error: error.message });

@@ -16,6 +16,10 @@ const {
   formatDateDisplay,
   editDtrRecord,
   deleteDtrAttendance,
+  setIndividualAttendanceControl,
+  addDaysToDateKey,
+  parseProfileEffectivity,
+  isProfileEffectiveOnDate,
 } = await import('../src/services/attendanceControlService.js');
 const {
   superadminMiddleware,
@@ -258,4 +262,62 @@ test('deleteDtrAttendance rejects invalid date format', async () => {
     }),
     /valid attendance date is required/
   );
+});
+
+test('setIndividualAttendanceControl validates account ID and mode', async () => {
+  await assert.rejects(
+    () => setIndividualAttendanceControl(null, { mode: 'custom' }),
+    /Valid Account ID is required/
+  );
+
+  await assert.rejects(
+    () => setIndividualAttendanceControl('invalid-id', { mode: 'custom' }),
+    /Valid Account ID is required/
+  );
+});
+
+test('addDaysToDateKey correctly adds days to YYYY-MM-DD date key', () => {
+  assert.equal(addDaysToDateKey('2026-09-29', 0), '2026-09-29');
+  assert.equal(addDaysToDateKey('2026-09-29', 1), '2026-09-30');
+  assert.equal(addDaysToDateKey('2026-09-29', 2), '2026-10-01');
+  assert.equal(addDaysToDateKey('2026-12-31', 1), '2027-01-01');
+});
+
+test('parseProfileEffectivity parses today, days range, and ongoing profiles', () => {
+  const todayOnly = parseProfileEffectivity('Individual: Christian Baldonado [2026-09-29..2026-09-29]');
+  assert.equal(todayOnly.isIndividual, true);
+  assert.equal(todayOnly.durationType, 'today');
+  assert.equal(todayOnly.startDate, '2026-09-29');
+  assert.equal(todayOnly.endDate, '2026-09-29');
+
+  const range = parseProfileEffectivity('Individual: Christian Baldonado [2026-09-29..2026-10-02]');
+  assert.equal(range.isIndividual, true);
+  assert.equal(range.durationType, 'days');
+  assert.equal(range.startDate, '2026-09-29');
+  assert.equal(range.endDate, '2026-10-02');
+
+  const ongoing = parseProfileEffectivity('Individual: Christian Baldonado [Ongoing]');
+  assert.equal(ongoing.isIndividual, true);
+  assert.equal(ongoing.durationType, 'ongoing');
+
+  const standard = parseProfileEffectivity('Regular 8AM–5PM');
+  assert.equal(standard.isIndividual, false);
+  assert.equal(standard.durationType, 'ongoing');
+});
+
+test('isProfileEffectiveOnDate validates date effectivity correctly', () => {
+  const todayProfile = { profile_name: 'Individual: Test [2026-09-29..2026-09-29]' };
+  assert.equal(isProfileEffectiveOnDate(todayProfile, '2026-09-29'), true);
+  assert.equal(isProfileEffectiveOnDate(todayProfile, '2026-09-30'), false);
+  assert.equal(isProfileEffectiveOnDate(todayProfile, '2026-09-28'), false);
+
+  const multiDayProfile = { profile_name: 'Individual: Test [2026-09-29..2026-10-01]' };
+  assert.equal(isProfileEffectiveOnDate(multiDayProfile, '2026-09-29'), true);
+  assert.equal(isProfileEffectiveOnDate(multiDayProfile, '2026-09-30'), true);
+  assert.equal(isProfileEffectiveOnDate(multiDayProfile, '2026-10-01'), true);
+  assert.equal(isProfileEffectiveOnDate(multiDayProfile, '2026-10-02'), false);
+
+  const ongoingProfile = { profile_name: 'Individual: Test [Ongoing]' };
+  assert.equal(isProfileEffectiveOnDate(ongoingProfile, '2026-09-29'), true);
+  assert.equal(isProfileEffectiveOnDate(ongoingProfile, '2027-01-01'), true);
 });

@@ -178,8 +178,8 @@ export async function scanAttendance({ qr_code, user, photo, face_embedding } = 
 
   if (internId) {
     try {
-      assignedProfile = await getAssignedProfileForAccount(internId);
       const { dateKey } = getPhtDayBoundsUtc();
+      assignedProfile = await getAssignedProfileForAccount(internId, dateKey);
 
       if (scanType === 'time_in') {
         if (assignedProfile && assignedProfile.first_scan_enabled && assignedProfile.time_in) {

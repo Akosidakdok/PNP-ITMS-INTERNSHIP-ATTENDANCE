@@ -88,8 +88,82 @@ export function formatPhtTime(timestamp) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// ATTENDANCE PROFILES MANAGEMENT
+// ATTENDANCE PROFILES MANAGEMENT & EFFECTIVITY
 // ─────────────────────────────────────────────────────────────
+
+export function addDaysToDateKey(dateKey, numDays = 0) {
+  if (!dateKey) return dateKey;
+  const [year, month, day] = dateKey.split('-').map(Number);
+  const d = new Date(Date.UTC(year, month - 1, day + Number(numDays)));
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(d.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${dd}`;
+}
+
+export function parseProfileEffectivity(profileName) {
+  if (!profileName || typeof profileName !== 'string') {
+    return {
+      isIndividual: false,
+      durationType: 'ongoing',
+      startDate: null,
+      endDate: null,
+      cleanName: profileName || '',
+      label: 'Standard Profile',
+    };
+  }
+
+  const isIndividual = profileName.startsWith('Individual:');
+  const dateMatch = profileName.match(/\[(\d{4}-\d{2}-\d{2})\.\.(\d{4}-\d{2}-\d{2})\]/);
+
+  if (dateMatch) {
+    const startDate = dateMatch[1];
+    const endDate = dateMatch[2];
+    const isTodayOnly = startDate === endDate;
+    const cleanName = profileName.replace(/\s*\[\d{4}-\d{2}-\d{2}\.\.\d{4}-\d{2}-\d{2}\]/, '').trim();
+
+    return {
+      isIndividual,
+      durationType: isTodayOnly ? 'today' : 'days',
+      startDate,
+      endDate,
+      cleanName,
+      label: isTodayOnly
+        ? `Today Only (${formatDateDisplay(startDate)})`
+        : `${formatDateDisplay(startDate)} – ${formatDateDisplay(endDate)}`,
+    };
+  }
+
+  const ongoingMatch = profileName.match(/\[Ongoing\]/i);
+  if (ongoingMatch) {
+    const cleanName = profileName.replace(/\s*\[Ongoing\]/i, '').trim();
+    return {
+      isIndividual,
+      durationType: 'ongoing',
+      startDate: null,
+      endDate: null,
+      cleanName,
+      label: 'Permanent / Ongoing',
+    };
+  }
+
+  return {
+    isIndividual,
+    durationType: 'ongoing',
+    startDate: null,
+    endDate: null,
+    cleanName: profileName,
+    label: isIndividual ? 'Ongoing' : 'Standard',
+  };
+}
+
+export function isProfileEffectiveOnDate(profile, dateKey) {
+  if (!profile) return false;
+  const { durationType, startDate, endDate } = parseProfileEffectivity(profile.profile_name);
+  if (durationType === 'ongoing') return true;
+  if (!startDate || !endDate || !dateKey) return true;
+  return dateKey >= startDate && dateKey <= endDate;
+}
 
 export async function listAttendanceProfiles() {
   const { data: profiles, error } = await supabase
@@ -114,10 +188,19 @@ export async function listAttendanceProfiles() {
     }
   }
 
-  return (profiles || []).map(p => ({
-    ...p,
-    assigned_accounts_count: countMap[p.id] || 0,
-  }));
+  return (profiles || []).map(p => {
+    const eff = parseProfileEffectivity(p.profile_name);
+    return {
+      ...p,
+      assigned_accounts_count: countMap[p.id] || 0,
+      is_individual: eff.isIndividual,
+      clean_name: eff.cleanName,
+      duration_type: eff.durationType,
+      start_date: eff.startDate,
+      end_date: eff.endDate,
+      duration_label: eff.label,
+    };
+  });
 }
 
 export async function getAttendanceProfileById(id) {
@@ -245,8 +328,10 @@ export async function toggleAttendanceProfileStatus(id, status) {
 // ACCOUNT ASSIGNMENTS MANAGEMENT
 // ─────────────────────────────────────────────────────────────
 
-export async function getAssignedProfileForAccount(accountId) {
+export async function getAssignedProfileForAccount(accountId, dateKey = null) {
   if (!accountId) return null;
+
+  const targetDate = dateKey || getPhtDayBoundsUtc().dateKey;
 
   const { data: assignment, error: assignError } = await supabase
     .from('account_attendance_profiles')
@@ -262,14 +347,20 @@ export async function getAssignedProfileForAccount(accountId) {
       .eq('status', 'active')
       .maybeSingle();
 
-    if (!profError && profile) return profile;
+    if (!profError && profile) {
+      if (isProfileEffectiveOnDate(profile, targetDate)) {
+        return profile;
+      }
+      // If it's an individual profile that has expired, do NOT use it for targetDate; fallback to standard profile below
+    }
   }
 
-  // Fallback to active "Regular 8AM–5PM" or first active profile
+  // Fallback to active "Regular 8AM–5PM" or first active standard profile
   const { data: defaultProfile } = await supabase
     .from('attendance_profiles')
     .select('*')
     .eq('status', 'active')
+    .not('profile_name', 'like', 'Individual:%')
     .order('id', { ascending: true })
     .limit(1)
     .maybeSingle();
@@ -294,18 +385,33 @@ export async function getAccountsWithProfiles() {
   // Fetch all assignments with profile details
   const { data: assignments, error: assignError } = await supabase
     .from('account_attendance_profiles')
-    .select('account_id, attendance_profile_id, assigned_at, attendance_profiles(id, profile_name, time_in, time_out, status)');
+    .select('account_id, attendance_profile_id, assigned_at, attendance_profiles(id, profile_name, time_in, time_out, first_scan_enabled, second_scan_enabled, status)');
 
+  const todayKey = getPhtDayBoundsUtc().dateKey;
   const assignmentMap = new Map();
+
   if (!assignError && assignments) {
     for (const a of assignments) {
+      const prof = a.attendance_profiles;
+      const eff = parseProfileEffectivity(prof?.profile_name);
+      const isEffectiveToday = isProfileEffectiveOnDate(prof, todayKey);
+
       assignmentMap.set(Number(a.account_id), {
         profile_id: a.attendance_profile_id,
-        profile_name: a.attendance_profiles?.profile_name || 'Assigned Profile',
-        time_in: a.attendance_profiles?.time_in,
-        time_out: a.attendance_profiles?.time_out,
-        status: a.attendance_profiles?.status,
+        profile_name: prof?.profile_name || 'Assigned Profile',
+        clean_name: eff.cleanName,
+        duration_type: eff.durationType,
+        start_date: eff.startDate,
+        end_date: eff.endDate,
+        duration_label: eff.label,
+        is_effective_today: isEffectiveToday,
+        time_in: prof?.time_in,
+        time_out: prof?.time_out,
+        first_scan_enabled: prof?.first_scan_enabled ?? true,
+        second_scan_enabled: prof?.second_scan_enabled ?? true,
+        status: prof?.status,
         assigned_at: a.assigned_at,
+        is_individual: eff.isIndividual,
       });
     }
   }
@@ -372,6 +478,332 @@ export async function removeAccountProfileAssignment(accountId) {
     throw new Error('Failed to remove attendance profile assignment');
   }
   return { success: true };
+}
+
+export async function setIndividualAttendanceControl(
+  accountId,
+  {
+    mode = 'custom',
+    profile_id,
+    custom_schedule,
+    duration = { type: 'today' },
+    assigned_by
+  } = {}
+) {
+  if (!accountId || isNaN(Number(accountId))) {
+    const err = new Error('Valid Account ID is required');
+    err.statusCode = 400;
+    throw err;
+  }
+  const numericAccountId = Number(accountId);
+
+  // 1. Fetch account
+  const { data: account, error: accErr } = await supabase
+    .from('accounts')
+    .select('id, full_name, username')
+    .eq('id', numericAccountId)
+    .single();
+
+  if (accErr || !account) {
+    const err = new Error('Account not found');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  const accountName = account.full_name || account.username || `Intern #${numericAccountId}`;
+  const todayKey = getPhtDayBoundsUtc().dateKey;
+
+  // 2. Fetch current assignment and its profile
+  const { data: currentAssignment } = await supabase
+    .from('account_attendance_profiles')
+    .select('attendance_profile_id, attendance_profiles(id, profile_name)')
+    .eq('account_id', numericAccountId)
+    .maybeSingle();
+
+  const currentProfile = currentAssignment?.attendance_profiles;
+  const isCurrentIndividual = Boolean(currentProfile?.profile_name?.startsWith('Individual:'));
+
+  if (mode === 'custom') {
+    const {
+      time_in = '08:00',
+      time_out = '17:00',
+      first_scan_enabled = true,
+      second_scan_enabled = true,
+    } = custom_schedule || {};
+
+    const normalizedIn = normalizeTimeString(time_in) || '08:00:00';
+    const normalizedOut = normalizeTimeString(time_out) || '17:00:00';
+
+    // Calculate effectivity dates and duration tag
+    const durationType = duration?.type || 'today';
+    let durationTag = '';
+    let effStartDate = todayKey;
+    let effEndDate = todayKey;
+
+    if (durationType === 'today') {
+      durationTag = ` [${todayKey}..${todayKey}]`;
+      effStartDate = todayKey;
+      effEndDate = todayKey;
+    } else if (durationType === 'days') {
+      const daysCount = Math.max(1, Number(duration?.days_count || 1));
+      effStartDate = todayKey;
+      effEndDate = addDaysToDateKey(todayKey, daysCount - 1);
+      durationTag = ` [${effStartDate}..${effEndDate}]`;
+    } else if (durationType === 'range') {
+      effStartDate = duration?.start_date || todayKey;
+      effEndDate = duration?.end_date || effStartDate;
+      durationTag = ` [${effStartDate}..${effEndDate}]`;
+    } else {
+      durationTag = ' [Ongoing]';
+      effStartDate = null;
+      effEndDate = null;
+    }
+
+    const individualProfileName = `Individual: ${accountName}${durationTag}`;
+
+    let targetProfileId = null;
+
+    // Check if the current assigned profile is already an individual profile dedicated to this account
+    if (isCurrentIndividual && currentProfile?.id) {
+      // Check if any other account shares this profile
+      const { count } = await supabase
+        .from('account_attendance_profiles')
+        .select('*', { count: 'exact', head: true })
+        .eq('attendance_profile_id', currentProfile.id);
+
+      if (!count || count <= 1) {
+        targetProfileId = currentProfile.id;
+        await supabase
+          .from('attendance_profiles')
+          .update({
+            profile_name: individualProfileName,
+            time_in: normalizedIn,
+            time_out: normalizedOut,
+            first_scan_enabled: Boolean(first_scan_enabled),
+            second_scan_enabled: Boolean(second_scan_enabled),
+            status: 'active',
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', targetProfileId);
+      }
+    }
+
+    if (!targetProfileId) {
+      // Create new dedicated profile
+      const { data: newProfile, error: createErr } = await supabase
+        .from('attendance_profiles')
+        .insert([
+          {
+            profile_name: individualProfileName,
+            time_in: normalizedIn,
+            time_out: normalizedOut,
+            first_scan_enabled: Boolean(first_scan_enabled),
+            second_scan_enabled: Boolean(second_scan_enabled),
+            status: 'active',
+            updated_at: new Date().toISOString(),
+          },
+        ])
+        .select()
+        .single();
+
+      if (createErr) {
+        console.error('Error creating individual profile:', createErr);
+        throw new Error('Failed to create individual attendance schedule');
+      }
+      targetProfileId = newProfile.id;
+    }
+
+    // Reassign account to target profile
+    await supabase
+      .from('account_attendance_profiles')
+      .delete()
+      .eq('account_id', numericAccountId);
+
+    const { error: assignErr } = await supabase
+      .from('account_attendance_profiles')
+      .insert([
+        {
+          account_id: numericAccountId,
+          attendance_profile_id: targetProfileId,
+          assigned_at: new Date().toISOString(),
+          assigned_by: assigned_by || null,
+        },
+      ]);
+
+    if (assignErr) {
+      console.error('Error assigning individual profile:', assignErr);
+      throw new Error('Failed to assign individual profile');
+    }
+
+    // ── SYNC TODAY'S RECORD IF ACTIVE TODAY ─────────────────────────
+    // If this schedule is effective today, update today's existing attendance_records and logs
+    if (durationType === 'ongoing' || (todayKey >= effStartDate && todayKey <= effEndDate)) {
+      try {
+        const { data: todayRec } = await supabase
+          .from('attendance_records')
+          .select('id, actual_time_in, actual_time_out, recorded_time_in, recorded_time_out')
+          .eq('account_id', numericAccountId)
+          .eq('attendance_date', todayKey)
+          .maybeSingle();
+
+        if (todayRec) {
+          const recUpdates = {
+            attendance_profile_id: targetProfileId,
+            updated_at: new Date().toISOString(),
+          };
+          if (first_scan_enabled) {
+            recUpdates.recorded_time_in = buildPhtTimestamp(todayKey, normalizedIn);
+          }
+          if (second_scan_enabled && todayRec.actual_time_out) {
+            recUpdates.recorded_time_out = buildPhtTimestamp(todayKey, normalizedOut);
+          }
+          await supabase
+            .from('attendance_records')
+            .update(recUpdates)
+            .eq('id', todayRec.id);
+        }
+
+        // Also update today's attendance_logs
+        if (first_scan_enabled) {
+          await supabase
+            .from('attendance_logs')
+            .update({
+              attendance_profile_id: targetProfileId,
+              recorded_scan_time: buildPhtTimestamp(todayKey, normalizedIn),
+            })
+            .eq('intern_id', numericAccountId)
+            .eq('scan_type', 'time_in')
+            .gte('actual_scan_time', `${todayKey}T00:00:00+08:00`);
+        }
+      } catch (syncErr) {
+        console.warn('Could not sync today attendance record with individual control:', syncErr?.message);
+      }
+    }
+
+    const eff = parseProfileEffectivity(individualProfileName);
+
+    return {
+      success: true,
+      mode: 'custom',
+      account_id: numericAccountId,
+      account_name: accountName,
+      profile_id: targetProfileId,
+      profile_name: individualProfileName,
+      clean_name: eff.cleanName,
+      duration_type: durationType,
+      start_date: effStartDate,
+      end_date: effEndDate,
+      duration_label: eff.label,
+      time_in: normalizedIn,
+      time_out: normalizedOut,
+      first_scan_enabled: Boolean(first_scan_enabled),
+      second_scan_enabled: Boolean(second_scan_enabled),
+    };
+  } else if (mode === 'shared') {
+    if (!profile_id) {
+      const err = new Error('Attendance profile ID is required for shared profile mode');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    // Verify shared profile exists
+    const { data: targetProfile, error: profErr } = await supabase
+      .from('attendance_profiles')
+      .select('id, profile_name, time_in, time_out, first_scan_enabled, second_scan_enabled')
+      .eq('id', Number(profile_id))
+      .single();
+
+    if (profErr || !targetProfile) {
+      const err = new Error('Selected attendance profile does not exist');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    // Delete current assignment
+    await supabase
+      .from('account_attendance_profiles')
+      .delete()
+      .eq('account_id', numericAccountId);
+
+    // Clean up old individual profile if orphaned
+    if (isCurrentIndividual && currentProfile?.id && currentProfile.id !== Number(profile_id)) {
+      const { count } = await supabase
+        .from('account_attendance_profiles')
+        .select('*', { count: 'exact', head: true })
+        .eq('attendance_profile_id', currentProfile.id);
+
+      if (!count || count === 0) {
+        await supabase
+          .from('attendance_profiles')
+          .delete()
+          .eq('id', currentProfile.id);
+      }
+    }
+
+    // Insert new assignment
+    const { error: assignErr } = await supabase
+      .from('account_attendance_profiles')
+      .insert([
+        {
+          account_id: numericAccountId,
+          attendance_profile_id: targetProfile.id,
+          assigned_at: new Date().toISOString(),
+          assigned_by: assigned_by || null,
+        },
+      ]);
+
+    if (assignErr) {
+      console.error('Error assigning shared profile:', assignErr);
+      throw new Error('Failed to assign profile');
+    }
+
+    return {
+      success: true,
+      mode: 'shared',
+      account_id: numericAccountId,
+      account_name: accountName,
+      profile_id: targetProfile.id,
+      profile_name: targetProfile.profile_name,
+      time_in: targetProfile.time_in,
+      time_out: targetProfile.time_out,
+      first_scan_enabled: targetProfile.first_scan_enabled,
+      second_scan_enabled: targetProfile.second_scan_enabled,
+    };
+  } else if (mode === 'none') {
+    // Delete current assignment
+    await supabase
+      .from('account_attendance_profiles')
+      .delete()
+      .eq('account_id', numericAccountId);
+
+    // Clean up old individual profile if orphaned
+    if (isCurrentIndividual && currentProfile?.id) {
+      const { count } = await supabase
+        .from('account_attendance_profiles')
+        .select('*', { count: 'exact', head: true })
+        .eq('attendance_profile_id', currentProfile.id);
+
+      if (!count || count === 0) {
+        await supabase
+          .from('attendance_profiles')
+          .delete()
+          .eq('id', currentProfile.id);
+      }
+    }
+
+    return {
+      success: true,
+      mode: 'none',
+      account_id: numericAccountId,
+      account_name: accountName,
+      profile_id: null,
+      profile_name: null,
+    };
+  } else {
+    const err = new Error('Invalid mode. Must be "custom", "shared", or "none".');
+    err.statusCode = 400;
+    throw err;
+  }
 }
 
 // ─────────────────────────────────────────────────────────────

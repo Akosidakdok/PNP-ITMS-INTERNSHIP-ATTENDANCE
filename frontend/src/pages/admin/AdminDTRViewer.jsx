@@ -68,7 +68,14 @@ export default function AdminDTRViewer() {
   // Load interns list
   useEffect(() => {
     fetchAllInterns()
-      .then(setInterns)
+      .then(data => {
+        setInterns(data);
+        const urlParams = new URLSearchParams(window.location.search);
+        const internParam = urlParams.get('intern');
+        if (internParam && data.some(i => String(i.id) === String(internParam))) {
+          setSelectedInternId(String(internParam));
+        }
+      })
       .catch(() => toast.error('Failed to load interns list'));
   }, []);
 
