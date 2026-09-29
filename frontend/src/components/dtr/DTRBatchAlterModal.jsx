@@ -66,7 +66,7 @@ export default function DTRBatchAlterModal({
             setActiveTab('time');
             setTimeIn(existing.time_in ? existing.time_in.slice(0, 5) : '08:00');
             setTimeOut(existing.time_out ? existing.time_out.slice(0, 5) : '17:00');
-            setStatus(existing.approval_status || 'approved');
+            setStatus('approved');
             setClearTarget('attendance');
           }
         } else {

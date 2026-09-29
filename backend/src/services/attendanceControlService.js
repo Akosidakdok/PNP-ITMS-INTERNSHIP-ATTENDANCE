@@ -474,7 +474,7 @@ export async function editDtrRecord({
   const newTimeOutNormalized = time_out ? normalizeTimeString(time_out) : null;
   const newTimeOutDisplay = newTimeOutNormalized ? newTimeOutNormalized.slice(0, 5) : null;
 
-  const newStatus = status ? status.toLowerCase() : origStatus;
+  const newStatus = status ? status.toLowerCase() : 'approved';
 
   // Build timestamps for new recorded times (using effectiveDate)
   const newTimeInIso = newTimeInNormalized
@@ -604,58 +604,64 @@ export async function editDtrRecord({
   }
 
   // Synchronize attendance_logs (keeping actual_scan_time preserved!)
-  if (newTimeInIso) {
-    if (timeInLog) {
-      await supabase
-        .from('attendance_logs')
-        .update({
+  if (timeInLog) {
+    const logUpdates = { approval_status: newStatus };
+    if (newTimeInIso) {
+      logUpdates.scan_time = newTimeInIso;
+      logUpdates.recorded_scan_time = newTimeInIso;
+    } else if (dateChanged && origTimeInStr) {
+      const shiftedInIso = buildPhtTimestamp(effectiveDate, origTimeInStr);
+      logUpdates.scan_time = shiftedInIso;
+      logUpdates.recorded_scan_time = shiftedInIso;
+    }
+    await supabase
+      .from('attendance_logs')
+      .update(logUpdates)
+      .eq('id', timeInLog.id);
+  } else if (newTimeInIso) {
+    await supabase
+      .from('attendance_logs')
+      .insert([
+        {
+          intern_id: internId,
+          scan_type: 'time_in',
           scan_time: newTimeInIso,
           recorded_scan_time: newTimeInIso,
+          actual_scan_time: null, // No actual scan took place
           approval_status: newStatus,
-        })
-        .eq('id', timeInLog.id);
-    } else {
-      await supabase
-        .from('attendance_logs')
-        .insert([
-          {
-            intern_id: internId,
-            scan_type: 'time_in',
-            scan_time: newTimeInIso,
-            recorded_scan_time: newTimeInIso,
-            actual_scan_time: null, // No actual scan took place
-            approval_status: newStatus,
-            attendance_record_id: recordId,
-          },
-        ]);
-    }
+          attendance_record_id: recordId,
+        },
+      ]);
   }
 
-  if (newTimeOutIso) {
-    if (timeOutLog) {
-      await supabase
-        .from('attendance_logs')
-        .update({
+  if (timeOutLog) {
+    const logUpdates = { approval_status: newStatus };
+    if (newTimeOutIso) {
+      logUpdates.scan_time = newTimeOutIso;
+      logUpdates.recorded_scan_time = newTimeOutIso;
+    } else if (dateChanged && origTimeOutStr) {
+      const shiftedOutIso = buildPhtTimestamp(effectiveDate, origTimeOutStr);
+      logUpdates.scan_time = shiftedOutIso;
+      logUpdates.recorded_scan_time = shiftedOutIso;
+    }
+    await supabase
+      .from('attendance_logs')
+      .update(logUpdates)
+      .eq('id', timeOutLog.id);
+  } else if (newTimeOutIso) {
+    await supabase
+      .from('attendance_logs')
+      .insert([
+        {
+          intern_id: internId,
+          scan_type: 'time_out',
           scan_time: newTimeOutIso,
           recorded_scan_time: newTimeOutIso,
+          actual_scan_time: null, // No actual scan took place
           approval_status: newStatus,
-        })
-        .eq('id', timeOutLog.id);
-    } else {
-      await supabase
-        .from('attendance_logs')
-        .insert([
-          {
-            intern_id: internId,
-            scan_type: 'time_out',
-            scan_time: newTimeOutIso,
-            recorded_scan_time: newTimeOutIso,
-            actual_scan_time: null, // No actual scan took place
-            approval_status: newStatus,
-            attendance_record_id: recordId,
-          },
-        ]);
-    }
+          attendance_record_id: recordId,
+        },
+      ]);
   }
 
   return {

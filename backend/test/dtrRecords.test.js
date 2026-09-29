@@ -33,14 +33,24 @@ test('a two-scan afternoon day produces one complete approved DTR record', () =>
   assert.equal(record.is_complete, true);
 });
 
-test('a full approved day is capped at 480 minutes and lunch is excluded', () => {
+test('an 08:00 to 18:00 day renders 9 hours (540 minutes) after lunch deduction', () => {
+  const record = buildStandardDtrRecord('2026-08-27', [
+    scan(1, '08:00:00', 'time_in'),
+    scan(2, '18:00:00', 'time_out'),
+  ]);
+
+  assert.equal(record.total_minutes, 540);
+  assert.equal(record.total_hours, 9);
+});
+
+test('a full day with overtime renders actual minutes excluding lunch', () => {
   const record = buildStandardDtrRecord('2026-08-27', [
     scan(1, '07:10:00', 'time_in'),
     scan(2, '18:30:00', 'time_out'),
   ]);
 
-  assert.equal(record.total_minutes, 480);
-  assert.equal(record.total_hours, 8);
+  assert.equal(record.total_minutes, 570);
+  assert.equal(record.total_hours, 9.5);
 });
 
 test('an approved time-in without a time-out remains incomplete and uncredited', () => {

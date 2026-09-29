@@ -28,7 +28,7 @@ export default function DTREditModal({
       setDateInput(origDate);
       setTimeIn(origIn);
       setTimeOut(origOut);
-      setStatus(record?.approval_status || 'approved');
+      setStatus('approved');
       setReason('');
       setConfirming(false);
     }

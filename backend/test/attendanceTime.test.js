@@ -18,10 +18,17 @@ test('an exact 08:00 to 17:00 workday renders eight hours after lunch', () => {
   );
 });
 
-test('early arrivals and late departures are capped to the eight-hour workday', () => {
+test('a 08:00 to 18:00 day renders 9 hours (540 minutes) after lunch deduction', () => {
+  assert.equal(
+    calculateRenderedMinutes(onAugust28('08:00:00'), onAugust28('18:00:00')),
+    540
+  );
+});
+
+test('early arrivals start crediting at 08:00 while late departures credit worked overtime', () => {
   assert.equal(
     calculateRenderedMinutes(onAugust28('06:30:00'), onAugust28('20:15:00')),
-    MAX_RENDERED_MINUTES
+    675
   );
 });
 

@@ -77,7 +77,7 @@ export default function DTRPreviewModal({
       setEditDate(record.date || record.attendance_date || '');
       setEditTimeIn(record.time_in || record.am_time_in || '');
       setEditTimeOut(record.time_out || record.pm_time_out || '');
-      setEditStatus(record.approval_status || record.status || 'approved');
+      setEditStatus('approved');
       setEditReason('');
       setIsEditing(false);
     }

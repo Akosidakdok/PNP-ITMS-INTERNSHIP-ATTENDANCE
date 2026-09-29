@@ -770,7 +770,7 @@ app.put('/admin/dtr/:internId/edit', authMiddleware, superadminMiddleware, async
       new_date: req.body.new_date,
       time_in: req.body.time_in,
       time_out: req.body.time_out,
-      status: req.body.status,
+      status: req.body.status || 'approved',
       reason: req.body.reason,
       modified_by: req.user.id,
     });
@@ -841,7 +841,7 @@ app.put('/admin/dtr/:internId/batch-alter', authMiddleware, superadminMiddleware
             date: d,
             time_in,
             time_out,
-            status,
+            status: (status && typeof status === 'string' && status.trim()) ? status.trim() : 'approved',
             reason: reason.trim(),
             modified_by: req.user.id,
           });

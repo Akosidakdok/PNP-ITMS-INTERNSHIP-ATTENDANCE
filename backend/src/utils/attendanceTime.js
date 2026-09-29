@@ -84,8 +84,8 @@ function phtLocalMinuteTimestamp(dateKey, minuteOfDay) {
 
 /**
  * Calculates creditable attendance time for a single two-scan Philippine day.
- * Time outside 08:00-17:00 is ignored and actual overlap with 12:00-13:00
- * is deducted. Invalid, incomplete, reversed, and cross-date pairs earn zero.
+ * Workday starts crediting at 08:00; time before 08:00 is ignored and actual overlap
+ * with 12:00-13:00 lunch is deducted. Invalid, incomplete, reversed, and cross-date pairs earn zero.
  */
 export function calculateRenderedMilliseconds(timeIn, timeOut) {
   const timeInTimestamp = validTimestamp(timeIn);
@@ -105,10 +105,9 @@ export function calculateRenderedMilliseconds(timeIn, timeOut) {
   const workdayStart = phtLocalMinuteTimestamp(timeInDateKey, WORKDAY_START_MINUTE);
   const lunchStart = phtLocalMinuteTimestamp(timeInDateKey, LUNCH_START_MINUTE);
   const lunchEnd = phtLocalMinuteTimestamp(timeInDateKey, LUNCH_END_MINUTE);
-  const workdayEnd = phtLocalMinuteTimestamp(timeInDateKey, WORKDAY_END_MINUTE);
 
   const creditedStart = Math.max(timeInTimestamp, workdayStart);
-  const creditedEnd = Math.min(timeOutTimestamp, workdayEnd);
+  const creditedEnd = timeOutTimestamp;
   if (creditedEnd <= creditedStart) return 0;
 
   const lunchOverlap = Math.max(
@@ -117,10 +116,7 @@ export function calculateRenderedMilliseconds(timeIn, timeOut) {
   );
   const renderedMilliseconds = creditedEnd - creditedStart - lunchOverlap;
 
-  return Math.max(
-    0,
-    Math.min(renderedMilliseconds, MAX_RENDERED_MINUTES * MINUTE_MS)
-  );
+  return Math.max(0, renderedMilliseconds);
 }
 
 /** Returns completed creditable minutes; partial trailing minutes are ignored. */
