@@ -49,8 +49,14 @@ function WatermarkedSelfie({ photoUrl, recordDate, recordTime, isSuperadmin }) {
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
 
-      // Draw original image
+      // The attendance camera uses a mirrored selfie preview. Normalize the
+      // official admin preview back to the natural orientation, then add the
+      // watermark afterward so the timestamp remains readable.
+      ctx.save();
+      ctx.translate(canvas.width, 0);
+      ctx.scale(-1, 1);
       ctx.drawImage(img, 0, 0);
+      ctx.restore();
 
       if (officialStamp) {
         ctx.save();
