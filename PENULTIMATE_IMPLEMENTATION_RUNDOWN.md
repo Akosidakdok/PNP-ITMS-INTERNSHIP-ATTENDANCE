@@ -42,9 +42,37 @@ The following behavior is already implemented and must remain covered by regress
 
 ---
 
-## 3. Consolidated implementation sequence
+## 3. Development phases
+
+The work is divided into six gated phases. Complete each phase's exit criteria before treating the next phase as accepted.
+
+| Phase | Development focus | Primary outcome | Dependency |
+|---|---|---|---|
+| **0** | Foundation and security | Safe repository, dependencies, perimeter, and error-handling baseline | None |
+| **1** | Attendance and DTR core | One consistent two-scan calculation and export behavior | Phase 0 security baseline |
+| **2** | DTR overrides | Deterministic apply, replace, clear, and audit behavior | Phase 1 DTR contract |
+| **3** | Authorization and data integrity | Recipient privacy, scoped resources, and server/database validation | Phase 0 security baseline |
+| **4** | Reports and application consistency | Correct CSVs, pagination, selectors, and shared utilities | Phases 1-3 data contracts |
+| **5** | Quality, performance, and acceptance | Automated frontend coverage, mobile readiness, documentation, and sign-off evidence | Phases 0-4 complete |
+
+### Phase workflow
+
+For every phase:
+
+1. Implement the scoped changes.
+2. Add or update automated tests.
+3. Run the relevant build and static checks.
+4. Execute the affected authenticated workflow when the environment is available.
+5. Record evidence and unresolved items.
+6. Mark the phase exit gate as passed, failed, or blocked.
+
+---
 
 ### Phase 0 - Repository, dependency, and security hygiene
+
+**Objective:** Establish a safe and observable foundation before changing core attendance behavior.
+**Deliverable:** Clean credential boundary, controlled dependencies, restricted perimeter, and consistent error responses.
+**Exit gate:** No tracked secrets, dependency decisions recorded, CORS/rate limits/error handling verified, and security checks passing.
 
 #### 0.1 Protect credentials and environment configuration
 
@@ -117,6 +145,10 @@ Acceptance:
 ---
 
 ### Phase 1 - Standardize and verify the attendance/DTR model
+
+**Objective:** Make attendance, DTR, dashboards, reports, and exports use one documented two-scan business rule.
+**Deliverable:** Canonical DTR data contract, matching UI/export behavior, and regression coverage.
+**Exit gate:** All DTR calculation and export tests pass, including Manila timezone and signature-output cases.
 
 Primary source plan: August 26 implementation plan.  
 Primary areas:
@@ -224,6 +256,10 @@ Add or retain automated tests for:
 
 ### Phase 2 - Make DTR overrides deterministic
 
+**Objective:** Make overrides predictable, scoped, replaceable, auditable, and safely clearable.
+**Deliverable:** One authoritative override per intern/date with validated single and bulk operations.
+**Exit gate:** Every override type can be applied, replaced, cleared, and verified after reload without stale effects.
+
 Files:
 
 - `backend/src/data.js`
@@ -267,6 +303,10 @@ Acceptance tests:
 ---
 
 ### Phase 3 - Authorization, privacy, and data validation
+
+**Objective:** Ensure every protected resource is scoped to the authenticated role and every mutation is validated beyond frontend controls.
+**Deliverable:** Recipient-scoped notifications, secure documents, validated evaluations, and enforced calendar policy.
+**Exit gate:** Cross-user and cross-division negative tests fail safely; valid role workflows continue to pass.
 
 #### 3.1 Notifications
 
@@ -366,6 +406,10 @@ The check must remain in the backend service, not only in the frontend.
 
 ### Phase 4 - Reports, pagination, and consistency
 
+**Objective:** Make user-facing data lists, reports, exports, and shared calculations consistent at realistic data sizes.
+**Deliverable:** Correct CSVs, resilient pagination, complete selectors, and shared tested DTR utilities.
+**Exit gate:** Boundary, filter, export, encoding, and large-data tests pass without stale or truncated results.
+
 #### 4.1 Reports and CSV
 
 File:
@@ -444,6 +488,10 @@ This prevents dashboards, DTR views, and reports from drifting apart.
 
 ### Phase 5 - Frontend reliability, performance, and maintainability
 
+**Objective:** Add the quality gates and runtime discipline required for stable production operation.
+**Deliverable:** Frontend tests/linting, optimized loading, maintainable modules, cleaned async resources, and device evidence.
+**Exit gate:** Critical workflows pass on supported browsers/devices and the final acceptance package is complete.
+
 #### 5.1 Add frontend quality gates
 
 Add scripts to `frontend/package.json` for:
@@ -503,19 +551,19 @@ Review every camera, timer, object URL, and request lifecycle:
 
 ---
 
-## 4. Verification schedule
+## 4. Phase verification schedule
 
 The earlier Week 6 calendar is historical. Use this order for the remaining execution:
 
-1. Credential and dependency safety review.
-2. Attendance/DTR and override regression suite.
-3. Authorization and privacy tests.
-4. Document and evaluation validation tests.
-5. Reports, pagination, and export tests.
-6. Frontend unit/component tests.
-7. Authenticated browser workflows for administrator, supervisor, and intern roles.
-8. Physical Android Chrome and iPhone Safari camera testing.
-9. Production build, dependency audit, and final acceptance review.
+1. **Phase 0:** Credential, dependency, perimeter, and error-handling review.
+2. **Phase 1:** Attendance/DTR calculation and export regression suite.
+3. **Phase 2:** Override apply, replace, clear, scope, and audit tests.
+4. **Phase 3:** Authorization, notification privacy, document, evaluation, and calendar tests.
+5. **Phase 4:** Reports, pagination, encoding, selector, and shared-utility tests.
+6. **Phase 5:** Frontend unit/component tests, loading/performance checks, and resource-cleanup review.
+7. **Final acceptance:** Authenticated browser workflows for administrator, supervisor, and intern roles.
+8. **Final device gate:** Physical Android Chrome and iPhone Safari camera testing.
+9. **Release gate:** Production build, dependency audit, documentation update, and stakeholder acceptance review.
 
 For every workflow record:
 
