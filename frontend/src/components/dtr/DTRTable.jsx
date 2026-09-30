@@ -112,6 +112,7 @@ export default function DTRTable({
   onDateToggle,
   onSelectAllDates,
   allDatesSelected = false,
+  exportMode = false,
 }) {
   const daysInMonth = month && year ? getDaysInMonth(new Date(year, month - 1, 1)) : 31;
 
@@ -160,6 +161,10 @@ export default function DTRTable({
       return format(new Date(`2000-01-01T${timeStr}`), 'h:mm a');
     } catch { return timeStr; }
   };
+
+  const renderStatus = (status) => (
+    exportMode ? <>&nbsp;</> : <StatusBadge status={status} />
+  );
 
   return (
     <>
@@ -440,15 +445,21 @@ export default function DTRTable({
             <th colSpan={2} style={thStyle({ backgroundColor: '#cce5ff', borderRight: '1px solid #000' })}>AM</th>
             <th colSpan={2} style={thStyle({ backgroundColor: '#ffdde1', borderRight: '1px solid #000' })}>PM</th>
             <th rowSpan={2} style={thStyle({ borderRight: '1px solid #000' })}>{'Total\nHrs.'}</th>
-            <th rowSpan={2} style={thStyle({})}>Overall{'\n'}Status</th>
+            <th rowSpan={2} style={thStyle({})}>
+              {exportMode ? <>Supervisor{'\n'}Signature</> : <>Overall{'\n'}Status</>}
+            </th>
           </tr>
           <tr>
             {/* AM sub-headers */}
             <th style={thStyle({ backgroundColor: '#cce5ff' })}>Time In</th>
-            <th style={thStyle({ backgroundColor: '#cce5ff', borderRight: '1px solid #000' })}>Status</th>
+            <th style={thStyle({ backgroundColor: '#cce5ff', borderRight: '1px solid #000' })}>
+              {exportMode ? 'Signature' : 'Status'}
+            </th>
             {/* PM sub-headers */}
             <th style={thStyle({ backgroundColor: '#ffdde1' })}>Time Out</th>
-            <th style={thStyle({ backgroundColor: '#ffdde1', borderRight: '1px solid #000' })}>Status</th>
+            <th style={thStyle({ backgroundColor: '#ffdde1', borderRight: '1px solid #000' })}>
+              {exportMode ? 'Signature' : 'Status'}
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -568,7 +579,7 @@ export default function DTRTable({
                       {formatDuration(getRecordMinutes(rec))}
                     </td>
                     <td style={tdStyle({ textAlign: 'center' })}>
-                      <StatusBadge status="approved" />
+                      {renderStatus('approved')}
                     </td>
                   </tr>
                 );
@@ -602,7 +613,7 @@ export default function DTRTable({
                       {formatDuration(getRecordMinutes(rec))}
                     </td>
                     <td style={tdStyle({ textAlign: 'center' })}>
-                      <StatusBadge status="approved" />
+                      {renderStatus('approved')}
                     </td>
                   </tr>
                 );
@@ -659,7 +670,7 @@ export default function DTRTable({
 
                 {/* AM Status */}
                 <td style={tdStyle({ backgroundColor: isSelected ? '#bae6fd' : '#e8f4ff', textAlign: 'center', borderRight: '1px solid #000' })}>
-                  {rec?.am_time_in ? <StatusBadge status={rec.am_status} /> : <>&nbsp;</>}
+                  {rec?.am_time_in ? renderStatus(rec.am_status) : <>&nbsp;</>}
                 </td>
 
                 {/* Time Out */}
@@ -670,9 +681,9 @@ export default function DTRTable({
                 {/* Time Out Status */}
                 <td style={tdStyle({ backgroundColor: isSelected ? '#fed7aa' : '#ffe8eb', textAlign: 'center', borderRight: '1px solid #000' })}>
                   {rec?.pm_time_out
-                    ? <StatusBadge status={rec.pm_status} />
+                    ? renderStatus(rec.pm_status)
                     : rec?.am_time_out
-                      ? <StatusBadge status={rec.am_status} />
+                      ? renderStatus(rec.am_status)
                       : <>&nbsp;</>}
                 </td>
 
@@ -690,8 +701,8 @@ export default function DTRTable({
 
                 {/* Overall Status for the day */}
                 <td style={tdStyle({ textAlign: 'center' })}>
-                  {rec ? <StatusBadge status={rec.approval_status} /> : <>&nbsp;</>}
-                  {rec?.is_override && rec.override_remarks && (
+                  {rec ? renderStatus(rec.approval_status) : <>&nbsp;</>}
+                  {!exportMode && rec?.is_override && rec.override_remarks && (
                     <span style={{ fontSize: '7px', display: 'block', color: '#4b5563' }} className="truncate max-w-16 mx-auto">
                       {rec.override_remarks}
                     </span>

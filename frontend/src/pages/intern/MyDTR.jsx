@@ -3,7 +3,7 @@ import api from '../../utils/api.js';
 import DTRPrint from '../../components/dtr/DTRPrint.jsx';
 import DTRPreviewModal from '../../components/dtr/DTRPreviewModal.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
-import { Clock, Image as ImageIcon } from 'lucide-react';
+import { Clock } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const toNonNegativeMinutes = (value) => {
@@ -125,33 +125,6 @@ export default function MyDTR() {
               {years.map(y => <option key={y} value={y}>{y}</option>)}
             </select>
           </div>
-        </div>
-
-        <div className="dtr-filter-actions">
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm flex items-center gap-1.5"
-            onClick={() => {
-              const today = new Date();
-              const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-              const existing = records.find(r => r.date === todayStr);
-              const defaultTimeIn = intern?.assigned_profile?.time_in ? intern.assigned_profile.time_in.slice(0, 5) : '08:00';
-              const defaultTimeOut = intern?.assigned_profile?.time_out ? intern.assigned_profile.time_out.slice(0, 5) : '17:00';
-              setSelectedRecordForPreview(existing || {
-                date: todayStr,
-                attendance_date: todayStr,
-                time_in: defaultTimeIn,
-                am_time_in: defaultTimeIn,
-                time_out: defaultTimeOut,
-                pm_time_out: defaultTimeOut,
-                approval_status: 'approved',
-              });
-              setPreviewModalOpen(true);
-            }}
-          >
-            <ImageIcon className="w-4 h-4 text-blue-600" />
-            Preview DTR Image
-          </button>
         </div>
       </div>
 

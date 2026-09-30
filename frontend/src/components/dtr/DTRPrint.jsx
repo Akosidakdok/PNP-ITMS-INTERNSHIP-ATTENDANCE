@@ -70,10 +70,30 @@ export default function DTRPrint({
 }) {
   const printRef = useRef(null);
   const [isExporting, setIsExporting] = useState(false);
+  const [isExportMode, setIsExportMode] = useState(false);
   const [paperFormat, setPaperFormat] = useState('a4'); // 'a4' | 'letter' | 'folio'
 
-  const handlePrint = () => {
-    window.print();
+  const handlePrint = async () => {
+    if (isExporting) return;
+
+    setIsExporting(true);
+    setIsExportMode(true);
+    await waitForNextPaint();
+
+    const restorePrintMode = () => {
+      setIsExportMode(false);
+      setIsExporting(false);
+    };
+
+    window.addEventListener('afterprint', restorePrintMode, { once: true });
+
+    try {
+      window.print();
+    } catch (err) {
+      window.removeEventListener('afterprint', restorePrintMode);
+      restorePrintMode();
+      toast.error('Failed to print DTR: ' + (err.message || 'Unknown error'));
+    }
   };
 
   const handleExportPDF = async () => {
@@ -84,6 +104,8 @@ export default function DTRPrint({
     const toastId = toast.loading('Generating official DTR document (PDF)...');
     
     try {
+      setIsExportMode(true);
+      await waitForNextPaint();
       const imgData = await captureDtrPng(el);
 
       // Determine dimensions according to selected format
@@ -144,6 +166,7 @@ export default function DTRPrint({
       toast.dismiss(toastId);
       toast.error(`Failed to export PDF: ${err.message || 'Unknown error'}`);
     } finally {
+      setIsExportMode(false);
       setIsExporting(false);
     }
   };
@@ -156,6 +179,8 @@ export default function DTRPrint({
     const toastId = toast.loading('Generating DTR sheet image...');
 
     try {
+      setIsExportMode(true);
+      await waitForNextPaint();
       const imgData = await captureDtrPng(el);
 
       const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -175,6 +200,7 @@ export default function DTRPrint({
       toast.dismiss(toastId);
       toast.error(`Failed to export image: ${err.message || 'Unknown error'}`);
     } finally {
+      setIsExportMode(false);
       setIsExporting(false);
     }
   };
@@ -236,6 +262,7 @@ export default function DTRPrint({
             onDateToggle={onDateToggle}
             onSelectAllDates={onSelectAllDates}
             allDatesSelected={allDatesSelected}
+            exportMode={isExportMode}
            />
         </div>
       </div>
