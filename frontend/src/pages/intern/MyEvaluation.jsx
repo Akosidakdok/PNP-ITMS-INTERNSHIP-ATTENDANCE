@@ -134,7 +134,7 @@ export default function MyEvaluation() {
               
               {/* Official Header */}
               <div className="flex items-center justify-between border-b-2 border-gray-900 pb-4 text-center">
-                <img src="/PNP_LOGO.png" alt="PNP Logo" className="w-16 h-16 object-contain" />
+                <img src="/PNP_LOGO.png" alt="PNP Logo" className="w-20 h-20 object-contain" />
                 <div className="flex-1 px-4">
                   <p className="text-[10px] font-medium leading-tight">Republic of the Philippines</p>
                   <p className="text-[10px] font-semibold leading-tight">NATIONAL POLICE COMMISSION</p>
@@ -142,7 +142,7 @@ export default function MyEvaluation() {
                   <p className="text-[12px] font-extrabold leading-tight tracking-wider text-blue-900">INFORMATION TECHNOLOGY MANAGEMENT SERVICE</p>
                   <p className="text-[9px] font-medium text-gray-500 leading-none mt-0.5">Camp BGen Rafael T Crame, Quezon City</p>
                 </div>
-                <img src="/ITMS_LOGO.png" alt="ITMS Logo" className="w-16 h-16 object-contain" />
+                <img src="/ITMS_LOGO.png" alt="ITMS Logo" className="w-20 h-20 object-contain" />
               </div>
 
               <h2 className="text-center font-black text-lg text-gray-900 tracking-wide mt-2">OJT Evaluation Form</h2>

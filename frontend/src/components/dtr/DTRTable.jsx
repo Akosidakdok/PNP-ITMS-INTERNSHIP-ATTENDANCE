@@ -275,41 +275,39 @@ export default function DTRTable({
         }}
       >
       {/* ── HEADER ── */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
         {/* PNP Logo — left */}
         <img
           src="/PNP_LOGO.png"
           alt="PNP Logo"
-          style={{ width: '64px', height: '64px', objectFit: 'contain' }}
+          style={{ width: '95px', height: '118px', objectFit: 'contain' }}
           onError={e => { e.target.style.display = 'none'; }}
         />
 
         {/* Center text */}
-        <div style={{ textAlign: 'center', flex: 1, lineHeight: '1.4' }}>
-          <div style={{ fontSize: '10px' }}>Republic of the Philippines</div>
-          <div style={{ fontSize: '10px', fontWeight: 'bold' }}>NATIONAL POLICE COMMISSION</div>
-          <div style={{ fontSize: '12px', fontWeight: 'bold' }}>PHILIPPINE NATIONAL POLICE</div>
-          <div style={{ fontSize: '11px', fontWeight: 'bold' }}>
+        <div style={{ textAlign: 'center', flex: 1, lineHeight: '1.35', padding: '0 8px' }}>
+          <div style={{ fontSize: '11px', color: '#000' }}>Republic of the Philippines</div>
+          <div style={{ fontSize: '11px', fontWeight: 'bold', color: '#000' }}>NATIONAL POLICE COMMISSION</div>
+          <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#000' }}>PHILIPPINE NATIONAL POLICE</div>
+          <div style={{ fontSize: '15px', fontWeight: 'bold', color: '#000', letterSpacing: '0.2px' }}>
             INFORMATION TECHNOLOGY MANAGEMENT SERVICE
           </div>
-          <div style={{ fontSize: '10px' }}>Camp BGen Rafael T Crame, Quezon City</div>
+          <div style={{ fontSize: '11px', color: '#000' }}>Camp BGen Rafael T Crame, Quezon City</div>
         </div>
 
         {/* ITMS Logo — right */}
         <img
           src="/ITMS_LOGO.png"
           alt="ITMS Logo"
-          style={{ width: '64px', height: '64px', objectFit: 'contain' }}
+          style={{ width: '118px', height: '118px', objectFit: 'contain' }}
           onError={e => { e.target.style.display = 'none'; }}
         />
       </div>
 
-      
-
       {/* ── TITLE ── */}
-      <div style={{ textAlign: 'center', margin: '6px 0 4px' }}>
-        <div style={{ fontSize: '13px', fontWeight: 'bold' }}>On-the-Job Training</div>
-        <div style={{ fontSize: '12px', fontWeight: 'bold', textDecoration: 'underline' }}>
+      <div style={{ textAlign: 'center', margin: '14px 0 14px' }}>
+        <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#000' }}>On-the-Job Training</div>
+        <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#000', letterSpacing: '0.5px' }}>
           DAILY TIME RECORD
         </div>
       </div>
@@ -317,18 +315,19 @@ export default function DTRTable({
       {/* ── INFO FIELDS (LEGACY FLOAT LAYOUT FOR HTML2CANVAS) ── */}
       <div style={{ fontSize: '11px', marginBottom: '12px' }}>
         
-        {/* Month / Year */}
-        <div style={{ clear: 'both', marginBottom: '8px', height: '16px' }}>
-          <div style={{ float: 'left', fontWeight: 'bold', width: '50px' }}>MONTH:</div>
-          <div style={{ float: 'left', width: '120px', textAlign: 'center' }}>
+        {/* Month */}
+        <div style={{ clear: 'both', marginBottom: '6px', height: '16px' }}>
+          <div style={{ float: 'left', fontWeight: 'bold', width: '60px' }}>MONTH:</div>
+          <div style={{ float: 'left', width: '140px', textAlign: 'center' }}>
             <div style={{ height: '14px' }}>{month ? MONTH_NAMES[month - 1] : ''}</div>
             <div style={{ borderTop: '1px solid #000' }}></div>
           </div>
-          
-          <div style={{ float: 'left', width: '30px' }}>&nbsp;</div>
-          
-          <div style={{ float: 'left', fontWeight: 'bold', width: '40px' }}>YEAR:</div>
-          <div style={{ float: 'left', width: '80px', textAlign: 'center' }}>
+        </div>
+
+        {/* Year */}
+        <div style={{ clear: 'both', marginBottom: '10px', height: '16px' }}>
+          <div style={{ float: 'left', fontWeight: 'bold', width: '60px' }}>YEAR:</div>
+          <div style={{ float: 'left', width: '140px', textAlign: 'center' }}>
             <div style={{ height: '14px' }}>{year || ''}</div>
             <div style={{ borderTop: '1px solid #000' }}></div>
           </div>

@@ -406,22 +406,24 @@ export default function DTRPreviewModal({
                 <img
                   src="/PNP_LOGO.png"
                   alt="PNP Logo"
-                  style={{ width: '60px', height: '60px', objectFit: 'contain' }}
+                  style={{ width: '85px', height: '105px', objectFit: 'contain' }}
                   onError={(e) => { e.target.style.display = 'none'; }}
                 />
 
-                <div style={{ textAlign: 'center', flex: 1, lineHeight: '1.3' }}>
-                  <div style={{ fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Republic of the Philippines</div>
-                  <div style={{ fontSize: '10px', fontWeight: 'bold' }}>NATIONAL POLICE COMMISSION</div>
-                  <div style={{ fontSize: '12px', fontWeight: 'bold' }}>PHILIPPINE NATIONAL POLICE</div>
-                  <div style={{ fontSize: '11px', fontWeight: 'bold' }}>INFORMATION TECHNOLOGY MANAGEMENT SERVICE</div>
-                  <div style={{ fontSize: '9px', color: '#4b5563' }}>Camp BGen Rafael T Crame, Quezon City</div>
+                <div style={{ textAlign: 'center', flex: 1, lineHeight: '1.35', padding: '0 6px' }}>
+                  <div style={{ fontSize: '10px', color: '#111' }}>Republic of the Philippines</div>
+                  <div style={{ fontSize: '10px', fontWeight: 'bold', color: '#111' }}>NATIONAL POLICE COMMISSION</div>
+                  <div style={{ fontSize: '13px', fontWeight: 'bold', color: '#111' }}>PHILIPPINE NATIONAL POLICE</div>
+                  <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#111', letterSpacing: '0.2px' }}>
+                    INFORMATION TECHNOLOGY MANAGEMENT SERVICE
+                  </div>
+                  <div style={{ fontSize: '10px', color: '#333' }}>Camp BGen Rafael T Crame, Quezon City</div>
                 </div>
 
                 <img
                   src="/ITMS_LOGO.png"
                   alt="ITMS Logo"
-                  style={{ width: '60px', height: '60px', objectFit: 'contain' }}
+                  style={{ width: '105px', height: '105px', objectFit: 'contain' }}
                   onError={(e) => { e.target.style.display = 'none'; }}
                 />
               </div>

@@ -2561,8 +2561,8 @@ body {
     gap: 0.4rem;
   }
   .dtr-preview-card > div:first-child > img {
-    width: 2.75rem !important;
-    height: 2.75rem !important;
+    width: 3.5rem !important;
+    height: 3.5rem !important;
   }
   .dtr-preview-footer {
     flex-direction: column;
