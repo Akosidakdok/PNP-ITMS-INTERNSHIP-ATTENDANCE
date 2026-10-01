@@ -64,13 +64,17 @@ function WatermarkedSelfie({ photoUrl, recordDate, recordTime, isSuperadmin }) {
         const textMetrics = ctx.measureText(officialStamp);
         const textWidth = textMetrics.width;
 
-        // Cleanly cover the bottom-left watermark area
+        // The source watermark moves to the bottom-right when the image is
+        // mirrored. Cover it there, then redraw the timestamp in that position
+        // so it stays aligned with the image and remains readable.
+        const watermarkWidth = textWidth + 18;
+        const watermarkX = canvas.width - watermarkWidth - 8;
         ctx.fillStyle = 'rgba(0, 0, 0, 0.78)';
         ctx.beginPath();
         if (ctx.roundRect) {
-          ctx.roundRect(8, canvas.height - 40, textWidth + 18, 30, 4);
+          ctx.roundRect(watermarkX, canvas.height - 40, watermarkWidth, 30, 4);
         } else {
-          ctx.rect(8, canvas.height - 40, textWidth + 18, 30);
+          ctx.rect(watermarkX, canvas.height - 40, watermarkWidth, 30);
         }
         ctx.fill();
 
@@ -79,7 +83,7 @@ function WatermarkedSelfie({ photoUrl, recordDate, recordTime, isSuperadmin }) {
         ctx.shadowColor = 'black';
         ctx.shadowBlur = 6;
         ctx.fillStyle = 'rgba(255, 255, 255, 0.98)';
-        ctx.fillText(officialStamp, 14, canvas.height - 18);
+        ctx.fillText(officialStamp, canvas.width - textWidth - 14, canvas.height - 18);
         ctx.restore();
       }
 
