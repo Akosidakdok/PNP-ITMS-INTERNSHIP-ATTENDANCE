@@ -77,11 +77,11 @@ export default function FaceRegistrationModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center overflow-y-auto bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
+    <div className="face-registration-modal__overlay fixed inset-0 z-50 flex items-start sm:items-center justify-center overflow-y-auto bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
       <div
         role="dialog"
         aria-modal="true"
-        className="card rounded-3xl shadow-2xl max-w-lg w-full max-h-[calc(100vh-2rem)] overflow-hidden border border-gray-100 flex flex-col my-auto"
+        className="face-registration-modal__dialog card rounded-3xl shadow-2xl max-w-lg w-full max-h-[calc(100vh-2rem)] overflow-hidden border border-gray-100 flex flex-col my-auto"
       >
         {/* Header */}
         <div className="p-5 bg-gradient-to-r from-blue-700 to-indigo-800 text-white flex items-center justify-between flex-shrink-0">
@@ -118,7 +118,7 @@ export default function FaceRegistrationModal({
         </div>
 
         {/* Content */}
-        <div className="p-6 space-y-4 overflow-y-auto min-h-0">
+        <div className="face-registration-modal__content p-6 space-y-4 overflow-y-auto min-h-0">
           {success ? (
             <div className="text-center py-6 space-y-4 animate-scale-in">
               <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto">
@@ -178,6 +178,7 @@ export default function FaceRegistrationModal({
               )}
 
               <FaceCamera
+                className="face-registration-modal__camera"
                 title={selfRenewal || (!selfEnrollment && intern?.face_registered) ? 'Capture Updated Face ID' : 'Enroll Face Profile'}
                 onCapture={handleCapture}
                 disabled={loading || reasonIncomplete}

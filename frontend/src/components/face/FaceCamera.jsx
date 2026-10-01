@@ -11,7 +11,8 @@ export default function FaceCamera({
   disabled = false,
   disabledMessage = '',
   title = 'Face Scanner',
-  actionLabel = 'Capture & Save Face ID'
+  actionLabel = 'Capture & Save Face ID',
+  className = ''
 }) {
   const videoRef = useRef(null);
   const streamRef = useRef(null);
@@ -219,7 +220,7 @@ export default function FaceCamera({
   };
 
   return (
-    <div className="card p-4 space-y-4">
+    <div className={`card p-4 space-y-4 ${className}`.trim()}>
       <div className="flex items-center justify-between">
         <h3 className="font-bold text-gray-800 flex items-center gap-2">
           <Camera className="w-5 h-5 text-blue-600" />
@@ -234,7 +235,7 @@ export default function FaceCamera({
       </div>
 
       {/* Camera Container with Face Oval Mask */}
-      <div className="relative rounded-2xl overflow-hidden bg-black aspect-video border border-gray-200 shadow-inner flex items-center justify-center">
+      <div className="face-capture-viewport relative rounded-2xl overflow-hidden bg-black aspect-video border border-gray-200 shadow-inner flex items-center justify-center">
         {cameraError ? (
           <div className="p-6 text-center text-red-400 space-y-2">
             <ShieldAlert className="w-10 h-10 mx-auto text-red-500" />
@@ -252,7 +253,7 @@ export default function FaceCamera({
 
             {/* Face Oval Overlay Guide */}
             <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-              <div className={`w-48 h-60 sm:w-56 sm:h-72 rounded-[50%] border-2 transition-all duration-300 ${
+              <div className={`face-capture-guide rounded-[50%] border-2 transition-all duration-300 ${
                 statusType === 'success' ? 'border-emerald-500 bg-emerald-500/10 shadow-[0_0_20px_rgba(16,185,129,0.4)]' :
                 statusType === 'warning' ? 'border-amber-400 bg-amber-400/10 shadow-[0_0_20px_rgba(251,191,36,0.3)]' :
                 statusType === 'error' ? 'border-red-500 bg-red-500/10' :

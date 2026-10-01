@@ -70,7 +70,7 @@ export default function QRScanner({ onScan, onError, isActive }) {
   }, [isActive]);
 
   return (
-    <div className="qr-scanner space-y-4">
+    <div className="qr-scanner">
       {/* Camera viewport */}
       <div className="qr-scanner-container rounded-2xl overflow-hidden">
         <div id={containerId} className="qr-reader-surface w-full" />
