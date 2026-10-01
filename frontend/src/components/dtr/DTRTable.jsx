@@ -275,7 +275,7 @@ export default function DTRTable({
         }}
       >
       {/* ── HEADER ── */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
         {/* PNP Logo — left */}
         <img
           src="/PNP_LOGO.png"
@@ -305,7 +305,7 @@ export default function DTRTable({
       </div>
 
       {/* ── TITLE ── */}
-      <div style={{ textAlign: 'center', margin: '14px 0 14px' }}>
+      <div style={{ textAlign: 'center', margin: '10px 0 10px' }}>
         <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#000' }}>On-the-Job Training</div>
         <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#000', letterSpacing: '0.5px' }}>
           DAILY TIME RECORD
@@ -733,7 +733,7 @@ export default function DTRTable({
       </div>
 
       {/* ── SIGNATURE + OVERALL STATUS BLOCK ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '40px', marginTop: '32px', fontSize: '10px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '40px', marginTop: '20px', fontSize: '10px' }}>
         {/* Trainee */}
         <div style={{ textAlign: 'center' }}>
           <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '12px' }}>

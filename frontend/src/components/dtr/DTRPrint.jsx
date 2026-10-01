@@ -74,25 +74,112 @@ export default function DTRPrint({
   const [paperFormat, setPaperFormat] = useState('a4'); // 'a4' | 'letter' | 'folio'
 
   const handlePrint = async () => {
-    if (isExporting) return;
+    const el = printRef.current;
+    if (!el || isExporting) return;
 
     setIsExporting(true);
-    setIsExportMode(true);
-    await waitForNextPaint();
-
-    const restorePrintMode = () => {
-      setIsExportMode(false);
-      setIsExporting(false);
-    };
-
-    window.addEventListener('afterprint', restorePrintMode, { once: true });
+    const toastId = toast.loading('Preparing official DTR for printing...');
 
     try {
-      window.print();
+      setIsExportMode(true);
+      await waitForNextPaint();
+      const imgData = await captureDtrPng(el);
+
+      toast.dismiss(toastId);
+
+      let printFrame = document.getElementById('dtr-print-frame');
+      if (printFrame) {
+        printFrame.remove();
+      }
+
+      printFrame = document.createElement('iframe');
+      printFrame.id = 'dtr-print-frame';
+      printFrame.style.position = 'fixed';
+      printFrame.style.top = '-10000px';
+      printFrame.style.left = '-10000px';
+      printFrame.style.width = '1000px';
+      printFrame.style.height = '1400px';
+      printFrame.style.border = '0';
+      document.body.appendChild(printFrame);
+
+      let pagePaperSize = 'a4';
+      if (paperFormat === 'letter') {
+        pagePaperSize = 'letter';
+      } else if (paperFormat === 'folio') {
+        pagePaperSize = '8.5in 13in';
+      }
+
+      const frameDoc = printFrame.contentWindow.document;
+      frameDoc.open();
+      frameDoc.write(`
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <title>Daily Time Record - Print</title>
+            <style>
+              @page {
+                size: ${pagePaperSize} portrait;
+                margin: 4mm 6mm;
+              }
+              * {
+                box-sizing: border-box;
+                margin: 0;
+                padding: 0;
+              }
+              html, body {
+                width: 100%;
+                height: 100%;
+                background: #ffffff;
+                overflow: hidden;
+              }
+              body {
+                display: flex;
+                justify-content: center;
+                align-items: flex-start;
+              }
+              .print-img {
+                width: 100%;
+                max-width: 100%;
+                max-height: 98vh;
+                height: auto;
+                object-fit: contain;
+                display: block;
+                margin: 0 auto;
+              }
+            </style>
+          </head>
+          <body>
+            <img class="print-img" src="${imgData}" />
+          </body>
+        </html>
+      `);
+      frameDoc.close();
+
+      const img = frameDoc.querySelector('img');
+      const triggerPrint = () => {
+        setTimeout(() => {
+          try {
+            printFrame.contentWindow.focus();
+            printFrame.contentWindow.print();
+          } catch (e) {
+            console.error('Print frame error:', e);
+            window.print();
+          }
+        }, 250);
+      };
+
+      if (img.complete) {
+        triggerPrint();
+      } else {
+        img.onload = triggerPrint;
+      }
     } catch (err) {
-      window.removeEventListener('afterprint', restorePrintMode);
-      restorePrintMode();
+      console.error("Print Error:", err);
+      toast.dismiss(toastId);
       toast.error('Failed to print DTR: ' + (err.message || 'Unknown error'));
+    } finally {
+      setIsExportMode(false);
+      setIsExporting(false);
     }
   };
 
