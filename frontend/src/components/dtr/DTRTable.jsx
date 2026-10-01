@@ -1,5 +1,7 @@
+import { useState, useEffect } from 'react';
 import { format, getDaysInMonth, parseISO } from 'date-fns';
 import { divisionLabel } from '../../utils/display.js';
+import { DIVISION_SUPERVISORS } from '../../utils/constants.js';
 
 const MONTH_NAMES = [
   'January','February','March','April','May','June',
@@ -153,6 +155,58 @@ export default function DTRTable({
       middleName = parts.slice(1, parts.length - 1).join(' ');
     }
   }
+
+  const defaultSubmissionDate = month && year
+    ? `${String(month).padStart(2, '0')}/${String(daysInMonth).padStart(2, '0')}/${year}`
+    : format(new Date(), 'MM/dd/yyyy');
+
+  const defaultTraineeName = (() => {
+    let name = [firstName, middleName, lastName].filter(Boolean).join(' ');
+    if (nameSuffix) {
+      name += ` ${nameSuffix.replace(/^[,\s]+/, '')}`;
+    }
+    if (!name.trim() && intern?.full_name) {
+      name = intern.full_name;
+    }
+    return name.trim().toUpperCase();
+  })();
+
+  const defaultSupervisorName = (() => {
+    if (intern?.supervisor_name) return intern.supervisor_name.trim().toUpperCase();
+    if (intern?.division_head) return intern.division_head.trim().toUpperCase();
+    const divName = (intern?.division_name || '').trim().toUpperCase();
+    if (DIVISION_SUPERVISORS[divName]) return DIVISION_SUPERVISORS[divName].toUpperCase();
+    for (const [key, supervisor] of Object.entries(DIVISION_SUPERVISORS)) {
+      if (divName.includes(key.toUpperCase())) return supervisor.toUpperCase();
+    }
+    const divIdMap = {
+      1: 'PLTCOL JUVENAL A. RIMANDO',
+      2: 'NUP EMILIO G RARO, JR',
+      3: 'PLTCOL ROSE ANN SUCGANG',
+    };
+    if (intern?.division_id && divIdMap[intern.division_id]) {
+      return divIdMap[intern.division_id];
+    }
+    return '';
+  })();
+
+  const [traineeName, setTraineeName] = useState(defaultTraineeName);
+  const [traineeDate, setTraineeDate] = useState(defaultSubmissionDate);
+  const [supervisorName, setSupervisorName] = useState(defaultSupervisorName);
+  const [supervisorDate, setSupervisorDate] = useState(defaultSubmissionDate);
+
+  useEffect(() => {
+    setTraineeName(defaultTraineeName);
+  }, [defaultTraineeName]);
+
+  useEffect(() => {
+    setSupervisorName(defaultSupervisorName);
+  }, [defaultSupervisorName]);
+
+  useEffect(() => {
+    setTraineeDate(defaultSubmissionDate);
+    setSupervisorDate(defaultSubmissionDate);
+  }, [defaultSubmissionDate]);
 
   // Times come from backend already in Manila HH:MM — just pretty-print them
   const formatTime = (timeStr) => {
@@ -738,11 +792,96 @@ export default function DTRTable({
         <div style={{ textAlign: 'center' }}>
           <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '12px' }}>
             <div>
-              <div style={{ borderBottom: '1px solid #000', marginBottom: '2px', minHeight: '20px' }} />
+              {exportMode ? (
+                <div
+                  style={{
+                    borderBottom: '1px solid #000',
+                    marginBottom: '2px',
+                    height: '20px',
+                    lineHeight: '20px',
+                    fontWeight: 'bold',
+                    fontSize: '10.5px',
+                    textAlign: 'center',
+                    textTransform: 'uppercase',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                  }}
+                  title={traineeName}
+                >
+                  {traineeName}
+                </div>
+              ) : (
+                <input
+                  type="text"
+                  value={traineeName}
+                  onChange={(e) => setTraineeName(e.target.value)}
+                  placeholder="TRAINEE'S NAME"
+                  title="Click to edit trainee printed name"
+                  style={{
+                    width: '100%',
+                    border: 'none',
+                    borderBottom: '1px solid #000',
+                    marginBottom: '2px',
+                    height: '20px',
+                    lineHeight: '20px',
+                    fontWeight: 'bold',
+                    fontSize: '10.5px',
+                    textAlign: 'center',
+                    textTransform: 'uppercase',
+                    backgroundColor: 'transparent',
+                    outline: 'none',
+                    padding: 0,
+                    margin: 0,
+                    fontFamily: 'inherit',
+                    color: '#000',
+                  }}
+                />
+              )}
               <div>Trainee&apos;s Signature over Printed Name</div>
             </div>
             <div>
-              <div style={{ borderBottom: '1px solid #000', marginBottom: '2px', minHeight: '20px' }} />
+              {exportMode ? (
+                <div
+                  style={{
+                    borderBottom: '1px solid #000',
+                    marginBottom: '2px',
+                    height: '20px',
+                    lineHeight: '20px',
+                    fontWeight: 'bold',
+                    fontSize: '10px',
+                    textAlign: 'center',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {traineeDate}
+                </div>
+              ) : (
+                <input
+                  type="text"
+                  value={traineeDate}
+                  onChange={(e) => setTraineeDate(e.target.value)}
+                  placeholder="MM/DD/YYYY"
+                  title="Click to edit date"
+                  style={{
+                    width: '100%',
+                    border: 'none',
+                    borderBottom: '1px solid #000',
+                    marginBottom: '2px',
+                    height: '20px',
+                    lineHeight: '20px',
+                    fontWeight: 'bold',
+                    fontSize: '10px',
+                    textAlign: 'center',
+                    backgroundColor: 'transparent',
+                    outline: 'none',
+                    padding: 0,
+                    margin: 0,
+                    fontFamily: 'inherit',
+                    color: '#000',
+                  }}
+                />
+              )}
               <div>Date</div>
             </div>
           </div>
@@ -752,11 +891,96 @@ export default function DTRTable({
         <div style={{ textAlign: 'center' }}>
           <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '12px' }}>
             <div>
-              <div style={{ borderBottom: '1px solid #000', marginBottom: '2px', minHeight: '20px' }} />
+              {exportMode ? (
+                <div
+                  style={{
+                    borderBottom: '1px solid #000',
+                    marginBottom: '2px',
+                    height: '20px',
+                    lineHeight: '20px',
+                    fontWeight: 'bold',
+                    fontSize: '10.5px',
+                    textAlign: 'center',
+                    textTransform: 'uppercase',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                  }}
+                  title={supervisorName}
+                >
+                  {supervisorName}
+                </div>
+              ) : (
+                <input
+                  type="text"
+                  value={supervisorName}
+                  onChange={(e) => setSupervisorName(e.target.value)}
+                  placeholder="SUPERVISOR'S NAME"
+                  title="Click to edit supervisor printed name"
+                  style={{
+                    width: '100%',
+                    border: 'none',
+                    borderBottom: '1px solid #000',
+                    marginBottom: '2px',
+                    height: '20px',
+                    lineHeight: '20px',
+                    fontWeight: 'bold',
+                    fontSize: '10.5px',
+                    textAlign: 'center',
+                    textTransform: 'uppercase',
+                    backgroundColor: 'transparent',
+                    outline: 'none',
+                    padding: 0,
+                    margin: 0,
+                    fontFamily: 'inherit',
+                    color: '#000',
+                  }}
+                />
+              )}
               <div>Supervisor&apos;s Signature over Printed Name</div>
             </div>
             <div>
-              <div style={{ borderBottom: '1px solid #000', marginBottom: '2px', minHeight: '20px' }} />
+              {exportMode ? (
+                <div
+                  style={{
+                    borderBottom: '1px solid #000',
+                    marginBottom: '2px',
+                    height: '20px',
+                    lineHeight: '20px',
+                    fontWeight: 'bold',
+                    fontSize: '10px',
+                    textAlign: 'center',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {supervisorDate}
+                </div>
+              ) : (
+                <input
+                  type="text"
+                  value={supervisorDate}
+                  onChange={(e) => setSupervisorDate(e.target.value)}
+                  placeholder="MM/DD/YYYY"
+                  title="Click to edit date"
+                  style={{
+                    width: '100%',
+                    border: 'none',
+                    borderBottom: '1px solid #000',
+                    marginBottom: '2px',
+                    height: '20px',
+                    lineHeight: '20px',
+                    fontWeight: 'bold',
+                    fontSize: '10px',
+                    textAlign: 'center',
+                    backgroundColor: 'transparent',
+                    outline: 'none',
+                    padding: 0,
+                    margin: 0,
+                    fontFamily: 'inherit',
+                    color: '#000',
+                  }}
+                />
+              )}
               <div>Date</div>
             </div>
           </div>

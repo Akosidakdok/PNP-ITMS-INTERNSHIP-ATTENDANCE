@@ -2703,5 +2703,14 @@ body {
     transform-origin: top center;
   }
   #dtr-print-root .dtr-mobile-list { display: none !important; }
+  #dtr-print-root input {
+    border: none !important;
+    border-bottom: 1px solid #000 !important;
+    box-shadow: none !important;
+    background: transparent !important;
+    color: #000 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
 }
 

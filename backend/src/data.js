@@ -210,7 +210,7 @@ async function hydrateDivisionNames(accounts = []) {
 
   let { data: divisions, error } = await supabase
     .from('divisions')
-    .select('id, name')
+    .select('id, name, head_name')
     .in('id', divisionIds);
 
   // Keep the response compatible with deployments that still use the old
@@ -229,8 +229,10 @@ async function hydrateDivisionNames(accounts = []) {
   if (error) throw error;
 
   const namesById = new Map((divisions || []).map(division => [Number(division.id), division.name]));
+  const headsById = new Map((divisions || []).map(division => [Number(division.id), division.head_name]));
   return accounts.map(account => {
     const divisionId = account?.division_id ?? account?.department_id ?? null;
+    const divisionHead = headsById.get(Number(divisionId)) || null;
     return {
       ...account,
       division_id: divisionId,
@@ -239,6 +241,8 @@ async function hydrateDivisionNames(accounts = []) {
         || account?.division_name
         || account?.department_name
         || null,
+      division_head: divisionHead || account?.division_head || null,
+      supervisor_name: account?.supervisor_name || divisionHead || null,
     };
   });
 }

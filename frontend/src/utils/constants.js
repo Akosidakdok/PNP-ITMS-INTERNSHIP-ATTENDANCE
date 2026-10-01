@@ -17,3 +17,9 @@ export const AVAILABLE_COURSES = [
   "Associate in Computer Technology",
   "Other"
 ];
+
+export const DIVISION_SUPERVISORS = {
+  SPMT: 'PLTCOL ROSE ANN SUCGANG',
+  SMD: 'PLTCOL JUVENAL A. RIMANDO',
+  ITSD: 'NUP EMILIO G RARO, JR',
+};

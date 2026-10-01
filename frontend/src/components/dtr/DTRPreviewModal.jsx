@@ -9,6 +9,7 @@ import toast from 'react-hot-toast';
 import domtoimage from 'dom-to-image-more';
 import DTRHistoryModal from './DTRHistoryModal.jsx';
 import { divisionLabel } from '../../utils/display.js';
+import { DIVISION_SUPERVISORS } from '../../utils/constants.js';
 
 // Month names helper
 const MONTH_NAMES = [
@@ -97,6 +98,37 @@ export default function DTRPreviewModal({
     || intern?.profile_name
     || activeRecord.profile_name
     || 'Regular 8AM–5PM';
+
+  const previewTraineeName = (() => {
+    let fn = intern?.first_name || '';
+    let mn = intern?.middle_name || '';
+    let ln = intern?.last_name || '';
+    let suffix = intern?.name_suffix ? intern.name_suffix.replace(/^[,\s]+/, '') : '';
+    let parts = [fn, mn, ln].filter(Boolean);
+    let name = parts.join(' ');
+    if (suffix) name += ` ${suffix}`;
+    if (!name.trim()) name = intern?.full_name || activeRecord?.intern_name || '';
+    return name.trim().toUpperCase();
+  })();
+
+  const previewSupervisorName = (() => {
+    if (intern?.supervisor_name) return intern.supervisor_name.trim().toUpperCase();
+    if (intern?.division_head) return intern.division_head.trim().toUpperCase();
+    const divName = (intern?.division_name || '').trim().toUpperCase();
+    if (DIVISION_SUPERVISORS[divName]) return DIVISION_SUPERVISORS[divName].toUpperCase();
+    for (const [key, supervisor] of Object.entries(DIVISION_SUPERVISORS)) {
+      if (divName.includes(key.toUpperCase())) return supervisor.toUpperCase();
+    }
+    const divIdMap = {
+      1: 'PLTCOL JUVENAL A. RIMANDO',
+      2: 'NUP EMILIO G RARO, JR',
+      3: 'PLTCOL ROSE ANN SUCGANG',
+    };
+    if (intern?.division_id && divIdMap[intern.division_id]) {
+      return divIdMap[intern.division_id];
+    }
+    return '';
+  })();
 
   // Handle Superadmin saving DTR edit
   const handleSaveEdit = async (e) => {
@@ -538,12 +570,40 @@ export default function DTRPreviewModal({
               {/* Trainee & Supervisor Signature Lines */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '30px', marginTop: '24px', fontSize: '10px', textAlign: 'center' }}>
                 <div>
-                  <div style={{ borderBottom: '1px solid #000', marginBottom: '4px', height: '24px' }}></div>
-                  <div style={{ fontWeight: 'bold' }}>Trainee&apos;s Signature</div>
+                  <div style={{
+                    borderBottom: '1px solid #000',
+                    marginBottom: '4px',
+                    height: '24px',
+                    lineHeight: '24px',
+                    fontWeight: 'bold',
+                    fontSize: '11px',
+                    textTransform: 'uppercase',
+                    color: '#0f172a',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                  }}>
+                    {previewTraineeName}
+                  </div>
+                  <div style={{ fontWeight: 'bold' }}>Trainee&apos;s Signature over Printed Name</div>
                 </div>
                 <div>
-                  <div style={{ borderBottom: '1px solid #000', marginBottom: '4px', height: '24px' }}></div>
-                  <div style={{ fontWeight: 'bold' }}>Supervisor&apos;s Signature</div>
+                  <div style={{
+                    borderBottom: '1px solid #000',
+                    marginBottom: '4px',
+                    height: '24px',
+                    lineHeight: '24px',
+                    fontWeight: 'bold',
+                    fontSize: '11px',
+                    textTransform: 'uppercase',
+                    color: '#0f172a',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                  }}>
+                    {previewSupervisorName}
+                  </div>
+                  <div style={{ fontWeight: 'bold' }}>Supervisor&apos;s Signature over Printed Name</div>
                 </div>
               </div>
 
