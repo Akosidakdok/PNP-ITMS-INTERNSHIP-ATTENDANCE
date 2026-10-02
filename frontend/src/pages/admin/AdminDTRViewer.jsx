@@ -500,7 +500,9 @@ export default function AdminDTRViewer() {
                   overrideForm.type === 'absent'
                     ? 'bg-red-600 hover:bg-red-700 text-white'
                     : overrideForm.type === 'holiday'
-                    ? 'bg-amber-600 hover:bg-amber-700 text-white'
+                    ? 'bg-yellow-600 hover:bg-yellow-700 text-white'
+                    : overrideForm.type === 'suspended'
+                    ? 'bg-blue-600 hover:bg-blue-700 text-white'
                     : overrideForm.type === 'excused'
                     ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
                     : overrideForm.type === 'none'
@@ -521,6 +523,11 @@ export default function AdminDTRViewer() {
                   <>
                     <Calendar className="w-3.5 h-3.5" />
                     Set as Holiday
+                  </>
+                ) : overrideForm.type === 'suspended' ? (
+                  <>
+                    <CloudRain className="w-3.5 h-3.5" />
+                    Set as Suspended
                   </>
                 ) : overrideForm.type === 'none' ? (
                   <>
@@ -597,14 +604,14 @@ export default function AdminDTRViewer() {
                   type="button"
                   className={`p-2.5 rounded-xl border text-left transition-all flex flex-col justify-between ${
                     overrideForm.type === 'holiday'
-                      ? 'border-amber-500 bg-amber-50 text-amber-950 ring-2 ring-amber-400 font-bold shadow-xs'
+                      ? 'border-yellow-500 bg-yellow-50 text-yellow-950 ring-2 ring-yellow-400 font-bold shadow-xs'
                       : 'border-slate-200 hover:bg-slate-50 text-slate-700'
                   }`}
                   onClick={() => setOverrideForm(f => ({ ...f, type: 'holiday', hours: 0 }))}
                 >
                   <div className="flex items-center justify-between w-full mb-1">
-                    <Calendar className={`w-4 h-4 ${overrideForm.type === 'holiday' ? 'text-amber-600' : 'text-slate-500'}`} />
-                    <span className="text-[10px] px-1.5 py-0.5 rounded font-mono bg-amber-100 text-amber-800">0.0h</span>
+                    <Calendar className={`w-4 h-4 ${overrideForm.type === 'holiday' ? 'text-yellow-600' : 'text-slate-500'}`} />
+                    <span className="text-[10px] px-1.5 py-0.5 rounded font-mono bg-yellow-100 text-yellow-900">0.0h</span>
                   </div>
                   <div>
                     <p className="font-bold text-xs">Holiday</p>
@@ -617,14 +624,14 @@ export default function AdminDTRViewer() {
                   type="button"
                   className={`p-2.5 rounded-xl border text-left transition-all flex flex-col justify-between ${
                     overrideForm.type === 'suspended'
-                      ? 'border-slate-500 bg-slate-100 text-slate-950 ring-2 ring-slate-400 font-bold shadow-xs'
+                      ? 'border-blue-500 bg-blue-50 text-blue-950 ring-2 ring-blue-400 font-bold shadow-xs'
                       : 'border-slate-200 hover:bg-slate-50 text-slate-700'
                   }`}
                   onClick={() => setOverrideForm(f => ({ ...f, type: 'suspended', hours: 0 }))}
                 >
                   <div className="flex items-center justify-between w-full mb-1">
-                    <CloudRain className={`w-4 h-4 ${overrideForm.type === 'suspended' ? 'text-slate-700' : 'text-slate-500'}`} />
-                    <span className="text-[10px] px-1.5 py-0.5 rounded font-mono bg-slate-200 text-slate-800">0.0h</span>
+                    <CloudRain className={`w-4 h-4 ${overrideForm.type === 'suspended' ? 'text-blue-600' : 'text-slate-500'}`} />
+                    <span className="text-[10px] px-1.5 py-0.5 rounded font-mono bg-blue-100 text-blue-800">0.0h</span>
                   </div>
                   <div>
                     <p className="font-bold text-xs">Suspended</p>
@@ -657,14 +664,14 @@ export default function AdminDTRViewer() {
                   type="button"
                   className={`p-2.5 rounded-xl border text-left transition-all flex flex-col justify-between ${
                     overrideForm.type === 'hours'
-                      ? 'border-blue-500 bg-blue-50 text-blue-950 ring-2 ring-blue-400 font-bold shadow-xs'
+                      ? 'border-indigo-500 bg-indigo-50 text-indigo-950 ring-2 ring-indigo-400 font-bold shadow-xs'
                       : 'border-slate-200 hover:bg-slate-50 text-slate-700'
                   }`}
                   onClick={() => setOverrideForm(f => ({ ...f, type: 'hours' }))}
                 >
                   <div className="flex items-center justify-between w-full mb-1">
-                    <Clock className={`w-4 h-4 ${overrideForm.type === 'hours' ? 'text-blue-600' : 'text-slate-500'}`} />
-                    <span className="text-[10px] px-1.5 py-0.5 rounded font-mono bg-blue-100 text-blue-800">Custom</span>
+                    <Clock className={`w-4 h-4 ${overrideForm.type === 'hours' ? 'text-indigo-600' : 'text-slate-500'}`} />
+                    <span className="text-[10px] px-1.5 py-0.5 rounded font-mono bg-indigo-100 text-indigo-800">Custom</span>
                   </div>
                   <div>
                     <p className="font-bold text-xs">Custom Hours</p>
@@ -727,10 +734,10 @@ export default function AdminDTRViewer() {
                       <button
                         key={preset}
                         type="button"
-                        className="px-2 py-0.5 bg-slate-100 hover:bg-amber-100 text-slate-700 hover:text-amber-900 border border-slate-200 rounded text-[11px] font-medium"
+                        className="px-2 py-0.5 bg-yellow-50 hover:bg-yellow-100 text-yellow-900 border border-yellow-200 rounded text-[11px] font-medium"
                         onClick={() => setOverrideForm(f => ({ ...f, remarks: preset }))}
                       >
-                        {preset}
+                        + {preset}
                       </button>
                     ))}
                   </div>
@@ -742,10 +749,25 @@ export default function AdminDTRViewer() {
                       <button
                         key={preset}
                         type="button"
-                        className="px-2 py-0.5 bg-slate-100 hover:bg-red-100 text-slate-700 hover:text-red-900 border border-slate-200 rounded text-[11px] font-medium"
+                        className="px-2 py-0.5 bg-red-50 hover:bg-red-100 text-red-900 border border-red-200 rounded text-[11px] font-medium"
                         onClick={() => setOverrideForm(f => ({ ...f, remarks: preset }))}
                       >
-                        {preset}
+                        + {preset}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {overrideForm.type === 'suspended' && (
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {['Typhoon Suspension', 'Inclement Weather', 'Office Maintenance'].map((preset) => (
+                      <button
+                        key={preset}
+                        type="button"
+                        className="px-2 py-0.5 bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-200 rounded text-[11px] font-medium"
+                        onClick={() => setOverrideForm(f => ({ ...f, remarks: preset }))}
+                      >
+                        + {preset}
                       </button>
                     ))}
                   </div>

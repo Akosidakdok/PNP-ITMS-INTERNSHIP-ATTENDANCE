@@ -324,6 +324,25 @@ export default function DTRPrint({
         </div>
       </div>
 
+      {/* DTR Color Coding Legend — on screen indicator */}
+      <div className="flex flex-wrap items-center gap-2 text-xs bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 mb-4 no-print dtr-print__legend">
+        <span className="font-bold text-slate-700 text-xs mr-1">
+          Color Coding:
+        </span>
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full font-bold bg-red-100 text-red-800 border border-red-300 text-[11px]">
+          <span className="w-2 h-2 rounded-full bg-red-600"></span>
+          Absent (Red)
+        </span>
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full font-bold bg-yellow-100 text-yellow-900 border border-yellow-300 text-[11px]">
+          <span className="w-2 h-2 rounded-full bg-yellow-500"></span>
+          Holiday (Yellow)
+        </span>
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full font-bold bg-blue-100 text-blue-800 border border-blue-300 text-[11px]">
+          <span className="w-2 h-2 rounded-full bg-blue-600"></span>
+          Suspended (Blue)
+        </span>
+      </div>
+
       {/* The printable area — horizontal scroll on mobile */}
       <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }} className="w-full flex justify-center dtr-print__viewport">
         <div

@@ -40,22 +40,22 @@ const OVERRIDE_OPTIONS = [
     type: 'holiday',
     title: 'Holiday',
     badge: '0.0h',
-    badgeClass: 'bg-amber-100 text-amber-800',
+    badgeClass: 'bg-yellow-100 text-yellow-900',
     desc: 'Official holiday',
     icon: Calendar,
-    iconColor: 'text-amber-600',
-    activeClass: 'border-amber-500 bg-amber-50 text-amber-950 ring-2 ring-amber-400 font-bold shadow-xs',
+    iconColor: 'text-yellow-600',
+    activeClass: 'border-yellow-500 bg-yellow-50 text-yellow-950 ring-2 ring-yellow-400 font-bold shadow-xs',
     defaultHours: 0,
   },
   {
     type: 'suspended',
     title: 'Suspended',
     badge: '0.0h',
-    badgeClass: 'bg-slate-200 text-slate-800',
+    badgeClass: 'bg-blue-100 text-blue-800',
     desc: 'Typhoon / weather',
     icon: CloudRain,
-    iconColor: 'text-slate-700',
-    activeClass: 'border-slate-500 bg-slate-100 text-slate-950 ring-2 ring-slate-400 font-bold shadow-xs',
+    iconColor: 'text-blue-600',
+    activeClass: 'border-blue-500 bg-blue-50 text-blue-950 ring-2 ring-blue-400 font-bold shadow-xs',
     defaultHours: 0,
   },
   {
@@ -73,11 +73,11 @@ const OVERRIDE_OPTIONS = [
     type: 'hours',
     title: 'Custom Hours',
     badge: 'Custom',
-    badgeClass: 'bg-blue-100 text-blue-800',
+    badgeClass: 'bg-indigo-100 text-indigo-800',
     desc: 'Credit specific hrs',
     icon: Clock,
-    iconColor: 'text-blue-600',
-    activeClass: 'border-blue-500 bg-blue-50 text-blue-950 ring-2 ring-blue-400 font-bold shadow-xs',
+    iconColor: 'text-indigo-600',
+    activeClass: 'border-indigo-500 bg-indigo-50 text-indigo-950 ring-2 ring-indigo-400 font-bold shadow-xs',
     defaultHours: 8,
   },
   {
@@ -399,9 +399,9 @@ export default function BulkDTROverrideModal({
                       overrideType === 'absent'
                         ? 'bg-red-50 hover:bg-red-100 text-red-800 border-red-200'
                         : overrideType === 'holiday'
-                        ? 'bg-amber-50 hover:bg-amber-100 text-amber-800 border-amber-200'
+                        ? 'bg-yellow-50 hover:bg-yellow-100 text-yellow-900 border-yellow-200'
                         : overrideType === 'suspended'
-                        ? 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-300'
+                        ? 'bg-blue-50 hover:bg-blue-100 text-blue-900 border-blue-200'
                         : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-200'
                     }`}
                     onClick={() => setRemarks(preset)}
@@ -549,25 +549,25 @@ export default function BulkDTROverrideModal({
           overrideType === 'absent'
             ? 'bg-red-50/80 border-red-200 text-red-950'
             : overrideType === 'holiday'
-            ? 'bg-amber-50/90 border-amber-200 text-amber-950'
+            ? 'bg-yellow-50/90 border-yellow-200 text-yellow-950'
             : overrideType === 'suspended'
-            ? 'bg-slate-100 border-slate-300 text-slate-900'
+            ? 'bg-blue-50/90 border-blue-200 text-blue-950'
             : overrideType === 'excused'
             ? 'bg-emerald-50 border-emerald-200 text-emerald-950'
             : overrideType === 'none'
             ? 'bg-gray-100 border-gray-300 text-gray-900'
-            : 'bg-blue-50/80 border-blue-200 text-blue-950'
+            : 'bg-indigo-50/80 border-indigo-200 text-indigo-950'
         }`}>
           <AlertCircle className={`w-4 h-4 shrink-0 mt-0.5 ${
             overrideType === 'absent'
               ? 'text-red-600'
               : overrideType === 'holiday'
-              ? 'text-amber-600'
+              ? 'text-yellow-600'
               : overrideType === 'suspended'
-              ? 'text-slate-600'
+              ? 'text-blue-600'
               : overrideType === 'excused'
               ? 'text-emerald-600'
-              : 'text-blue-600'
+              : 'text-indigo-600'
           }`} />
           <div>
             <p className="font-bold">

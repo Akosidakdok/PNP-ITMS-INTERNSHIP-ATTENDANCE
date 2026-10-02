@@ -256,6 +256,12 @@ export default function DTRTable({
               className={`p-3 rounded-xl border transition-all dtr-mobile-list__card ${
                 isSelected
                   ? 'bg-blue-50 border-blue-500 ring-2 ring-blue-500 shadow-sm'
+                  : rec?.override_type === 'absent'
+                  ? 'bg-red-50/70 border-red-300 shadow-xs cursor-pointer active:bg-red-100/50'
+                  : (rec?.override_type === 'holiday' || holiday)
+                  ? 'bg-yellow-50/70 border-yellow-300 shadow-xs cursor-pointer active:bg-yellow-100/50'
+                  : rec?.override_type === 'suspended'
+                  ? 'bg-blue-50/70 border-blue-300 shadow-xs cursor-pointer active:bg-blue-100/50'
                   : rec ? 'bg-white border-gray-200 shadow-sm cursor-pointer active:bg-gray-50' : 'bg-gray-100/40 border-gray-100 cursor-pointer'
               }`}
               onClick={(e) => {
@@ -294,19 +300,23 @@ export default function DTRTable({
               </div>
               
               {holiday ? (
-                <div className="text-xs font-semibold text-red-500 italic">{holiday}</div>
+                <div className="text-xs font-bold text-yellow-900 bg-yellow-100 border border-yellow-300 p-1.5 rounded-lg italic">{holiday}</div>
               ) : rec?.is_override ? (
-                <div className={`text-[11px] font-semibold p-1.5 rounded inline-block mt-1 ${
+                <div className={`text-[11px] font-bold p-1.5 rounded-lg inline-block mt-1 ${
                   rec.override_type === 'absent'
-                    ? 'text-red-700 bg-red-50 border border-red-200'
+                    ? 'text-red-800 bg-red-100 border border-red-300'
                     : rec.override_type === 'holiday'
-                    ? 'text-amber-800 bg-amber-50 border border-amber-200'
-                    : 'text-purple-600 bg-purple-50'
+                    ? 'text-yellow-900 bg-yellow-100 border border-yellow-300'
+                    : rec.override_type === 'suspended'
+                    ? 'text-blue-800 bg-blue-100 border border-blue-300'
+                    : 'text-purple-700 bg-purple-100 border border-purple-300'
                 }`}>
                   {rec.override_type === 'absent'
                     ? (rec.remarks ? `Absent: ${rec.remarks}` : 'Absent')
                     : rec.override_type === 'holiday'
                     ? (rec.remarks ? `Holiday: ${rec.remarks}` : 'Holiday')
+                    : rec.override_type === 'suspended'
+                    ? (rec.remarks ? `Suspended: ${rec.remarks}` : 'Suspended')
                     : (rec.remarks || rec.override_type || 'Overridden')}
                   {getRecordMinutes(rec) > 0 && (
                     <span className="opacity-75 ml-1">({formatDuration(getRecordMinutes(rec))})</span>
@@ -603,19 +613,38 @@ export default function DTRTable({
 
             const rowClassName = `transition-colors ${(isSelectable || onRowClick) ? 'hover:bg-blue-50/40 select-none' : ''}`;
 
-            const renderDateCell = (dayNum, currentRec) => {
+            const renderDateCell = (dayNum, currentRec, overrideType) => {
               const isClickable = Boolean(onDateClick) && !exportMode;
+              const effectiveType = overrideType || currentRec?.override_type;
+              const dateBgColor = isSelected
+                ? '#dbeafe'
+                : effectiveType === 'absent'
+                ? '#fee2e2'
+                : effectiveType === 'holiday'
+                ? '#fef9c3'
+                : effectiveType === 'suspended'
+                ? '#dbeafe'
+                : undefined;
+              const dateTextColor = effectiveType === 'absent'
+                ? '#b91c1c'
+                : effectiveType === 'holiday'
+                ? '#854d0e'
+                : effectiveType === 'suspended'
+                ? '#1d4ed8'
+                : undefined;
+
               return (
                 <td
-                  className={isClickable ? 'dtr-clickable-date hover:bg-blue-100 hover:text-blue-800 transition-colors' : ''}
-                  title={isClickable ? 'Click to set attendance status (Absent, Holiday, etc.)' : undefined}
+                  className={isClickable ? 'dtr-clickable-date hover:opacity-80 transition-opacity' : ''}
+                  title={isClickable ? 'Click to set attendance status (Absent, Holiday, Suspended, etc.)' : undefined}
                   style={tdStyle({
                     textAlign: 'center',
                     fontWeight: '600',
                     borderRight: '1px solid #000',
                     height: '18px',
                     fontSize: '9px',
-                    backgroundColor: isSelected ? '#dbeafe' : undefined,
+                    backgroundColor: dateBgColor,
+                    color: dateTextColor,
                     cursor: isClickable ? 'pointer' : undefined,
                     userSelect: 'none',
                   })}
@@ -646,12 +675,12 @@ export default function DTRTable({
                     className={rowClassName}
                   >
                     {renderSelectCell()}
-                    {renderDateCell(day, rec)}
+                    {renderDateCell(day, rec, 'absent')}
                     <td colSpan={6} style={tdStyle({
                       textAlign: 'center',
                       fontWeight: 'bold',
                       fontStyle: 'italic',
-                      backgroundColor: isSelected ? '#fecdd3' : (exportMode ? '#ffffff' : '#fee2e2'),
+                      backgroundColor: isSelected ? '#fecdd3' : '#fee2e2', // Absent = red
                       color: '#b91c1c',
                       fontSize: '9px',
                       letterSpacing: '1px',
@@ -673,13 +702,13 @@ export default function DTRTable({
                     className={rowClassName}
                   >
                     {renderSelectCell()}
-                    {renderDateCell(day, rec)}
+                    {renderDateCell(day, rec, 'holiday')}
                     <td colSpan={6} style={tdStyle({
                       textAlign: 'center',
                       fontWeight: 'bold',
                       fontStyle: 'italic',
-                      backgroundColor: isSelected ? '#fde68a' : (exportMode ? '#ffffff' : '#fef3c7'),
-                      color: '#b45309',
+                      backgroundColor: isSelected ? '#fef08a' : '#fef9c3', // Holiday = yellow
+                      color: '#854d0e',
                       fontSize: '9px',
                       letterSpacing: '1px',
                       height: '18px'
@@ -689,6 +718,9 @@ export default function DTRTable({
                   </tr>
                 );
               } else if (rec.override_type === 'suspended') {
+                const suspendedLabel = rec.remarks
+                  ? `SUSPENDED: ${rec.remarks.toUpperCase()}`
+                  : 'SUSPENDED';
                 return (
                   <tr
                     key={day}
@@ -697,18 +729,18 @@ export default function DTRTable({
                     className={rowClassName}
                   >
                     {renderSelectCell()}
-                    {renderDateCell(day, rec)}
+                    {renderDateCell(day, rec, 'suspended')}
                     <td colSpan={6} style={tdStyle({
                       textAlign: 'center',
                       fontWeight: 'bold',
                       fontStyle: 'italic',
-                      backgroundColor: isSelected ? '#bae6fd' : '#f3f4f6', // Suspension gray
-                      color: '#4b5563',
+                      backgroundColor: isSelected ? '#bfdbfe' : '#dbeafe', // Suspended = blue
+                      color: '#1d4ed8',
                       fontSize: '9px',
-                      letterSpacing: '0.5px',
+                      letterSpacing: '1px',
                       height: '18px'
                     })}>
-                      SUSPENDED: {rec.remarks || 'Suspension'}
+                      {suspendedLabel}
                     </td>
                   </tr>
                 );
@@ -778,6 +810,7 @@ export default function DTRTable({
             }
 
             if ((isWeekend || holidayName) && !rec) {
+              const isHoliday = Boolean(holidayName);
               return (
                 <tr
                   key={day}
@@ -786,14 +819,16 @@ export default function DTRTable({
                   className={rowClassName}
                 >
                   {renderSelectCell()}
-                  {renderDateCell(day, rec)}
+                  {renderDateCell(day, rec, isHoliday ? 'holiday' : undefined)}
                   {/* Spanned label across all remaining columns */}
                   <td colSpan={6} style={tdStyle({
                     textAlign: 'center',
                     fontWeight: 'bold',
                     fontStyle: 'italic',
-                    backgroundColor: isSelected ? '#fde68a' : (holidayName ? '#fef3c7' : '#f3f4f6'), // Light amber for holiday, light gray for weekend
-                    color: holidayName ? '#b45309' : '#6b7280',
+                    backgroundColor: isSelected
+                      ? (isHoliday ? '#fef08a' : '#e5e7eb')
+                      : (isHoliday ? '#fef9c3' : '#f3f4f6'), // Yellow for holiday, gray for weekend
+                    color: isHoliday ? '#854d0e' : '#6b7280',
                     fontSize: '9px',
                     letterSpacing: '1px',
                     height: '18px'

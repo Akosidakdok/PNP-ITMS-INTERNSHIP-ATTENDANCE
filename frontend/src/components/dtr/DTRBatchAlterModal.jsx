@@ -418,7 +418,7 @@ export default function DTRBatchAlterModal({
                     <button
                       key={preset}
                       type="button"
-                      className="text-[10px] bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 px-2 py-0.5 rounded-full transition-colors font-medium"
+                      className="text-[10px] bg-yellow-50 hover:bg-yellow-100 text-yellow-900 border border-yellow-200 px-2 py-0.5 rounded-full transition-colors font-medium"
                       onClick={() => setOverrideRemarks(preset)}
                     >
                       + {preset}
@@ -433,6 +433,20 @@ export default function DTRBatchAlterModal({
                       key={preset}
                       type="button"
                       className="text-[10px] bg-red-50 hover:bg-red-100 text-red-800 border border-red-200 px-2 py-0.5 rounded-full transition-colors font-medium"
+                      onClick={() => setOverrideRemarks(preset)}
+                    >
+                      + {preset}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {overrideType === 'suspended' && (
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {['Typhoon Suspension', 'Inclement Weather', 'Office Maintenance'].map(preset => (
+                    <button
+                      key={preset}
+                      type="button"
+                      className="text-[10px] bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-200 px-2 py-0.5 rounded-full transition-colors font-medium"
                       onClick={() => setOverrideRemarks(preset)}
                     >
                       + {preset}
