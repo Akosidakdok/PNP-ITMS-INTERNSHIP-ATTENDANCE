@@ -11,7 +11,8 @@ import { divisionLabel } from '../../utils/display.js';
 
 function WatermarkedSelfie({ photoUrl, recordDate, recordTime, isSuperadmin }) {
   const [mode, setMode] = useState('official'); // 'official' | 'audit'
-  const [renderedUrl, setRenderedUrl] = useState(photoUrl);
+  const [renderedImage, setRenderedImage] = useState({ photoUrl: '', stamp: '', url: '' });
+  const [renderError, setRenderError] = useState('');
 
   const activeMode = isSuperadmin ? mode : 'official';
 
@@ -32,69 +33,93 @@ function WatermarkedSelfie({ photoUrl, recordDate, recordTime, isSuperadmin }) {
     return `${recordDate} ${timeFormatted}`;
   }, [recordDate, recordTime]);
 
+  const officialImageReady = renderedImage.photoUrl === photoUrl
+    && renderedImage.stamp === officialStamp
+    && Boolean(renderedImage.url);
+  const displayUrl = activeMode === 'audit'
+    ? photoUrl
+    : (officialImageReady ? renderedImage.url : '');
+  const isPreparingOfficialImage = activeMode === 'official'
+    && Boolean(photoUrl)
+    && !officialImageReady
+    && !renderError;
+
   useEffect(() => {
-    if (!photoUrl) return;
+    if (!photoUrl) {
+      setRenderError('');
+      return undefined;
+    }
     if (activeMode === 'audit') {
-      setRenderedUrl(photoUrl);
-      return;
+      setRenderError('');
+      return undefined;
     }
 
+    let cancelled = false;
+    setRenderError('');
     const img = new Image();
     img.crossOrigin = 'anonymous';
-    img.src = photoUrl;
     img.onload = () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = img.naturalWidth || img.width || 640;
-      canvas.height = img.naturalHeight || img.height || 480;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
+      if (cancelled) return;
 
-      // The attendance camera uses a mirrored selfie preview. Normalize the
-      // official admin preview back to the natural orientation, then add the
-      // watermark afterward so the timestamp remains readable.
-      ctx.save();
-      ctx.translate(canvas.width, 0);
-      ctx.scale(-1, 1);
-      ctx.drawImage(img, 0, 0);
-      ctx.restore();
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth || img.width || 640;
+        canvas.height = img.naturalHeight || img.height || 480;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('Canvas 2D context is unavailable.');
 
-      if (officialStamp) {
+        // Normalize the mirrored selfie before applying the official watermark.
         ctx.save();
-        ctx.font = 'bold 18px sans-serif';
-        const textMetrics = ctx.measureText(officialStamp);
-        const textWidth = textMetrics.width;
-
-        // The source watermark moves to the bottom-right when the image is
-        // mirrored. Cover it there, then redraw the timestamp in that position
-        // so it stays aligned with the image and remains readable.
-        const watermarkWidth = textWidth + 18;
-        const watermarkX = canvas.width - watermarkWidth - 8;
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.78)';
-        ctx.beginPath();
-        if (ctx.roundRect) {
-          ctx.roundRect(watermarkX, canvas.height - 40, watermarkWidth, 30, 4);
-        } else {
-          ctx.rect(watermarkX, canvas.height - 40, watermarkWidth, 30);
-        }
-        ctx.fill();
-
-        // Render official watermark
-        ctx.font = 'bold 18px sans-serif';
-        ctx.shadowColor = 'black';
-        ctx.shadowBlur = 6;
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.98)';
-        ctx.fillText(officialStamp, canvas.width - textWidth - 14, canvas.height - 18);
+        ctx.translate(canvas.width, 0);
+        ctx.scale(-1, 1);
+        ctx.drawImage(img, 0, 0);
         ctx.restore();
-      }
 
-      setRenderedUrl(canvas.toDataURL('image/jpeg', 0.9));
+        if (officialStamp) {
+          // Use an opaque footer across the full image width. The original
+          // camera timestamp can have different digits and width, so a text-
+          // sized translucent patch may leave parts of it visible underneath.
+          const footerHeight = Math.min(44, canvas.height);
+          ctx.fillStyle = '#000';
+          ctx.fillRect(0, canvas.height - footerHeight, canvas.width, footerHeight);
+
+          ctx.font = 'bold 18px sans-serif';
+          ctx.textAlign = 'right';
+          ctx.textBaseline = 'middle';
+          ctx.fillStyle = '#fff';
+          ctx.fillText(officialStamp, canvas.width - 12, canvas.height - footerHeight / 2);
+        }
+
+        const renderedUrl = canvas.toDataURL('image/jpeg', 0.9);
+        if (!cancelled) {
+          setRenderedImage({ photoUrl, stamp: officialStamp, url: renderedUrl });
+        }
+      } catch (error) {
+        console.error('Could not render attendance watermark:', error);
+        if (!cancelled) {
+          setRenderError('Could not prepare the official image.');
+        }
+      }
+    };
+    img.onerror = () => {
+      if (cancelled) return;
+      setRenderError('Could not load the image for rendering.');
+    };
+    img.src = photoUrl;
+
+    return () => {
+      cancelled = true;
+      img.onload = null;
+      img.onerror = null;
     };
   }, [photoUrl, activeMode, officialStamp]);
 
   const handleDownload = () => {
+    if (!displayUrl) return;
     const link = document.createElement('a');
-    link.href = renderedUrl;
-    link.download = `selfie_${recordDate}_${activeMode}.jpg`;
+    link.href = displayUrl;
+    const safeDate = (recordDate || 'attendance').replace(/[^\w-]/g, '-');
+    link.download = `selfie_${safeDate}_${activeMode}.jpg`;
     link.click();
   };
 
@@ -133,18 +158,25 @@ function WatermarkedSelfie({ photoUrl, recordDate, recordTime, isSuperadmin }) {
         <button
           type="button"
           onClick={handleDownload}
+          disabled={!displayUrl}
           className="text-slate-600 hover:text-blue-600 font-medium flex items-center gap-1 bg-white border border-slate-200 px-2 py-1 rounded shadow-xs"
         >
-          <Download className="w-3.5 h-3.5" /> Save Image
+          <Download className="w-3.5 h-3.5" /> {isPreparingOfficialImage ? 'Preparing...' : 'Save Image'}
         </button>
       </div>
 
       <div className="relative rounded-xl overflow-hidden border border-gray-200 shadow-sm bg-black flex justify-center w-full">
-        <img
-          src={renderedUrl}
-          alt="Intern Selfie"
-          className="max-h-[360px] w-auto object-contain rounded-lg"
-        />
+        {displayUrl ? (
+          <img
+            src={displayUrl}
+            alt="Intern Selfie"
+            className="max-h-[360px] w-auto object-contain rounded-lg"
+          />
+        ) : (
+          <p className="px-4 py-8 text-center text-sm text-white/80">
+            {renderError || (isPreparingOfficialImage ? 'Preparing official image...' : 'Image unavailable')}
+          </p>
+        )}
       </div>
     </div>
   );
