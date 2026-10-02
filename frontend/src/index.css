@@ -2498,6 +2498,16 @@ body {
     justify-content: center;
   }
   .modal-panel > .modal-footer .mr-auto { margin-right: 0; }
+  .dtr-office-modal-panel .form-input {
+    box-sizing: border-box;
+    min-width: 0;
+    min-height: 2.75rem;
+    font-size: 16px;
+  }
+  .dtr-office-modal-panel .dtr-office-modal-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
 
   /* The month grid is too dense on a phone; the agenda exposes the same
      events and keeps create/edit/delete actions available. */
