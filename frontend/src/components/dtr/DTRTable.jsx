@@ -115,7 +115,6 @@ export default function DTRTable({
   onSelectAllDates,
   allDatesSelected = false,
   exportMode = false,
-  exportOffice = '',
 }) {
   const daysInMonth = month && year ? getDaysInMonth(new Date(year, month - 1, 1)) : 31;
 
@@ -437,9 +436,13 @@ export default function DTRTable({
 
         {/* Office */}
         <div style={{ clear: 'both', marginBottom: '8px', height: '16px' }}>
-          <div style={{ float: 'left', fontWeight: 'bold', width: '50px' }}>{exportMode ? 'Office:' : 'Division:'}</div>
+          <div style={{ float: 'left', fontWeight: 'bold', width: '50px' }}>Office:</div>
           <div style={{ float: 'left', width: 'calc(100% - 50px)' }}>
-            <div style={{ height: '14px', paddingLeft: '8px' }}>{exportMode ? exportOffice : divisionLabel(intern?.division_name)}</div>
+            <div style={{ height: '14px', paddingLeft: '8px' }}>
+              {exportMode
+                ? divisionLabel(intern?.division_name).toUpperCase()
+                : divisionLabel(intern?.division_name)}
+            </div>
             <div style={{ borderTop: '1px solid #000' }}></div>
           </div>
         </div>

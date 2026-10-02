@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 
-export default function Modal({ isOpen, onClose, title, children, size = 'md', footer, panelClassName = '' }) {
+export default function Modal({ isOpen, onClose, title, children, size = 'md', footer }) {
   const overlayRef = useRef(null);
   const onCloseRef = useRef(onClose);
 
@@ -56,7 +56,7 @@ export default function Modal({ isOpen, onClose, title, children, size = 'md', f
       onClick={e => { if (e.target === overlayRef.current) onClose(); }}
     >
       <div
-        className={`card w-full ${sizeClass} animate-scale-in flex flex-col modal-panel ${panelClassName}`}
+        className={`card w-full ${sizeClass} animate-scale-in flex flex-col modal-panel`}
         style={{ maxHeight: 'calc(100vh - 2rem)' }}
         onClick={e => e.stopPropagation()}
       >

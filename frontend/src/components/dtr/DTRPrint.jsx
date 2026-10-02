@@ -1,15 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import DTRTable from './DTRTable.jsx';
 import { FileDown, Printer, Download, FileText } from 'lucide-react';
 import toast from 'react-hot-toast';
 import domtoimage from 'dom-to-image-more';
 import { jsPDF } from 'jspdf';
-import Modal from '../common/Modal.jsx';
-import api from '../../utils/api.js';
 
 const DTR_EXPORT_WIDTH = 760;
-const ADDITIONAL_DTR_OFFICE = 'ADMINISTRATIVE AND RESOURCE MANAGEMENT DIVISION';
-const CUSTOM_OFFICE_VALUE = '__CUSTOM_OFFICE__';
 
 function waitForNextPaint() {
   return new Promise(resolve => window.requestAnimationFrame(resolve));
@@ -73,46 +69,11 @@ export default function DTRPrint({
   allDatesSelected = false,
 }) {
   const printRef = useRef(null);
-  const customOfficeInputRef = useRef(null);
   const [isExporting, setIsExporting] = useState(false);
   const [isExportMode, setIsExportMode] = useState(false);
   const [paperFormat, setPaperFormat] = useState('a4'); // 'a4' | 'letter' | 'folio'
-  const [office, setOffice] = useState('');
-  const [customOffice, setCustomOffice] = useState('');
-  const [exportOffice, setExportOffice] = useState('');
-  const [officeModalOpen, setOfficeModalOpen] = useState(false);
-  const [pendingExport, setPendingExport] = useState(null);
-  const [availableDivisions, setAvailableDivisions] = useState([]);
 
-  useEffect(() => {
-    let isMounted = true;
-
-    api.get('/divisions')
-      .then(response => {
-        if (isMounted) {
-          setAvailableDivisions(response.data?.divisions || response.data || []);
-        }
-      })
-      .catch(error => console.error('Could not load DTR office options:', error));
-
-    return () => { isMounted = false; };
-  }, []);
-
-  const officeOptions = Array.from(new Set([
-    ...availableDivisions.map(division => division?.name),
-    intern?.division_name,
-    ADDITIONAL_DTR_OFFICE,
-  ].map(value => String(value || '').trim().toUpperCase()).filter(Boolean)));
-  const isCustomOffice = office === CUSTOM_OFFICE_VALUE;
-  const selectedOffice = isCustomOffice ? customOffice : office;
-
-  useEffect(() => {
-    if (officeModalOpen && isCustomOffice) {
-      customOfficeInputRef.current?.focus();
-    }
-  }, [officeModalOpen, isCustomOffice]);
-
-  const printDtr = async () => {
+  const handlePrint = async () => {
     const el = printRef.current;
     if (!el || isExporting) return;
 
@@ -222,7 +183,7 @@ export default function DTRPrint({
     }
   };
 
-  const exportPdf = async () => {
+  const handleExportPDF = async () => {
     const el = printRef.current;
     if (!el) return;
     
@@ -297,7 +258,7 @@ export default function DTRPrint({
     }
   };
 
-  const exportImage = async () => {
+  const handleExportImage = async () => {
     const el = printRef.current;
     if (!el) return;
 
@@ -331,44 +292,18 @@ export default function DTRPrint({
     }
   };
 
-  const requestExport = action => {
-    if (isExporting) return;
-    setOffice('');
-    setCustomOffice('');
-    setPendingExport(() => action);
-    setOfficeModalOpen(true);
-  };
-
-  const closeOfficeModal = () => {
-    setOfficeModalOpen(false);
-    setPendingExport(null);
-    setOffice('');
-    setCustomOffice('');
-  };
-
-  const confirmOffice = () => {
-    const normalizedOffice = selectedOffice.trim().toUpperCase();
-    if (!normalizedOffice || !pendingExport) return;
-
-    const action = pendingExport;
-    setExportOffice(normalizedOffice);
-    setOfficeModalOpen(false);
-    setPendingExport(null);
-    action();
-  };
-
   return (
     <div className="dtr-print">
       {/* Action buttons & Paper format selector — hidden during print */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 no-print dtr-print__actions">
         <div className="flex flex-wrap items-center gap-2">
-          <button className="btn btn-secondary btn-sm flex items-center gap-1.5" onClick={() => requestExport(printDtr)} disabled={isExporting}>
+          <button className="btn btn-secondary btn-sm flex items-center gap-1.5" onClick={handlePrint} disabled={isExporting}>
             <Printer className="w-4 h-4" /> Print
           </button>
-          <button className="btn btn-secondary btn-sm flex items-center gap-1.5" onClick={() => requestExport(exportImage)} disabled={isExporting}>
+          <button className="btn btn-secondary btn-sm flex items-center gap-1.5" onClick={handleExportImage} disabled={isExporting}>
             <Download className="w-4 h-4" /> {isExporting ? 'Exporting...' : 'Export PNG'}
           </button>
-          <button className="btn btn-primary btn-sm flex items-center gap-1.5 font-bold shadow-xs" onClick={() => requestExport(exportPdf)} disabled={isExporting}>
+          <button className="btn btn-primary btn-sm flex items-center gap-1.5 font-bold shadow-xs" onClick={handleExportPDF} disabled={isExporting}>
             <FileDown className="w-4 h-4" /> {isExporting ? 'Exporting...' : 'Export PDF'}
           </button>
         </div>
@@ -415,76 +350,9 @@ export default function DTRPrint({
             onSelectAllDates={onSelectAllDates}
             allDatesSelected={allDatesSelected}
             exportMode={isExportMode}
-            exportOffice={exportOffice}
            />
         </div>
       </div>
-
-      <Modal
-        isOpen={officeModalOpen}
-        onClose={closeOfficeModal}
-        title="Enter Office for DTR"
-        size="sm"
-        panelClassName="dtr-office-modal-panel"
-        footer={(
-          <div className="dtr-office-modal-actions flex justify-end gap-2 w-full">
-            <button type="button" className="btn btn-secondary" onClick={closeOfficeModal}>
-              Cancel
-            </button>
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={confirmOffice}
-              disabled={!selectedOffice.trim() || isExporting}
-            >
-              Continue
-            </button>
-          </div>
-        )}
-      >
-        <label htmlFor="dtr-office-input" className="form-label">Office</label>
-        <select
-          id="dtr-office-input"
-          className="form-input form-select"
-          value={office}
-          onChange={event => setOffice(event.target.value)}
-          onKeyDown={event => {
-            if (event.key === 'Enter') {
-              event.preventDefault();
-              confirmOffice();
-            }
-          }}
-          autoFocus
-          required
-        >
-          <option value="">Select an office</option>
-          {officeOptions.map(option => <option key={option} value={option}>{option}</option>)}
-          <option value={CUSTOM_OFFICE_VALUE}>CUSTOM (ENTER OFFICE)</option>
-        </select>
-        {isCustomOffice && (
-          <div className="mt-3">
-            <label htmlFor="dtr-custom-office-input" className="form-label">Custom office</label>
-            <input
-              ref={customOfficeInputRef}
-              id="dtr-custom-office-input"
-              type="text"
-              className="form-input uppercase mt-1"
-              value={customOffice}
-              onChange={event => setCustomOffice(event.target.value.toUpperCase())}
-              onKeyDown={event => {
-                if (event.key === 'Enter') {
-                  event.preventDefault();
-                  confirmOffice();
-                }
-              }}
-              placeholder="Enter the intern's office"
-              autoComplete="organization"
-              required
-            />
-          </div>
-        )}
-        <p className="mt-2 text-xs text-gray-500">Choose a listed office or use the final custom option. The exported value is uppercase.</p>
-      </Modal>
     </div>
   );
 }
