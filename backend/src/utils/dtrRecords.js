@@ -6,7 +6,7 @@ import {
 } from './attendanceTime.js';
 
 const VALID_APPROVAL_STATUSES = new Set(['pending', 'approved', 'rejected']);
-const VALID_OVERRIDE_TYPES = new Set(['SUSPENDED', 'EXCUSED', 'HOURS', 'OTHERS']);
+const VALID_OVERRIDE_TYPES = new Set(['SUSPENDED', 'EXCUSED', 'HOURS', 'OTHERS', 'ABSENT', 'HOLIDAY']);
 
 function timestampOf(value) {
   const timestamp = value instanceof Date ? value.getTime() : new Date(value).getTime();
@@ -44,7 +44,7 @@ export function parseDtrOverride(remarks) {
   const type = String(parts[1] || '').toUpperCase();
   if (!VALID_OVERRIDE_TYPES.has(type)) return null;
 
-  if (type === 'HOURS' || type === 'OTHERS') {
+  if (type === 'HOURS' || type === 'OTHERS' || type === 'HOLIDAY') {
     const hours = Number(parts[2]);
     return {
       type,
@@ -140,6 +140,47 @@ function buildOverrideRecord(date, entries, overrideLog, override) {
       is_override: true,
       override_type: 'suspended',
       override_hours: 0,
+      override_remarks: override.remarks,
+      override_id: overrideLog.id ?? null,
+    };
+  }
+
+  if (override.type === 'ABSENT') {
+    return {
+      ...buildStandardDtrRecord(date, []),
+      approval_status: 'approved',
+      am_status: null,
+      pm_status: null,
+      remarks: override.remarks || 'Absent',
+      is_complete: true,
+      is_override: true,
+      override_type: 'absent',
+      override_hours: 0,
+      total_minutes: 0,
+      worked_minutes: 0,
+      approved_minutes: 0,
+      total_hours: 0,
+      override_remarks: override.remarks,
+      override_id: overrideLog.id ?? null,
+    };
+  }
+
+  if (override.type === 'HOLIDAY') {
+    const creditedMinutes = totalMinutes;
+    return {
+      ...buildStandardDtrRecord(date, []),
+      approval_status: 'approved',
+      am_status: creditedMinutes > 0 ? 'approved' : null,
+      pm_status: creditedMinutes > 0 ? 'approved' : null,
+      remarks: override.remarks || 'Holiday',
+      is_complete: true,
+      is_override: true,
+      override_type: 'holiday',
+      override_hours: hoursFromMinutes(creditedMinutes),
+      total_minutes: creditedMinutes,
+      worked_minutes: 0,
+      approved_minutes: creditedMinutes,
+      total_hours: hoursFromMinutes(creditedMinutes),
       override_remarks: override.remarks,
       override_id: overrideLog.id ?? null,
     };

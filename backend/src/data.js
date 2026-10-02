@@ -1501,7 +1501,7 @@ export async function setDtrOverride(internId, { date, type, hours = 0, remarks 
   }
 
   const formattedType = String(type).toUpperCase();
-  const allowedTypes = new Set(['NONE', 'SUSPENDED', 'EXCUSED', 'HOURS', 'OTHERS']);
+  const allowedTypes = new Set(['NONE', 'SUSPENDED', 'EXCUSED', 'HOURS', 'OTHERS', 'ABSENT', 'HOLIDAY']);
   if (!allowedTypes.has(formattedType)) {
     const validationError = new Error('Unsupported DTR override type');
     validationError.statusCode = 400;
@@ -1528,9 +1528,11 @@ export async function setDtrOverride(internId, { date, type, hours = 0, remarks 
 
   const creditedHours = formattedType === 'EXCUSED'
     ? 8
-    : formattedType === 'SUSPENDED' || formattedType === 'NONE'
+    : (formattedType === 'SUSPENDED' || formattedType === 'NONE' || formattedType === 'ABSENT')
       ? 0
-      : numericHours;
+      : formattedType === 'HOLIDAY'
+        ? (Number.isFinite(numericHours) && numericHours > 0 ? numericHours : 0)
+        : numericHours;
   const cleanRemarks = String(remarks || '').trim();
   const overrideRemark = `OVERRIDE:${formattedType}:${creditedHours}:${cleanRemarks}`;
   const scanTime = new Date(`${date}T08:00:00+08:00`).toISOString();

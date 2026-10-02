@@ -120,3 +120,40 @@ test('excused and suspended overrides respect the eight-hour policy', () => {
   assert.equal(suspended.approved_minutes, 0);
 });
 
+test('absent and holiday overrides set zero credit and do not increment days present', () => {
+  const parsedAbsent = parseDtrOverride('OVERRIDE:ABSENT:0:Sick leave');
+  assert.deepEqual(parsedAbsent, {
+    type: 'ABSENT',
+    hours: 0,
+    remarks: 'Sick leave',
+  });
+
+  const parsedHoliday = parseDtrOverride('OVERRIDE:HOLIDAY:0:National Heroes Day');
+  assert.deepEqual(parsedHoliday, {
+    type: 'HOLIDAY',
+    hours: 0,
+    remarks: 'National Heroes Day',
+  });
+
+  const records = buildDtrRecords([
+    { ...scan(1, '08:00:00', 'time_in', 'approved', 'OVERRIDE:ABSENT:0:Sick leave'), scan_time: '2026-08-25T08:00:00+08:00' },
+    { ...scan(2, '08:00:00', 'time_in', 'approved', 'OVERRIDE:HOLIDAY:0:Special Non-Working Holiday'), scan_time: '2026-08-26T08:00:00+08:00' },
+  ]);
+  const [holidayRec, absentRec] = records;
+
+  assert.equal(absentRec.override_type, 'absent');
+  assert.equal(absentRec.total_minutes, 0);
+  assert.equal(absentRec.approved_minutes, 0);
+  assert.equal(absentRec.remarks, 'Sick leave');
+
+  assert.equal(holidayRec.override_type, 'holiday');
+  assert.equal(holidayRec.total_minutes, 0);
+  assert.equal(holidayRec.approved_minutes, 0);
+  assert.equal(holidayRec.remarks, 'Special Non-Working Holiday');
+
+  const summary = summarizeDtrRecords(records);
+  assert.equal(summary.days_present, 0);
+  assert.equal(summary.approved_minutes, 0);
+});
+
+

@@ -1,5 +1,19 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Calendar, Users, CheckSquare, Square, AlertCircle, Clock, Filter, Search, Check } from 'lucide-react';
+import {
+  Calendar,
+  Users,
+  CheckSquare,
+  Square,
+  AlertCircle,
+  Clock,
+  Filter,
+  Search,
+  Check,
+  UserX,
+  CloudRain,
+  CheckCircle,
+  RotateCcw
+} from 'lucide-react';
 import Modal from '../common/Modal.jsx';
 import api from '../../utils/api.js';
 import { fetchAllInterns } from '../../utils/interns.js';
@@ -8,6 +22,82 @@ import { divisionLabel } from '../../utils/display.js';
 
 const getPhtTodayKey = () => {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila' }).format(new Date());
+};
+
+const OVERRIDE_OPTIONS = [
+  {
+    type: 'absent',
+    title: 'Absent',
+    badge: '0.0h',
+    badgeClass: 'bg-red-100 text-red-800',
+    desc: 'Mark intern absent',
+    icon: UserX,
+    iconColor: 'text-red-600',
+    activeClass: 'border-red-500 bg-red-50 text-red-950 ring-2 ring-red-400 font-bold shadow-xs',
+    defaultHours: 0,
+  },
+  {
+    type: 'holiday',
+    title: 'Holiday',
+    badge: '0.0h',
+    badgeClass: 'bg-amber-100 text-amber-800',
+    desc: 'Official holiday',
+    icon: Calendar,
+    iconColor: 'text-amber-600',
+    activeClass: 'border-amber-500 bg-amber-50 text-amber-950 ring-2 ring-amber-400 font-bold shadow-xs',
+    defaultHours: 0,
+  },
+  {
+    type: 'suspended',
+    title: 'Suspended',
+    badge: '0.0h',
+    badgeClass: 'bg-slate-200 text-slate-800',
+    desc: 'Typhoon / weather',
+    icon: CloudRain,
+    iconColor: 'text-slate-700',
+    activeClass: 'border-slate-500 bg-slate-100 text-slate-950 ring-2 ring-slate-400 font-bold shadow-xs',
+    defaultHours: 0,
+  },
+  {
+    type: 'excused',
+    title: 'Excused',
+    badge: '8.0h',
+    badgeClass: 'bg-emerald-100 text-emerald-800',
+    desc: 'Credit 8.00 hours',
+    icon: CheckCircle,
+    iconColor: 'text-emerald-600',
+    activeClass: 'border-emerald-500 bg-emerald-50 text-emerald-950 ring-2 ring-emerald-400 font-bold shadow-xs',
+    defaultHours: 8,
+  },
+  {
+    type: 'hours',
+    title: 'Custom Hours',
+    badge: 'Custom',
+    badgeClass: 'bg-blue-100 text-blue-800',
+    desc: 'Credit specific hrs',
+    icon: Clock,
+    iconColor: 'text-blue-600',
+    activeClass: 'border-blue-500 bg-blue-50 text-blue-950 ring-2 ring-blue-400 font-bold shadow-xs',
+    defaultHours: 8,
+  },
+  {
+    type: 'none',
+    title: 'Normal / Reset',
+    badge: 'Reset',
+    badgeClass: 'bg-gray-200 text-gray-800',
+    desc: 'Restore normal scans',
+    icon: RotateCcw,
+    iconColor: 'text-gray-700',
+    activeClass: 'border-gray-500 bg-gray-100 text-gray-950 ring-2 ring-gray-400 font-bold shadow-xs',
+    defaultHours: 0,
+  },
+];
+
+const PRESETS = {
+  absent: ['Unexcused Absence', 'Sick Leave', 'Personal Emergency', 'No Scans Recorded'],
+  holiday: ['Special Non-Working Holiday', 'Regular Holiday', 'National Holiday', 'Local Holiday'],
+  suspended: ['Typhoon Suspension', 'Inclement Weather', 'Office Maintenance'],
+  excused: ['ITMS General Assembly', 'Official School Activity', 'Authorized Duty'],
 };
 
 export default function BulkDTROverrideModal({
@@ -20,7 +110,7 @@ export default function BulkDTROverrideModal({
   const [loadingData, setLoadingData] = useState(false);
 
   const [date, setDate] = useState(getPhtTodayKey());
-  const [overrideType, setOverrideType] = useState('suspended'); // 'suspended' | 'excused' | 'hours' | 'others' | 'none'
+  const [overrideType, setOverrideType] = useState('suspended'); // 'absent' | 'holiday' | 'suspended' | 'excused' | 'hours' | 'others' | 'none'
   const [hours, setHours] = useState(8);
   const [remarks, setRemarks] = useState('');
 
@@ -137,12 +227,36 @@ export default function BulkDTROverrideModal({
 
   const getTypeName = (type) => {
     switch (type) {
-      case 'suspended': return 'Suspended (0.00h)';
+      case 'absent': return 'Absent (0.00h Credit)';
+      case 'holiday': return 'Holiday (0.00h Credit)';
+      case 'suspended': return 'Suspended (0.00h Credit)';
       case 'excused': return 'Excused (8.00h Credit)';
       case 'hours': return `Custom Hours (${hours}h Credit)`;
       case 'others': return `Other / Custom (${hours}h)`;
       case 'none': return 'Clear / Remove Override';
       default: return type;
+    }
+  };
+
+  const getRemarksLabel = () => {
+    switch (overrideType) {
+      case 'absent': return 'Absent Reason / Remarks';
+      case 'holiday': return 'Holiday Name / Banner Label';
+      case 'suspended': return 'Suspension Reason';
+      case 'excused': return 'Reason / Event Name';
+      case 'others': return 'Row Label / Activity Name';
+      default: return 'Reason / Remarks';
+    }
+  };
+
+  const getRemarksPlaceholder = () => {
+    switch (overrideType) {
+      case 'absent': return 'e.g. Unexcused absence, Mass leave, Sick leave';
+      case 'holiday': return 'e.g. Special Non-Working Holiday, Bonifacio Day';
+      case 'suspended': return 'e.g. Typhoon Pepito work suspension, Office maintenance';
+      case 'excused': return 'e.g. ITMS General Assembly, Official school activity';
+      case 'others': return 'e.g. SEMINAR, HOLIDAY, FOUNDATION DAY';
+      default: return 'Add an optional note...';
     }
   };
 
@@ -180,32 +294,64 @@ export default function BulkDTROverrideModal({
       }
     >
       <form onSubmit={handleSubmit} className="space-y-4 text-xs sm:text-sm">
-        {/* Date and Type row */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div className="form-group">
-            <label className="form-label font-bold text-gray-700">Target Date</label>
+        {/* Target Date */}
+        <div>
+          <label className="form-label font-bold text-gray-700 block mb-1">Target Date</label>
+          <div className="relative max-w-xs">
             <input
               type="date"
-              className="form-input font-semibold text-sm"
+              className="form-input font-semibold text-sm w-full"
               value={date}
               onChange={(e) => setDate(e.target.value)}
               required
             />
           </div>
+        </div>
 
-          <div className="form-group">
-            <label className="form-label font-bold text-gray-700">Override Action / Type</label>
-            <select
-              className="form-input form-select text-sm font-semibold"
-              value={overrideType}
-              onChange={(e) => setOverrideType(e.target.value)}
-            >
-              <option value="suspended">Suspended (No hours, e.g. Typhoon / Weather)</option>
-              <option value="excused">Excused (Credits 8.00 hours, labeled "EXCUSED")</option>
-              <option value="hours">Custom Hours (Override total daily credited hours)</option>
-              <option value="others">Others (Custom activity label &amp; hours)</option>
-              <option value="none">Clear Override (Remove override &amp; restore normal scans)</option>
-            </select>
+        {/* Override Action / Type Cards */}
+        <div>
+          <div className="flex items-center justify-between mb-1.5">
+            <label className="form-label font-bold text-gray-800">
+              Select Attendance Status / Override Action
+            </label>
+            <span className="text-[11px] text-slate-500 font-medium">
+              Click a status below
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            {OVERRIDE_OPTIONS.map((opt) => {
+              const Icon = opt.icon;
+              const isSelected = overrideType === opt.type;
+              return (
+                <button
+                  key={opt.type}
+                  type="button"
+                  className={`p-2.5 rounded-xl border text-left transition-all flex flex-col justify-between ${
+                    isSelected
+                      ? opt.activeClass
+                      : 'border-slate-200 hover:bg-slate-50 text-slate-700'
+                  }`}
+                  onClick={() => {
+                    setOverrideType(opt.type);
+                    if (opt.defaultHours !== undefined) {
+                      setHours(opt.defaultHours);
+                    }
+                  }}
+                >
+                  <div className="flex items-center justify-between w-full mb-1">
+                    <Icon className={`w-4 h-4 ${isSelected ? opt.iconColor : 'text-slate-500'}`} />
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono font-bold ${opt.badgeClass}`}>
+                      {opt.badge}
+                    </span>
+                  </div>
+                  <div>
+                    <p className="font-bold text-xs">{opt.title}</p>
+                    <p className="text-[10px] text-slate-500 leading-tight">{opt.desc}</p>
+                  </div>
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -227,27 +373,46 @@ export default function BulkDTROverrideModal({
           </div>
         )}
 
-        {/* Remarks / Label */}
-        <div className="form-group">
-          <label className="form-label font-bold text-gray-700">
-            {overrideType === 'others' ? 'Row Label / Activity Name' : 'Reason / Remarks'}
-          </label>
-          <input
-            type="text"
-            className="form-input text-sm"
-            value={remarks}
-            onChange={(e) => setRemarks(e.target.value)}
-            placeholder={
-              overrideType === 'suspended'
-                ? 'e.g. Typhoon Pepito work suspension, Office maintenance'
-                : overrideType === 'excused'
-                ? 'e.g. ITMS General Assembly, Official school activity'
-                : overrideType === 'others'
-                ? 'e.g. SEMINAR, HOLIDAY, FOUNDATION DAY'
-                : 'Add an optional note...'
-            }
-          />
-        </div>
+        {/* Remarks / Label and Quick Presets */}
+        {overrideType !== 'none' && (
+          <div className="form-group">
+            <label className="form-label font-bold text-gray-700">
+              {getRemarksLabel()}
+            </label>
+            <input
+              type="text"
+              className="form-input text-sm"
+              value={remarks}
+              onChange={(e) => setRemarks(e.target.value)}
+              placeholder={getRemarksPlaceholder()}
+            />
+
+            {/* Quick Preset Chips */}
+            {PRESETS[overrideType] && (
+              <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                <span className="text-[10px] text-slate-500 font-semibold mr-1">Quick Presets:</span>
+                {PRESETS[overrideType].map((preset) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    className={`text-[11px] px-2.5 py-0.5 rounded-full transition-colors font-medium border ${
+                      overrideType === 'absent'
+                        ? 'bg-red-50 hover:bg-red-100 text-red-800 border-red-200'
+                        : overrideType === 'holiday'
+                        ? 'bg-amber-50 hover:bg-amber-100 text-amber-800 border-amber-200'
+                        : overrideType === 'suspended'
+                        ? 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-300'
+                        : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-200'
+                    }`}
+                    onClick={() => setRemarks(preset)}
+                  >
+                    + {preset}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Scope Selector */}
         <div className="border-t border-slate-200 pt-3">
@@ -380,15 +545,43 @@ export default function BulkDTROverrideModal({
         </div>
 
         {/* Confirmation Summary Banner */}
-        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-amber-900 text-xs flex items-start gap-2">
-          <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+        <div className={`p-3 rounded-lg border text-xs flex items-start gap-2.5 ${
+          overrideType === 'absent'
+            ? 'bg-red-50/80 border-red-200 text-red-950'
+            : overrideType === 'holiday'
+            ? 'bg-amber-50/90 border-amber-200 text-amber-950'
+            : overrideType === 'suspended'
+            ? 'bg-slate-100 border-slate-300 text-slate-900'
+            : overrideType === 'excused'
+            ? 'bg-emerald-50 border-emerald-200 text-emerald-950'
+            : overrideType === 'none'
+            ? 'bg-gray-100 border-gray-300 text-gray-900'
+            : 'bg-blue-50/80 border-blue-200 text-blue-950'
+        }`}>
+          <AlertCircle className={`w-4 h-4 shrink-0 mt-0.5 ${
+            overrideType === 'absent'
+              ? 'text-red-600'
+              : overrideType === 'holiday'
+              ? 'text-amber-600'
+              : overrideType === 'suspended'
+              ? 'text-slate-600'
+              : overrideType === 'excused'
+              ? 'text-emerald-600'
+              : 'text-blue-600'
+          }`} />
           <div>
-            <p className="font-semibold">
+            <p className="font-bold">
               Action Summary: {getTypeName(overrideType)}
             </p>
-            <p className="text-[11px] text-amber-800 mt-0.5">
+            <p className="text-[11px] opacity-90 mt-0.5">
               This will update attendance records for <strong>{targetInterns.length} intern(s)</strong> on <strong>{date}</strong>.
-              {overrideType === 'none' ? ' Any existing custom override will be cleared.' : ' Normal scan calculations for this date will be replaced by this override.'}
+              {overrideType === 'absent'
+                ? ' All selected interns will be marked as Absent with 0.00h credited hours.'
+                : overrideType === 'holiday'
+                ? ' An official Holiday banner will be applied with 0.00h credited hours.'
+                : overrideType === 'none'
+                ? ' Any existing custom override will be cleared, restoring normal raw scans.'
+                : ' Normal scan calculations for this date will be replaced by this override.'}
             </p>
           </div>
         </div>

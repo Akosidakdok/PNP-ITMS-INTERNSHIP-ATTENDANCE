@@ -62,6 +62,7 @@ export default function DTRPrint({
   month,
   year,
   onRowClick,
+  onDateClick,
   isSelectable = false,
   selectedDates = [],
   onDateToggle,
@@ -344,6 +345,7 @@ export default function DTRPrint({
             month={month}
             year={year}
             onRowClick={onRowClick}
+            onDateClick={onDateClick}
             isSelectable={isSelectable}
             selectedDates={selectedDates}
             onDateToggle={onDateToggle}

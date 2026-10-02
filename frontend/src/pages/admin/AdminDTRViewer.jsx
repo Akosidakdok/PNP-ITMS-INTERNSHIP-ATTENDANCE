@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Clock, Filter, AlertCircle, Edit, Calendar, History, Shield, ShieldCheck, CheckSquare, Square, MousePointerClick } from 'lucide-react';
+import { Clock, Filter, AlertCircle, Edit, Calendar, History, Shield, ShieldCheck, CheckSquare, Square, MousePointerClick, UserX, CheckCircle, RotateCcw, CloudRain, Check } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext.jsx';
 import api from '../../utils/api.js';
 import DTRPrint from '../../components/dtr/DTRPrint.jsx';
@@ -55,9 +55,11 @@ export default function AdminDTRViewer() {
   // Single override dialog state
   const [overrideModalOpen, setOverrideModalOpen] = useState(false);
   const [selectedDay, setSelectedDay] = useState(null);
+  const [selectedDateForOverride, setSelectedDateForOverride] = useState(null);
+  const [selectedRecordForOverride, setSelectedRecordForOverride] = useState(null);
   const [overrideForm, setOverrideForm] = useState({
-    type: 'none', // 'none' | 'suspended' | 'excused' | 'hours' | 'others'
-    hours: 8,
+    type: 'absent', // 'absent' | 'holiday' | 'suspended' | 'excused' | 'hours' | 'others' | 'none'
+    hours: 0,
     remarks: '',
   });
   const [savingOverride, setSavingOverride] = useState(false);
@@ -171,28 +173,74 @@ export default function AdminDTRViewer() {
     }
   };
 
+  const handleDateClick = (day, record, dateStr) => {
+    if (!canManageOverrides) return;
+    const computedDateStr = dateStr || `${filters.year}-${String(filters.month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    setSelectedDay(day);
+    setSelectedDateForOverride(computedDateStr);
+    setSelectedRecordForOverride(record || null);
+
+    if (record?.is_override) {
+      setOverrideForm({
+        type: record.override_type || 'absent',
+        hours: record.override_hours !== undefined ? record.override_hours : (record.total_hours || 0),
+        remarks: record.override_remarks || record.remarks || '',
+      });
+    } else {
+      setOverrideForm({
+        type: 'absent',
+        hours: 0,
+        remarks: '',
+      });
+    }
+    setOverrideModalOpen(true);
+  };
+
   const handleRowClick = (day, record) => {
     const dateStr = `${filters.year}-${String(filters.month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     if (isSuperadmin) {
       handleDateToggle(dateStr, false, false);
+    } else if (canManageOverrides) {
+      handleDateClick(day, record, dateStr);
     }
   };
 
   const handleSaveOverride = async () => {
-    if (!selectedInternId || !selectedDay) return;
+    if (!selectedInternId || (!selectedDay && !selectedDateForOverride)) return;
     
     // Construct date string (YYYY-MM-DD)
-    const dateStr = `${filters.year}-${String(filters.month).padStart(2, '0')}-${String(selectedDay).padStart(2, '0')}`;
+    const dateStr = selectedDateForOverride || `${filters.year}-${String(filters.month).padStart(2, '0')}-${String(selectedDay).padStart(2, '0')}`;
 
     setSavingOverride(true);
     try {
+      const type = overrideForm.type;
+      const hoursToSave = type === 'excused'
+        ? 8
+        : (type === 'absent' || type === 'suspended' || type === 'none')
+          ? 0
+          : (type === 'holiday')
+            ? (Number(overrideForm.hours) > 0 ? Number(overrideForm.hours) : 0)
+            : Number(overrideForm.hours || 0);
+
+      const cleanRemarks = overrideForm.remarks.trim();
+
       await api.post(`/admin/dtr/${selectedInternId}/override`, {
         date: dateStr,
-        type: overrideForm.type,
-        hours: overrideForm.hours,
-        remarks: overrideForm.remarks
+        type: type,
+        hours: hoursToSave,
+        remarks: cleanRemarks
       });
-      toast.success('DTR day configuration updated');
+
+      const typeLabels = {
+        absent: 'ABSENT',
+        holiday: 'HOLIDAY',
+        suspended: 'SUSPENDED',
+        excused: 'EXCUSED',
+        hours: 'CUSTOM HOURS',
+        others: 'CUSTOM OVERRIDE',
+        none: 'NORMAL SCANS',
+      };
+      toast.success(`DTR attendance set to ${typeLabels[type] || type.toUpperCase()} for ${dateStr}`);
       setOverrideModalOpen(false);
       loadDTR(); // Refetch records
     } catch (err) {
@@ -328,19 +376,20 @@ export default function AdminDTRViewer() {
                   <ShieldCheck className="w-4 h-4 text-blue-700" /> Superadmin DTR Control
                 </h3>
                 <ul className="text-xs text-blue-800 space-y-2 list-disc list-inside">
-                  <li>**Excel Date Selection**: Click any date row or checkbox to select.</li>
-                  <li>Hold **Shift** to select a range of dates, or **Ctrl** for multi-select.</li>
-                  <li>Click **Alter Selected Dates** to batch adjust Time In/Out or apply schedule overrides.</li>
-                  <li>Every manual correction requires a **reason** and is permanently recorded in the audit trail.</li>
+                  <li>**Click Date**: Click any date in the table to set it as **Absent**, **Holiday**, or override schedule.</li>
+                  <li>**Excel Date Selection**: Click checkboxes or rows to select.</li>
+                  <li>Hold **Shift** for range, or **Ctrl** for multi-select.</li>
+                  <li>Click **Alter Selected Dates** to batch adjust Time In/Out or apply overrides.</li>
+                  <li>Every manual correction requires a **reason** and is recorded in the audit trail.</li>
                 </ul>
               </div>
             ) : (
-              <div className="card p-5 bg-gray-50 border border-gray-200 space-y-2">
-                <h3 className="font-bold text-sm text-gray-700 flex items-center gap-1.5">
-                  <AlertCircle className="w-4 h-4 text-gray-500" /> View-Only Access
+              <div className="card p-5 bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-100 space-y-2">
+                <h3 className="font-bold text-sm text-blue-900 flex items-center gap-1.5">
+                  <Calendar className="w-4 h-4 text-blue-700" /> Attendance Management
                 </h3>
-                <p className="text-xs text-gray-600">
-                  You have view-only access to this trainee&apos;s Daily Time Record. Manual adjustments and schedule overrides are restricted to Superadmin.
+                <p className="text-xs text-blue-800">
+                  **Click any Date** on the record table to configure that day as **Absent**, **Holiday**, or configure schedule overrides for this intern.
                 </p>
               </div>
             )}
@@ -406,6 +455,7 @@ export default function AdminDTRViewer() {
                 month={filters.month}
                 year={filters.year}
                 onRowClick={handleRowClick}
+                onDateClick={handleDateClick}
                 isSelectable={isSuperadmin}
                 selectedDates={selectedDates}
                 onDateToggle={handleDateToggle}
@@ -419,66 +469,307 @@ export default function AdminDTRViewer() {
       )}
 
       {/* Override Single Day Modal */}
-      {overrideModalOpen && selectedDay && (
+      {overrideModalOpen && (selectedDay || selectedDateForOverride) && (
         <Modal
           isOpen={overrideModalOpen}
           onClose={() => setOverrideModalOpen(false)}
-          title={`Configure Attendance for ${months[filters.month - 1]} ${selectedDay}, ${filters.year}`}
+          title={
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-gray-800" style={{ fontFamily: 'Outfit, sans-serif' }}>
+                Set Attendance Status
+              </span>
+              <span className="text-xs bg-blue-100 text-blue-800 font-bold px-2.5 py-0.5 rounded-full">
+                {selectedDateForOverride || `${filters.year}-${String(filters.month).padStart(2, '0')}-${String(selectedDay).padStart(2, '0')}`}
+              </span>
+            </div>
+          }
           size="md"
           footer={
-            <>
-              <button className="btn btn-secondary" onClick={() => setOverrideModalOpen(false)}>Cancel</button>
-              <button className="btn btn-primary" onClick={handleSaveOverride} disabled={savingOverride}>
-                {savingOverride ? 'Saving...' : 'Apply Configuration'}
+            <div className="flex items-center justify-between w-full">
+              <button
+                type="button"
+                className="btn btn-secondary text-xs"
+                onClick={() => setOverrideModalOpen(false)}
+                disabled={savingOverride}
+              >
+                Cancel
               </button>
-            </>
+              <button
+                type="button"
+                className={`btn text-xs font-bold flex items-center gap-1.5 shadow-sm ${
+                  overrideForm.type === 'absent'
+                    ? 'bg-red-600 hover:bg-red-700 text-white'
+                    : overrideForm.type === 'holiday'
+                    ? 'bg-amber-600 hover:bg-amber-700 text-white'
+                    : overrideForm.type === 'excused'
+                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                    : overrideForm.type === 'none'
+                    ? 'bg-slate-700 hover:bg-slate-800 text-white'
+                    : 'btn-primary'
+                }`}
+                onClick={handleSaveOverride}
+                disabled={savingOverride}
+              >
+                {savingOverride ? (
+                  'Saving...'
+                ) : overrideForm.type === 'absent' ? (
+                  <>
+                    <UserX className="w-3.5 h-3.5" />
+                    Set as Absent
+                  </>
+                ) : overrideForm.type === 'holiday' ? (
+                  <>
+                    <Calendar className="w-3.5 h-3.5" />
+                    Set as Holiday
+                  </>
+                ) : overrideForm.type === 'none' ? (
+                  <>
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    Clear Override
+                  </>
+                ) : (
+                  <>
+                    <Check className="w-3.5 h-3.5" />
+                    Apply Configuration
+                  </>
+                )}
+              </button>
+            </div>
           }
         >
-          <div className="space-y-4">
-            <div className="form-group">
-              <label className="form-label font-bold text-xs">Configuration Type</label>
-              <select
-                className="form-input form-select text-sm font-semibold"
-                value={overrideForm.type}
-                onChange={e => setOverrideForm(f => ({ ...f, type: e.target.value }))}
-              >
-                <option value="none">No Override (Scans process normally)</option>
-                <option value="suspended">Suspended (No hours, label &quot;SUSPENDED&quot;)</option>
-                <option value="excused">Excused (Credits 8.00 hours, label &quot;EXCUSED&quot;)</option>
-                <option value="hours">Custom Hours (Override total daily hours)</option>
-                <option value="others">Others (Custom label and custom hours)</option>
-              </select>
+          <div className="space-y-4 text-xs">
+            {/* Intern & Date Info Banner */}
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between">
+              <div>
+                <p className="font-bold text-gray-900 text-sm">{selectedInternData?.full_name || 'Intern'}</p>
+                <p className="text-[11px] text-gray-500">
+                  {divisionLabel(selectedInternData?.division_name)} &bull; Student ID: {selectedInternData?.student_id || 'N/A'}
+                </p>
+              </div>
+              <div className="text-right">
+                <span className="font-semibold text-slate-700 block text-xs">
+                  {selectedDay ? `${months[filters.month - 1]} ${selectedDay}, ${filters.year}` : selectedDateForOverride}
+                </span>
+                {selectedRecordForOverride?.is_override ? (
+                  <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-purple-100 text-purple-800">
+                    Currently: {selectedRecordForOverride.override_type}
+                  </span>
+                ) : selectedRecordForOverride?.time_in ? (
+                  <span className="inline-block px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-800">
+                    Scanned: {selectedRecordForOverride.time_in} - {selectedRecordForOverride.time_out || '--:--'}
+                  </span>
+                ) : (
+                  <span className="inline-block px-2 py-0.5 rounded text-[10px] text-gray-500 bg-gray-100">
+                    No Scans
+                  </span>
+                )}
+              </div>
             </div>
 
+            {/* Status Option Grid */}
+            <div>
+              <label className="form-label font-bold text-slate-800 mb-1.5 block">
+                Select Attendance Status
+              </label>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {/* Absent Option */}
+                <button
+                  type="button"
+                  className={`p-2.5 rounded-xl border text-left transition-all flex flex-col justify-between ${
+                    overrideForm.type === 'absent'
+                      ? 'border-red-500 bg-red-50 text-red-950 ring-2 ring-red-400 font-bold shadow-xs'
+                      : 'border-slate-200 hover:bg-slate-50 text-slate-700'
+                  }`}
+                  onClick={() => setOverrideForm(f => ({ ...f, type: 'absent', hours: 0 }))}
+                >
+                  <div className="flex items-center justify-between w-full mb-1">
+                    <UserX className={`w-4 h-4 ${overrideForm.type === 'absent' ? 'text-red-600' : 'text-slate-500'}`} />
+                    <span className="text-[10px] px-1.5 py-0.5 rounded font-mono bg-red-100 text-red-800">0.0h</span>
+                  </div>
+                  <div>
+                    <p className="font-bold text-xs">Absent</p>
+                    <p className="text-[10px] text-slate-500 leading-tight">Mark intern absent</p>
+                  </div>
+                </button>
+
+                {/* Holiday Option */}
+                <button
+                  type="button"
+                  className={`p-2.5 rounded-xl border text-left transition-all flex flex-col justify-between ${
+                    overrideForm.type === 'holiday'
+                      ? 'border-amber-500 bg-amber-50 text-amber-950 ring-2 ring-amber-400 font-bold shadow-xs'
+                      : 'border-slate-200 hover:bg-slate-50 text-slate-700'
+                  }`}
+                  onClick={() => setOverrideForm(f => ({ ...f, type: 'holiday', hours: 0 }))}
+                >
+                  <div className="flex items-center justify-between w-full mb-1">
+                    <Calendar className={`w-4 h-4 ${overrideForm.type === 'holiday' ? 'text-amber-600' : 'text-slate-500'}`} />
+                    <span className="text-[10px] px-1.5 py-0.5 rounded font-mono bg-amber-100 text-amber-800">0.0h</span>
+                  </div>
+                  <div>
+                    <p className="font-bold text-xs">Holiday</p>
+                    <p className="text-[10px] text-slate-500 leading-tight">Official holiday</p>
+                  </div>
+                </button>
+
+                {/* Suspended Option */}
+                <button
+                  type="button"
+                  className={`p-2.5 rounded-xl border text-left transition-all flex flex-col justify-between ${
+                    overrideForm.type === 'suspended'
+                      ? 'border-slate-500 bg-slate-100 text-slate-950 ring-2 ring-slate-400 font-bold shadow-xs'
+                      : 'border-slate-200 hover:bg-slate-50 text-slate-700'
+                  }`}
+                  onClick={() => setOverrideForm(f => ({ ...f, type: 'suspended', hours: 0 }))}
+                >
+                  <div className="flex items-center justify-between w-full mb-1">
+                    <CloudRain className={`w-4 h-4 ${overrideForm.type === 'suspended' ? 'text-slate-700' : 'text-slate-500'}`} />
+                    <span className="text-[10px] px-1.5 py-0.5 rounded font-mono bg-slate-200 text-slate-800">0.0h</span>
+                  </div>
+                  <div>
+                    <p className="font-bold text-xs">Suspended</p>
+                    <p className="text-[10px] text-slate-500 leading-tight">Typhoon/weather</p>
+                  </div>
+                </button>
+
+                {/* Excused Option */}
+                <button
+                  type="button"
+                  className={`p-2.5 rounded-xl border text-left transition-all flex flex-col justify-between ${
+                    overrideForm.type === 'excused'
+                      ? 'border-emerald-500 bg-emerald-50 text-emerald-950 ring-2 ring-emerald-400 font-bold shadow-xs'
+                      : 'border-slate-200 hover:bg-slate-50 text-slate-700'
+                  }`}
+                  onClick={() => setOverrideForm(f => ({ ...f, type: 'excused', hours: 8 }))}
+                >
+                  <div className="flex items-center justify-between w-full mb-1">
+                    <CheckCircle className={`w-4 h-4 ${overrideForm.type === 'excused' ? 'text-emerald-600' : 'text-slate-500'}`} />
+                    <span className="text-[10px] px-1.5 py-0.5 rounded font-mono bg-emerald-100 text-emerald-800">8.0h</span>
+                  </div>
+                  <div>
+                    <p className="font-bold text-xs">Excused</p>
+                    <p className="text-[10px] text-slate-500 leading-tight">Credited 8 hrs</p>
+                  </div>
+                </button>
+
+                {/* Custom Hours Option */}
+                <button
+                  type="button"
+                  className={`p-2.5 rounded-xl border text-left transition-all flex flex-col justify-between ${
+                    overrideForm.type === 'hours'
+                      ? 'border-blue-500 bg-blue-50 text-blue-950 ring-2 ring-blue-400 font-bold shadow-xs'
+                      : 'border-slate-200 hover:bg-slate-50 text-slate-700'
+                  }`}
+                  onClick={() => setOverrideForm(f => ({ ...f, type: 'hours' }))}
+                >
+                  <div className="flex items-center justify-between w-full mb-1">
+                    <Clock className={`w-4 h-4 ${overrideForm.type === 'hours' ? 'text-blue-600' : 'text-slate-500'}`} />
+                    <span className="text-[10px] px-1.5 py-0.5 rounded font-mono bg-blue-100 text-blue-800">Custom</span>
+                  </div>
+                  <div>
+                    <p className="font-bold text-xs">Custom Hours</p>
+                    <p className="text-[10px] text-slate-500 leading-tight">Credit specific hrs</p>
+                  </div>
+                </button>
+
+                {/* Clear Override Option */}
+                <button
+                  type="button"
+                  className={`p-2.5 rounded-xl border text-left transition-all flex flex-col justify-between ${
+                    overrideForm.type === 'none'
+                      ? 'border-gray-500 bg-gray-100 text-gray-950 ring-2 ring-gray-400 font-bold shadow-xs'
+                      : 'border-slate-200 hover:bg-slate-50 text-slate-700'
+                  }`}
+                  onClick={() => setOverrideForm(f => ({ ...f, type: 'none', hours: 0, remarks: '' }))}
+                >
+                  <div className="flex items-center justify-between w-full mb-1">
+                    <RotateCcw className={`w-4 h-4 ${overrideForm.type === 'none' ? 'text-gray-700' : 'text-slate-500'}`} />
+                    <span className="text-[10px] px-1.5 py-0.5 rounded font-mono bg-gray-200 text-gray-800">Reset</span>
+                  </div>
+                  <div>
+                    <p className="font-bold text-xs">Normal / Reset</p>
+                    <p className="text-[10px] text-slate-500 leading-tight">Remove override</p>
+                  </div>
+                </button>
+              </div>
+            </div>
+
+            {/* Custom Hours Input if hours or others selected */}
             {(overrideForm.type === 'hours' || overrideForm.type === 'others') && (
-              <div className="form-group">
-                <label className="form-label font-bold text-xs">Custom Hours to Credit</label>
+              <div className="form-group bg-blue-50 border border-blue-200 rounded-xl p-3">
+                <label className="form-label font-bold text-xs text-blue-900">Custom Hours to Credit (0 to 8)</label>
                 <input
                   type="number"
                   min="0"
                   max="8"
                   step="0.25"
-                  className="form-input font-bold"
+                  className="form-input font-bold text-sm"
                   value={overrideForm.hours}
                   onChange={e => setOverrideForm(f => ({ ...f, hours: Number(e.target.value) }))}
                 />
               </div>
             )}
 
-            <div className="form-group">
-              <label className="form-label font-bold text-xs">Remarks / Label</label>
-              <textarea
-                className="form-input"
-                rows={3}
-                value={overrideForm.remarks}
-                onChange={e => setOverrideForm(f => ({ ...f, remarks: e.target.value }))}
-                placeholder={
-                  overrideForm.type === 'others'
-                    ? "e.g. SEMINAR, HOLIDAY OVERRIDE, etc. (will show as row label)"
-                    : "e.g. Typhoon Suspension, Excused leave, System issue..."
-                }
-              />
-            </div>
+            {/* Remarks / Reason input */}
+            {overrideForm.type !== 'none' && (
+              <div className="form-group">
+                <label className="form-label font-bold text-xs text-slate-700">
+                  {overrideForm.type === 'holiday'
+                    ? 'Holiday Name / Banner Label'
+                    : overrideForm.type === 'absent'
+                    ? 'Absent Reason / Remarks'
+                    : 'Reason / Remarks'}
+                </label>
+                
+                {overrideForm.type === 'holiday' && (
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {['Special Non-Working Holiday', 'Regular Holiday', 'City Holiday'].map((preset) => (
+                      <button
+                        key={preset}
+                        type="button"
+                        className="px-2 py-0.5 bg-slate-100 hover:bg-amber-100 text-slate-700 hover:text-amber-900 border border-slate-200 rounded text-[11px] font-medium"
+                        onClick={() => setOverrideForm(f => ({ ...f, remarks: preset }))}
+                      >
+                        {preset}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {overrideForm.type === 'absent' && (
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {['Sick Leave', 'Unexcused Absence', 'Family Emergency', 'School Event'].map((preset) => (
+                      <button
+                        key={preset}
+                        type="button"
+                        className="px-2 py-0.5 bg-slate-100 hover:bg-red-100 text-slate-700 hover:text-red-900 border border-slate-200 rounded text-[11px] font-medium"
+                        onClick={() => setOverrideForm(f => ({ ...f, remarks: preset }))}
+                      >
+                        {preset}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                <input
+                  type="text"
+                  className="form-input text-xs"
+                  value={overrideForm.remarks}
+                  onChange={e => setOverrideForm(f => ({ ...f, remarks: e.target.value }))}
+                  placeholder={
+                    overrideForm.type === 'absent'
+                      ? "e.g. Sick Leave, Unexcused, Family Emergency..."
+                      : overrideForm.type === 'holiday'
+                      ? "e.g. Special Non-Working Holiday, Bonifacio Day (Default: Holiday)"
+                      : overrideForm.type === 'suspended'
+                      ? "e.g. Typhoon Suspension, Heavy Rain"
+                      : overrideForm.type === 'excused'
+                      ? "e.g. ITMS General Assembly, Official school event"
+                      : "Optional remarks or label..."
+                  }
+                />
+              </div>
+            )}
           </div>
         </Modal>
       )}
