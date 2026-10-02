@@ -2064,24 +2064,34 @@ export async function deleteDocument(id, userId, isAdmin) {
   return { success: true };
 }
 
-export async function getCalendarEvents({ year, month }) {
-  const yearNumber = Number(year);
-  const monthNumber = Number(month);
-  if (!Number.isInteger(yearNumber) || yearNumber < 2000 || yearNumber > 2100 || !Number.isInteger(monthNumber) || monthNumber < 1 || monthNumber > 12) {
-    throw validationError('A valid calendar year and month are required');
+export async function getCalendarEvents({ year, month, startDate, endDate }) {
+  let query = supabase.from('calendar_events').select('*, creator:accounts(full_name)');
+
+  if (startDate !== undefined || endDate !== undefined) {
+    if (!startDate || !endDate) throw validationError('A start and end date are required');
+    validateDateInput(startDate, 'Start date');
+    validateDateInput(endDate, 'End date');
+    if (startDate < '2000-01-01' || endDate > '2101-01-01') {
+      throw validationError('Calendar date range must be within supported years');
+    }
+    const rangeDays = (Date.parse(`${endDate}T00:00:00Z`) - Date.parse(`${startDate}T00:00:00Z`)) / 86400000;
+    if (rangeDays < 1 || rangeDays > 62) throw validationError('Calendar date range must be between 1 and 62 days');
+    query = query.gte('event_date', startDate).lt('event_date', endDate);
+  } else {
+    const yearNumber = Number(year);
+    const monthNumber = Number(month);
+    if (!Number.isInteger(yearNumber) || yearNumber < 2000 || yearNumber > 2100 || !Number.isInteger(monthNumber) || monthNumber < 1 || monthNumber > 12) {
+      throw validationError('A valid calendar year and month are required');
+    }
+
+    const pad = (n) => String(n).padStart(2, '0');
+    const startStr = `${yearNumber}-${pad(monthNumber)}-01`;
+    const lastDay = new Date(Date.UTC(yearNumber, monthNumber, 0)).getUTCDate();
+    const endStr = `${yearNumber}-${pad(monthNumber)}-${pad(lastDay)}`;
+    query = query.gte('event_date', startStr).lte('event_date', endStr);
   }
 
-  const pad = (n) => String(n).padStart(2, '0');
-  const startStr = `${yearNumber}-${pad(monthNumber)}-01`;
-  const lastDay = new Date(Date.UTC(yearNumber, monthNumber, 0)).getUTCDate();
-  const endStr = `${yearNumber}-${pad(monthNumber)}-${pad(lastDay)}`;
-
-  const { data, error } = await supabase
-    .from('calendar_events')
-    .select(`*, creator:accounts(full_name)`)
-    .gte('event_date', startStr)
-    .lte('event_date', endStr)
-    .order('event_date', { ascending: true });
+  const { data, error } = await query.order('event_date', { ascending: true });
 
   if (error) throw error;
   return data || [];
@@ -2193,7 +2203,7 @@ export async function updateCalendarEvent(id, payload) {
   if (payload?.event_date !== undefined) updates.event_date = String(payload.event_date || '').trim();
   if (payload?.event_type !== undefined) updates.event_type = String(payload.event_type || '').trim();
 
-  if (updates.title === '' || updates.event_date === '' || (updates.event_type && !allowedTypes.has(updates.event_type))) {
+  if (updates.title === '' || updates.event_date === '' || (updates.event_type !== undefined && !allowedTypes.has(updates.event_type))) {
     const validationError = new Error('Calendar event fields are invalid');
     validationError.statusCode = 400;
     throw validationError;

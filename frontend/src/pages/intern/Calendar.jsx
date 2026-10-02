@@ -3,15 +3,27 @@ import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import Modal from '../../components/common/Modal.jsx';
 import { format } from 'date-fns';
+import { useLocation } from 'react-router-dom';
 import { User, Calendar as CalendarIcon, Tag, Filter, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
-import { useCalendar } from '../../hooks/useCalendar.js';
+import { useCalendar, getCalendarYearOptions } from '../../hooks/useCalendar.js';
+
+function getInitialCalendarDate(search) {
+  const dateKey = new URLSearchParams(search).get('date');
+  if (dateKey && /^\d{4}-\d{2}-\d{2}$/.test(dateKey)) {
+    const date = new Date(`${dateKey}T00:00:00`);
+    if (!Number.isNaN(date.getTime()) && format(date, 'yyyy-MM-dd') === dateKey) return date;
+  }
+  return new Date();
+}
 
 export default function InternCalendar() {
+  const location = useLocation();
   const [selectedEvent, setSelectedEvent] = useState(null);
   const calendarRef = useRef(null);
+  const [initialDate] = useState(() => getInitialCalendarDate(location.search));
   const [currentDate, setCurrentDate] = useState({
-    month: new Date().getMonth(),
-    year: new Date().getFullYear(),
+    month: initialDate.getMonth(),
+    year: initialDate.getFullYear(),
   });
   const [mobileEvents, setMobileEvents] = useState([]);
   const [mobileLoading, setMobileLoading] = useState(false);
@@ -47,10 +59,6 @@ export default function InternCalendar() {
     return () => { active = false; };
   }, [currentDate.month, currentDate.year, isMobile, loadEvents]);
 
-  useEffect(() => {
-    calendarRef.current?.getApi()?.refetchEvents();
-  }, []);
-
   const openDetails = (event) => {
     setSelectedEvent(event.extendedProps || event);
   };
@@ -62,21 +70,18 @@ export default function InternCalendar() {
     if (part === 'year') newDate.setFullYear(numericValue);
     setCurrentDate({ month: newDate.getMonth(), year: newDate.getFullYear() });
     calendarRef.current?.getApi().gotoDate(newDate);
-    calendarRef.current?.getApi().refetchEvents();
   };
 
   const moveMonth = (offset) => {
     const target = new Date(currentDate.year, currentDate.month + offset, 1);
     setCurrentDate({ month: target.getMonth(), year: target.getFullYear() });
     calendarRef.current?.getApi().gotoDate(target);
-    calendarRef.current?.getApi().refetchEvents();
   };
 
   const goToToday = () => {
     const today = new Date();
     setCurrentDate({ month: today.getMonth(), year: today.getFullYear() });
     calendarRef.current?.getApi().today();
-    calendarRef.current?.getApi().refetchEvents();
   };
 
   const handleDatesSet = (arg) => {
@@ -90,7 +95,7 @@ export default function InternCalendar() {
     <div className="intern-calendar-page space-y-6 animate-fade-in">
       <div>
         <h1 className="text-xl sm:text-2xl font-bold text-gray-800" style={{ fontFamily: 'Outfit, sans-serif' }}>Program Calendar</h1>
-        <p className="text-gray-500 text-sm">View holidays, announcements, and memos.</p>
+        <p className="text-gray-500 text-sm">View holidays, suspensions, announcements, and memos.</p>
       </div>
 
       {/* Filters */}
@@ -103,7 +108,7 @@ export default function InternCalendar() {
         </div>
         <div className="form-group mb-0 w-full sm:w-auto">
           <select className="form-input form-select text-sm w-full" value={currentDate.year} onChange={e => handleDateChange('year', e.target.value)}>
-            {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
+            {getCalendarYearOptions(currentDate.year).map(y => <option key={y} value={y}>{y}</option>)}
           </select>
         </div>
       </div>
@@ -125,7 +130,7 @@ export default function InternCalendar() {
           ) : mobileError ? (
             <div className="calendar-mobile-empty"><CalendarIcon /><strong>Calendar unavailable</strong><p>{mobileError}</p></div>
           ) : mobileEvents.length === 0 ? (
-            <div className="calendar-mobile-empty"><CalendarIcon /><strong>No scheduled events</strong><p>There are no announcements, holidays, or memos this month.</p></div>
+            <div className="calendar-mobile-empty"><CalendarIcon /><strong>No scheduled events</strong><p>There are no announcements, holidays, suspensions, or memos this month.</p></div>
           ) : mobileEvents.map(event => {
             const eventDate = new Date(`${event.start}T00:00:00`);
             return (
@@ -149,6 +154,7 @@ export default function InternCalendar() {
             ref={calendarRef}
             plugins={[dayGridPlugin]}
             initialView="dayGridMonth"
+            initialDate={new Date(currentDate.year, currentDate.month, 1)}
             headerToolbar={{ left: 'prev,next', center: 'title', right: 'today' }}
             events={fetchEvents}
             buttonText={{
@@ -177,7 +183,7 @@ export default function InternCalendar() {
               </div>
               <div className="flex items-center gap-2 text-gray-600">
                 <CalendarIcon className="w-4 h-4 text-gray-400" />
-                <span>{format(new Date(selectedEvent.event_date), 'MMMM dd, yyyy')}</span>
+                <span>{format(new Date(`${selectedEvent.event_date}T00:00:00`), 'MMMM dd, yyyy')}</span>
               </div>
               {selectedEvent.creator_name && (
                 <div className="flex items-center gap-2 text-gray-600">

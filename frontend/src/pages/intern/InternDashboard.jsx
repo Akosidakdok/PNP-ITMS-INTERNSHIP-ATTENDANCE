@@ -46,6 +46,16 @@ const formatDuration = (value) => {
   return `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, '0')}m`;
 };
 
+const getCalendarNotificationType = title => ['announcement', 'holiday', 'memo', 'suspension']
+  .find(type => String(title || '').toLowerCase().startsWith(`new ${type}:`)) || null;
+
+const getCalendarNotificationDate = message => {
+  const text = String(message || '');
+  return text.match(/\(Date:\s*(\d{4}-\d{2}-\d{2})\)\s*$/)?.[1]
+    || text.match(/\bfor\s+(\d{4}-\d{2}-\d{2})\.?\s*$/)?.[1]
+    || '';
+};
+
 export default function InternDashboard() {
   const { user } = useAuth();
   const { notifications, markAsRead, clearAllNotifications } = useNotifications();
@@ -117,6 +127,7 @@ export default function InternDashboard() {
 
   const unreadNotifs = notifications.filter(n => !n.is_read);
   const recentNotifs = unreadNotifs.length > 0 ? unreadNotifs.slice(0, 3) : notifications.slice(0, 3);
+  const selectedCalendarType = getCalendarNotificationType(selectedNotification?.title);
 
   return (
     <div className="space-y-6 animate-fade-in dashboard-module intern-mobile-page">
@@ -273,9 +284,7 @@ export default function InternDashboard() {
           ) : (
             <div className="space-y-3">
               {recentNotifs.map((n, index) => {
-                const isAnnouncement = n.title?.toLowerCase().includes('announcement') ||
-                                       n.title?.toLowerCase().includes('memo') ||
-                                       n.title?.toLowerCase().includes('holiday');
+                const isAnnouncement = Boolean(getCalendarNotificationType(n.title));
                 return (
                   <div
                     key={n.id || `${n.created_at || 'notification'}-${index}`}
@@ -355,9 +364,7 @@ export default function InternDashboard() {
         onClose={() => setSelectedNotification(null)}
         title={selectedNotification ? (
           <div className="flex items-center gap-2">
-            {selectedNotification.title?.toLowerCase().includes('announcement') ||
-             selectedNotification.title?.toLowerCase().includes('memo') ||
-             selectedNotification.title?.toLowerCase().includes('holiday') ? (
+            {selectedCalendarType ? (
               <div className="p-1 bg-blue-100 text-blue-600 rounded-lg">
                 <Megaphone className="w-4 h-4" />
               </div>
@@ -367,12 +374,8 @@ export default function InternDashboard() {
               </div>
             )}
             <span className="text-gray-900 font-bold">
-              {selectedNotification.title?.toLowerCase().includes('announcement')
-                ? 'Announcement Details'
-                : selectedNotification.title?.toLowerCase().includes('holiday')
-                ? 'Holiday Details'
-                : selectedNotification.title?.toLowerCase().includes('memo')
-                ? 'Memo Details'
+              {selectedCalendarType
+                ? `${selectedCalendarType.charAt(0).toUpperCase()}${selectedCalendarType.slice(1)} Details`
                 : 'Notification Details'}
             </span>
           </div>
@@ -380,18 +383,14 @@ export default function InternDashboard() {
         size="md"
         footer={
           <div className="flex items-center justify-between w-full">
-            {selectedNotification && (
-              selectedNotification.title?.toLowerCase().includes('announcement') ||
-              selectedNotification.title?.toLowerCase().includes('memo') ||
-              selectedNotification.title?.toLowerCase().includes('holiday') ||
-              selectedNotification.message?.includes('Date:')
-            ) ? (
+            {selectedNotification && selectedCalendarType ? (
               <button
                 type="button"
                 className="btn btn-secondary text-xs sm:text-sm flex items-center gap-1.5"
                 onClick={() => {
+                  const eventDate = getCalendarNotificationDate(selectedNotification.message);
                   setSelectedNotification(null);
-                  navigate('/intern/calendar');
+                  navigate(eventDate ? `/intern/calendar?date=${eventDate}` : '/intern/calendar');
                 }}
               >
                 <Calendar className="w-4 h-4 text-blue-600" /> View Calendar
@@ -414,20 +413,18 @@ export default function InternDashboard() {
             <div>
               <div className="flex flex-wrap items-center gap-2 mb-2">
                 <span className={`badge ${
-                  selectedNotification.title?.toLowerCase().includes('announcement')
+                  selectedCalendarType === 'announcement'
                     ? 'bg-blue-100 text-blue-800'
-                    : selectedNotification.title?.toLowerCase().includes('holiday')
+                    : selectedCalendarType === 'holiday'
                     ? 'bg-red-100 text-red-800'
-                    : selectedNotification.title?.toLowerCase().includes('memo')
+                    : selectedCalendarType === 'memo'
                     ? 'bg-amber-100 text-amber-800'
+                    : selectedCalendarType === 'suspension'
+                    ? 'bg-purple-100 text-purple-800'
                     : 'bg-gray-100 text-gray-800'
                 } text-xs font-semibold px-2.5 py-0.5 rounded-full`}>
-                  {selectedNotification.title?.toLowerCase().includes('announcement')
-                    ? 'Announcement'
-                    : selectedNotification.title?.toLowerCase().includes('holiday')
-                    ? 'Holiday'
-                    : selectedNotification.title?.toLowerCase().includes('memo')
-                    ? 'Memo'
+                  {selectedCalendarType
+                    ? `${selectedCalendarType.charAt(0).toUpperCase()}${selectedCalendarType.slice(1)}`
                     : 'System Notification'}
                 </span>
                 <span className="text-xs text-gray-400">

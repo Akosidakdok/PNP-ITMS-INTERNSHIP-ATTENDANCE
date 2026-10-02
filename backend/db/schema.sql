@@ -157,15 +157,48 @@ on public.calendar_events for select
 to authenticated
 using (true);
 
--- Policy: Allow only admins to create, update, or delete events
-create policy "Allow admins full access"
-on public.calendar_events for all
-to authenticated
+-- Staff may create events under their own account. Administrators may edit
+-- any event; supervisors may edit only events they created.
+create policy "Staff can create calendar events"
+on public.calendar_events for insert to authenticated
+with check (
+  exists (
+    select 1 from public.accounts me
+    where me.email = auth.email()
+      and me.role in ('superadmin', 'admin', 'supervisor')
+      and coalesce(lower(me.status), 'active') not in ('inactive', 'disabled', 'archived')
+      and calendar_events.created_by = me.id
+  )
+);
+
+create policy "Staff can update calendar events"
+on public.calendar_events for update to authenticated
 using (
-  (SELECT role FROM public.accounts WHERE email = auth.email()) in ('admin', 'supervisor')
+  exists (
+    select 1 from public.accounts me
+    where me.email = auth.email()
+      and coalesce(lower(me.status), 'active') not in ('inactive', 'disabled', 'archived')
+      and (me.role in ('superadmin', 'admin') or (me.role = 'supervisor' and calendar_events.created_by = me.id))
+  )
 )
 with check (
-  (SELECT role FROM public.accounts WHERE email = auth.email()) in ('admin', 'supervisor')
+  exists (
+    select 1 from public.accounts me
+    where me.email = auth.email()
+      and coalesce(lower(me.status), 'active') not in ('inactive', 'disabled', 'archived')
+      and (me.role in ('superadmin', 'admin') or (me.role = 'supervisor' and calendar_events.created_by = me.id))
+  )
+);
+
+create policy "Staff can delete calendar events"
+on public.calendar_events for delete to authenticated
+using (
+  exists (
+    select 1 from public.accounts me
+    where me.email = auth.email()
+      and coalesce(lower(me.status), 'active') not in ('inactive', 'disabled', 'archived')
+      and (me.role in ('superadmin', 'admin') or (me.role = 'supervisor' and calendar_events.created_by = me.id))
+  )
 );
 
 -- Intern Projects table for tracking projects, progress & group members

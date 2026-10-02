@@ -1182,12 +1182,12 @@ app.delete('/documents/:id', authMiddleware, async (req, res) => {
 });
 
 app.get('/calendar-events', authMiddleware, async (req, res) => {
-  const { year, month } = req.query;
-  if (!year || !month) {
-    return res.status(400).json({ error: 'Year and month query parameters are required' });
+  const { year, month, startDate, endDate } = req.query;
+  if ((startDate || endDate) ? (!startDate || !endDate) : (!year || !month)) {
+    return res.status(400).json({ error: 'Provide a year and month or a start and end date' });
   }
   try {
-    const events = await getCalendarEvents({ year: Number(year), month: Number(month) });
+    const events = await getCalendarEvents({ year, month, startDate, endDate });
     return res.json({ events });
   } catch (error) {
     return res.status(error.statusCode || 500).json({ error: error.message });

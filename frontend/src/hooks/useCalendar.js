@@ -1,1 +1,1 @@
-export { useCalendar, EVENT_TYPES } from '../pages/intern/useCalendar.js';
+export { useCalendar, EVENT_TYPES, getCalendarYearOptions } from '../pages/intern/useCalendar.js';
