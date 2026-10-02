@@ -1745,6 +1745,60 @@ body {
   height: auto;
   aspect-ratio: 0.76;
 }
+@media (min-width: 768px) {
+  .face-registration-modal__overlay .face-registration-modal__dialog--initial {
+    width: 100%;
+    max-width: min(64rem, calc(100vw - 2rem));
+    max-height: calc(100dvh - 2rem);
+  }
+  .face-registration-modal__content--initial {
+    display: grid;
+    grid-template-columns: minmax(13rem, 0.8fr) minmax(0, 1.45fr);
+    align-content: start;
+    align-items: start;
+    gap: 1rem;
+    padding: 1.25rem;
+  }
+  .face-registration-modal__content--initial > :not([hidden]) ~ :not([hidden]) {
+    margin-top: 0;
+  }
+  .face-registration-modal__content--initial > .bg-amber-50 {
+    grid-column: 1;
+    align-self: start;
+  }
+  .face-registration-modal__content--initial > .face-registration-modal__camera--initial {
+    grid-column: 2;
+    grid-row: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    min-width: 0;
+    padding: 0.875rem;
+  }
+  .face-registration-modal__camera--initial > :not([hidden]) ~ :not([hidden]) {
+    margin-top: 0;
+  }
+  .face-registration-modal__camera--initial .face-capture-viewport {
+    width: min(100%, 56dvh, 29.333rem);
+    height: auto;
+    max-height: none;
+    aspect-ratio: 4 / 3;
+    margin-inline: auto;
+  }
+  .face-registration-modal__camera--initial .face-capture-viewport video {
+    object-fit: contain;
+    background: #05070b;
+  }
+  .face-registration-modal__camera--initial .face-capture-guide {
+    width: auto;
+    height: 82%;
+    aspect-ratio: 0.76;
+  }
+  .face-registration-modal__content--success > * {
+    grid-column: 1 / -1;
+    justify-self: center;
+  }
+}
 .qr-scanner { display: flex; flex-direction: column; gap: 0.75rem; }
 .qr-reader-surface video { display: block; max-width: 100%; object-fit: cover; }
 .scan-camera-hint {
@@ -1848,8 +1902,19 @@ body {
     max-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 1.5rem);
     border-radius: 1.25rem;
   }
+  .face-registration-modal__overlay .face-registration-modal__dialog--initial {
+    width: 100%;
+    max-width: 100%;
+  }
   .face-registration-modal__content { padding: 0.875rem; }
   .face-registration-modal__content > :not([hidden]) ~ :not([hidden]) { margin-top: 0.75rem; }
+  .face-registration-modal__content--initial {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding: 0.875rem;
+  }
+  .face-registration-modal__content--initial > :not([hidden]) ~ :not([hidden]) { margin-top: 0; }
   .face-registration-modal__camera {
     display: flex;
     flex-direction: column;
@@ -2347,15 +2412,28 @@ body {
     display: block !important; width: 100% !important; margin-bottom: 1rem !important;
     border: 1px solid #e2e8f0 !important; border-radius: 0.5rem !important; background: white !important;
   }
+  .dark .table-card-mobile tbody tr:not(:has(td[colspan])),
+  .dark .data-table tbody tr:not(:has(td[colspan])) {
+    background: #111827 !important;
+    border-color: #263449 !important;
+  }
   .table-card-mobile td, .data-table td {
     display: flex !important; justify-content: space-between !important; align-items: center !important;
     border-bottom: 1px dashed #e2e8f0 !important; text-align: right !important; padding: 0.75rem 0.5rem !important;
+  }
+  .dark .table-card-mobile tbody tr:not(:has(td[colspan])) td,
+  .dark .data-table tbody tr:not(:has(td[colspan])) td {
+    border-bottom-color: #2b3a50 !important;
   }
   .table-card-mobile td:last-child, .data-table td:last-child { border-bottom: none !important; }
   .table-card-mobile td::before, .data-table td::before {
     content: attr(data-label) !important;
     font-weight: 600 !important; color: #64748b !important; font-size: 0.75rem !important; 
     text-transform: uppercase !important; text-align: left !important; padding-right: 1rem !important;
+  }
+  .dark .table-card-mobile tbody tr:not(:has(td[colspan])) td::before,
+  .dark .data-table tbody tr:not(:has(td[colspan])) td::before {
+    color: #94a3b8 !important;
   }
   
   /* Disable horizontal scroll constraint since we use cards */
