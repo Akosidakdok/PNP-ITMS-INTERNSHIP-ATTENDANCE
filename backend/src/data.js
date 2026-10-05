@@ -1493,13 +1493,27 @@ export function getDtrSummary(records = []) {
 }
 
 
-export async function setDtrOverride(internId, { date, type, hours = 0, remarks = '' }) {
-  if (!internId || !date || !type) {
-    const validationError = new Error('Intern ID, date, and override type are required');
+export async function setDtrOverride(internId, payload = {}) {
+  const { date, dates, type, hours = 0, remarks = '' } = payload;
+  const targetDates = Array.isArray(dates) && dates.length > 0
+    ? dates.map(d => String(d).trim()).filter(Boolean)
+    : (date ? [String(date).trim()] : []);
+
+  if (!internId || !targetDates.length || !type) {
+    const validationError = new Error('Intern ID, target date(s), and override type are required');
     validationError.statusCode = 400;
     throw validationError;
   }
 
+  // If multiple dates provided, process all sequentially
+  if (targetDates.length > 1) {
+    const results = await Promise.all(
+      targetDates.map(d => setDtrOverride(internId, { date: d, type, hours, remarks }))
+    );
+    return { success: true, count: results.length, dates: targetDates };
+  }
+
+  const singleDate = targetDates[0];
   const formattedType = String(type).toUpperCase();
   const allowedTypes = new Set(['NONE', 'SUSPENDED', 'EXCUSED', 'HOURS', 'OTHERS', 'ABSENT', 'HOLIDAY']);
   if (!allowedTypes.has(formattedType)) {
@@ -1509,7 +1523,7 @@ export async function setDtrOverride(internId, { date, type, hours = 0, remarks 
   }
 
   try {
-    getPhtDayBoundsUtc(date);
+    getPhtDayBoundsUtc(singleDate);
   } catch {
     const validationError = new Error('A valid override date is required');
     validationError.statusCode = 400;
@@ -1526,31 +1540,7 @@ export async function setDtrOverride(internId, { date, type, hours = 0, remarks 
     throw validationError;
   }
 
-  const creditedHours = formattedType === 'EXCUSED'
-    ? 8
-    : (formattedType === 'SUSPENDED' || formattedType === 'NONE' || formattedType === 'ABSENT')
-      ? 0
-      : formattedType === 'HOLIDAY'
-        ? (Number.isFinite(numericHours) && numericHours > 0 ? numericHours : 0)
-        : numericHours;
-  const cleanRemarks = String(remarks || '').trim();
-  const overrideRemark = `OVERRIDE:${formattedType}:${creditedHours}:${cleanRemarks}`;
-  const scanTime = new Date(`${date}T08:00:00+08:00`).toISOString();
-
-  const { data: intern, error: internError } = await supabase
-    .from('accounts')
-    .select('full_name')
-    .eq('id', internId)
-    .eq('role', INTERN_ROLE)
-    .single();
-  if (internError || !intern) {
-    const notFoundError = new Error('Intern account not found');
-    notFoundError.statusCode = 404;
-    throw notFoundError;
-  }
-  const internName = intern.full_name || 'Intern';
-
-  const { startIso, endExclusiveIso } = getPhtDayBoundsUtc(date);
+  const { startIso, endExclusiveIso } = getPhtDayBoundsUtc(singleDate);
   const { data: existingLogs, error: existingError } = await supabase
     .from('attendance_logs')
     .select('id, remarks')
@@ -1560,7 +1550,7 @@ export async function setDtrOverride(internId, { date, type, hours = 0, remarks 
   if (existingError) throw existingError;
 
   const previousOverrideIds = (existingLogs || [])
-    .filter(log => typeof log.remarks === 'string' && log.remarks.startsWith('OVERRIDE:'))
+    .filter(log => typeof log.remarks === 'string' && log.remarks.trim().toUpperCase().startsWith('OVERRIDE:'))
     .map(log => log.id);
 
   if (formattedType === 'NONE') {
@@ -1574,6 +1564,30 @@ export async function setDtrOverride(internId, { date, type, hours = 0, remarks 
     if (removeError) throw removeError;
     return { cleared: true, removed_count: previousOverrideIds.length };
   }
+
+  const creditedHours = formattedType === 'EXCUSED'
+    ? 8
+    : (formattedType === 'SUSPENDED' || formattedType === 'ABSENT')
+      ? 0
+      : formattedType === 'HOLIDAY'
+        ? (Number.isFinite(numericHours) && numericHours > 0 ? numericHours : 0)
+        : numericHours;
+  const cleanRemarks = String(remarks || '').trim();
+  const overrideRemark = `OVERRIDE:${formattedType}:${creditedHours}:${cleanRemarks}`;
+  const scanTime = new Date(`${singleDate}T08:00:00+08:00`).toISOString();
+
+  const { data: intern, error: internError } = await supabase
+    .from('accounts')
+    .select('full_name')
+    .eq('id', internId)
+    .eq('role', INTERN_ROLE)
+    .single();
+  if (internError || !intern) {
+    const notFoundError = new Error('Intern account not found');
+    notFoundError.statusCode = 404;
+    throw notFoundError;
+  }
+  const internName = intern.full_name || 'Intern';
 
   const overridePayload = {
     intern_id: internId,
@@ -1614,19 +1628,25 @@ export async function setDtrOverride(internId, { date, type, hours = 0, remarks 
   return data;
 }
 
-export async function setBulkDtrOverride({ internIds, date, type, hours = 0, remarks = '' }) {
-  if (!Array.isArray(internIds) || !internIds.length || !date || !type) {
-    const validationError = new Error('Intern IDs list, date, and override type are required');
+export async function setBulkDtrOverride({ internIds, date, dates, type, hours = 0, remarks = '' }) {
+  const targetDates = Array.isArray(dates) && dates.length > 0
+    ? dates.map(d => String(d).trim()).filter(Boolean)
+    : (date ? [String(date).trim()] : []);
+
+  if (!Array.isArray(internIds) || !internIds.length || !targetDates.length || !type) {
+    const validationError = new Error('Intern IDs list, target date(s), and override type are required');
     validationError.statusCode = 400;
     throw validationError;
   }
 
   const results = [];
-  for (const internId of internIds) {
-    const res = await setDtrOverride(internId, { date, type, hours, remarks });
-    results.push(res);
+  for (const d of targetDates) {
+    const dateResults = await Promise.all(
+      internIds.map(internId => setDtrOverride(internId, { date: d, type, hours, remarks }))
+    );
+    results.push(...dateResults);
   }
-  return { success: true, count: results.length };
+  return { success: true, count: results.length, datesCount: targetDates.length, internsCount: internIds.length };
 }
 
 export async function ensureCalendarNotificationsForUser(userId) {

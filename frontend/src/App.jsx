@@ -7,6 +7,7 @@ import InstallPrompt from './components/pwa/InstallPrompt.jsx';
 import SystemLoader from './components/common/SystemLoader.jsx';
 import LegalDocuments from './pages/legal/LegalDocuments.jsx';
 import LegalAcceptance from './pages/legal/LegalAcceptance.jsx';
+import ErrorBoundary from './components/common/ErrorBoundary.jsx';
 
 // Auth pages
 import Login from './pages/auth/Login.jsx';
@@ -129,7 +130,7 @@ function AppShell() {
   const needsLegalAcceptance = Boolean(user && !loading && legalStatus?.required);
 
   return (
-    <>
+    <ErrorBoundary>
       {needsLegalAcceptance ? <LegalAcceptance /> : <AppRoutes />}
       <InstallPrompt />
       <Toaster
@@ -142,6 +143,6 @@ function AppShell() {
         }}
       />
       <SystemLoader systemLoading={loading} />
-    </>
+    </ErrorBoundary>
   );
 }

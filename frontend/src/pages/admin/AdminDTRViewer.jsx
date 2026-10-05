@@ -52,10 +52,12 @@ export default function AdminDTRViewer() {
   // Superadmin modification audit history modal state
   const [historyModalOpen, setHistoryModalOpen] = useState(false);
 
-  // Single override dialog state
+  // Single / multi-date override dialog state
   const [overrideModalOpen, setOverrideModalOpen] = useState(false);
   const [selectedDay, setSelectedDay] = useState(null);
   const [selectedDateForOverride, setSelectedDateForOverride] = useState(null);
+  const [datesForOverrideModal, setDatesForOverrideModal] = useState([]);
+  const [newDateInput, setNewDateInput] = useState('');
   const [selectedRecordForOverride, setSelectedRecordForOverride] = useState(null);
   const [overrideForm, setOverrideForm] = useState({
     type: 'absent', // 'absent' | 'holiday' | 'suspended' | 'excused' | 'hours' | 'others' | 'none'
@@ -173,11 +175,35 @@ export default function AdminDTRViewer() {
     }
   };
 
+  const handleOpenMultiOverrideModal = () => {
+    if (selectedDates.length === 0) return;
+    setDatesForOverrideModal([...selectedDates].sort());
+    setNewDateInput('');
+    setSelectedDateForOverride(selectedDates[0]);
+    setSelectedDay(null);
+    setSelectedRecordForOverride(null);
+    setOverrideForm({
+      type: 'absent',
+      hours: 0,
+      remarks: '',
+    });
+    setOverrideModalOpen(true);
+  };
+
   const handleDateClick = (day, record, dateStr) => {
     if (!canManageOverrides) return;
     const computedDateStr = dateStr || `${filters.year}-${String(filters.month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    
+    // If dates are already selected in multi-select mode, clicking a date toggles it
+    if (selectedDates.length > 0) {
+      handleDateToggle(computedDateStr, false, true);
+      return;
+    }
+
     setSelectedDay(day);
     setSelectedDateForOverride(computedDateStr);
+    setDatesForOverrideModal([computedDateStr]);
+    setNewDateInput('');
     setSelectedRecordForOverride(record || null);
 
     if (record?.is_override) {
@@ -198,18 +224,22 @@ export default function AdminDTRViewer() {
 
   const handleRowClick = (day, record) => {
     const dateStr = `${filters.year}-${String(filters.month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-    if (isSuperadmin) {
+    if (canManageOverrides) {
       handleDateToggle(dateStr, false, false);
-    } else if (canManageOverrides) {
-      handleDateClick(day, record, dateStr);
     }
   };
 
   const handleSaveOverride = async () => {
-    if (!selectedInternId || (!selectedDay && !selectedDateForOverride)) return;
-    
-    // Construct date string (YYYY-MM-DD)
-    const dateStr = selectedDateForOverride || `${filters.year}-${String(filters.month).padStart(2, '0')}-${String(selectedDay).padStart(2, '0')}`;
+    let effectiveDates = [...datesForOverrideModal];
+    if (newDateInput && !effectiveDates.includes(newDateInput)) {
+      effectiveDates.push(newDateInput);
+    }
+    effectiveDates = effectiveDates.filter(Boolean).sort();
+
+    if (!selectedInternId || effectiveDates.length === 0) {
+      toast.error('Please select at least 1 date to override');
+      return;
+    }
 
     setSavingOverride(true);
     try {
@@ -225,7 +255,7 @@ export default function AdminDTRViewer() {
       const cleanRemarks = overrideForm.remarks.trim();
 
       await api.post(`/admin/dtr/${selectedInternId}/override`, {
-        date: dateStr,
+        dates: effectiveDates,
         type: type,
         hours: hoursToSave,
         remarks: cleanRemarks
@@ -240,8 +270,18 @@ export default function AdminDTRViewer() {
         others: 'CUSTOM OVERRIDE',
         none: 'NORMAL SCANS',
       };
-      toast.success(`DTR attendance set to ${typeLabels[type] || type.toUpperCase()} for ${dateStr}`);
+      const count = effectiveDates.length;
+      toast.success(
+        type === 'none'
+          ? (count === 1
+              ? `Attendance override cleared and restored to normal scans for ${effectiveDates[0]}`
+              : `Attendance overrides cleared and restored to normal scans for ${count} dates!`)
+          : (count === 1
+              ? `DTR attendance set to ${typeLabels[type] || type.toUpperCase()} for ${effectiveDates[0]}`
+              : `DTR attendance set to ${typeLabels[type] || type.toUpperCase()} for ${count} dates!`)
+      );
       setOverrideModalOpen(false);
+      setSelectedDates([]);
       loadDTR(); // Refetch records
     } catch (err) {
       const errMsg = err.response?.data?.error || err.message || 'Failed to save override';
@@ -409,15 +449,15 @@ export default function AdminDTRViewer() {
 
           {/* DTR Sheet Rendering */}
           <div className="xl:col-span-3 card p-6 bg-white overflow-hidden shadow-sm flex flex-col items-center dtr-sheet-card">
-            {isSuperadmin && (
-              <div className="w-full max-w-[800px] mb-3 p-2.5 px-3 bg-gradient-to-r from-blue-50/80 to-indigo-50/80 border border-blue-200 rounded-xl flex flex-wrap items-center justify-between gap-2 text-xs">
+            {canManageOverrides && (
+              <div className="w-full max-w-[800px] mb-3 p-2.5 px-3 bg-gradient-to-r from-blue-50/90 to-indigo-50/90 border border-blue-200 rounded-xl flex flex-wrap items-center justify-between gap-2 text-xs shadow-xs">
                 <div className="flex items-center gap-2">
                   <span className="font-bold text-blue-950 flex items-center gap-1.5">
                     <MousePointerClick className="w-4 h-4 text-blue-600" />
-                    Excel Date Selection
+                    Select Dates to Override
                   </span>
                   <span className="text-[11px] text-blue-700 hidden sm:inline">
-                    Click rows/checkboxes. Hold <kbd className="px-1 py-0.5 bg-white border border-blue-200 rounded font-mono text-[10px]">Shift</kbd> for range, <kbd className="px-1 py-0.5 bg-white border border-blue-200 rounded font-mono text-[10px]">Ctrl</kbd> for multi-select.
+                    Click rows/dates. Hold <kbd className="px-1 py-0.5 bg-white border border-blue-200 rounded font-mono text-[10px]">Shift</kbd> for range, <kbd className="px-1 py-0.5 bg-white border border-blue-200 rounded font-mono text-[10px]">Ctrl</kbd> for multi-select.
                   </span>
                 </div>
                 <div className="flex items-center gap-1.5 ml-auto flex-wrap">
@@ -444,6 +484,17 @@ export default function AdminDTRViewer() {
                       Clear ({selectedDates.length})
                     </button>
                   )}
+                  {selectedDates.length > 0 && (
+                    <button
+                      type="button"
+                      id="override-selected-dates-toolbar-btn"
+                      className="btn btn-primary btn-xs text-xs font-bold bg-blue-700 hover:bg-blue-800 text-white shadow-xs flex items-center gap-1.5"
+                      onClick={handleOpenMultiOverrideModal}
+                    >
+                      <Calendar className="w-3.5 h-3.5" />
+                      Override {selectedDates.length} Date{selectedDates.length > 1 ? 's' : ''}
+                    </button>
+                  )}
                 </div>
               </div>
             )}
@@ -456,7 +507,7 @@ export default function AdminDTRViewer() {
                 year={filters.year}
                 onRowClick={handleRowClick}
                 onDateClick={handleDateClick}
-                isSelectable={isSuperadmin}
+                isSelectable={canManageOverrides}
                 selectedDates={selectedDates}
                 onDateToggle={handleDateToggle}
                 onSelectAllDates={handleSelectAllToggle}
@@ -468,8 +519,8 @@ export default function AdminDTRViewer() {
         </div>
       )}
 
-      {/* Override Single Day Modal */}
-      {overrideModalOpen && (selectedDay || selectedDateForOverride) && (
+      {/* Override Single / Multi-Day Modal */}
+      {overrideModalOpen && datesForOverrideModal.length > 0 && (
         <Modal
           isOpen={overrideModalOpen}
           onClose={() => setOverrideModalOpen(false)}
@@ -479,7 +530,7 @@ export default function AdminDTRViewer() {
                 Set Attendance Status
               </span>
               <span className="text-xs bg-blue-100 text-blue-800 font-bold px-2.5 py-0.5 rounded-full">
-                {selectedDateForOverride || `${filters.year}-${String(filters.month).padStart(2, '0')}-${String(selectedDay).padStart(2, '0')}`}
+                {datesForOverrideModal.length === 1 ? datesForOverrideModal[0] : `${datesForOverrideModal.length} Dates`}
               </span>
             </div>
           }
@@ -517,27 +568,32 @@ export default function AdminDTRViewer() {
                 ) : overrideForm.type === 'absent' ? (
                   <>
                     <UserX className="w-3.5 h-3.5" />
-                    Set as Absent
+                    Set {datesForOverrideModal.length > 1 ? `${datesForOverrideModal.length} Dates` : 'Date'} as Absent
                   </>
                 ) : overrideForm.type === 'holiday' ? (
                   <>
                     <Calendar className="w-3.5 h-3.5" />
-                    Set as Holiday
+                    Set {datesForOverrideModal.length > 1 ? `${datesForOverrideModal.length} Dates` : 'Date'} as Holiday
                   </>
                 ) : overrideForm.type === 'suspended' ? (
                   <>
                     <CloudRain className="w-3.5 h-3.5" />
-                    Set as Suspended
+                    Set {datesForOverrideModal.length > 1 ? `${datesForOverrideModal.length} Dates` : 'Date'} as Suspended
+                  </>
+                ) : overrideForm.type === 'excused' ? (
+                  <>
+                    <CheckCircle className="w-3.5 h-3.5" />
+                    Set {datesForOverrideModal.length > 1 ? `${datesForOverrideModal.length} Dates` : 'Date'} as Excused
                   </>
                 ) : overrideForm.type === 'none' ? (
                   <>
                     <RotateCcw className="w-3.5 h-3.5" />
-                    Clear Override
+                    Reset {datesForOverrideModal.length > 1 ? `${datesForOverrideModal.length} Dates` : 'Date'}
                   </>
                 ) : (
                   <>
                     <Check className="w-3.5 h-3.5" />
-                    Apply Configuration
+                    Apply Override ({datesForOverrideModal.length})
                   </>
                 )}
               </button>
@@ -545,7 +601,7 @@ export default function AdminDTRViewer() {
           }
         >
           <div className="space-y-4 text-xs">
-            {/* Intern & Date Info Banner */}
+            {/* Intern Info Banner */}
             <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between">
               <div>
                 <p className="font-bold text-gray-900 text-sm">{selectedInternData?.full_name || 'Intern'}</p>
@@ -554,22 +610,74 @@ export default function AdminDTRViewer() {
                 </p>
               </div>
               <div className="text-right">
-                <span className="font-semibold text-slate-700 block text-xs">
-                  {selectedDay ? `${months[filters.month - 1]} ${selectedDay}, ${filters.year}` : selectedDateForOverride}
+                <span className="font-bold text-blue-700 block text-xs">
+                  {datesForOverrideModal.length} Date{datesForOverrideModal.length > 1 ? 's' : ''} Selected
                 </span>
-                {selectedRecordForOverride?.is_override ? (
-                  <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-purple-100 text-purple-800">
-                    Currently: {selectedRecordForOverride.override_type}
+              </div>
+            </div>
+
+            {/* Target Dates to Override — multi-date chips and inline date add */}
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-xs text-slate-800">
+                  Target Date(s) to Override ({datesForOverrideModal.length}):
+                </span>
+                <span className="text-[11px] text-slate-500">
+                  Click &times; to remove, or add dates below
+                </span>
+              </div>
+
+              {/* Date Chips */}
+              <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
+                {datesForOverrideModal.map(d => (
+                  <span
+                    key={d}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg font-mono text-xs font-bold bg-white text-slate-800 border border-slate-300 shadow-2xs"
+                  >
+                    {d}
+                    {datesForOverrideModal.length > 1 && (
+                      <button
+                        type="button"
+                        className="text-slate-400 hover:text-red-600 transition-colors font-bold text-sm leading-none"
+                        onClick={() => setDatesForOverrideModal(prev => prev.filter(x => x !== d))}
+                        title="Remove date"
+                      >
+                        &times;
+                      </button>
+                    )}
                   </span>
-                ) : selectedRecordForOverride?.time_in ? (
-                  <span className="inline-block px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-800">
-                    Scanned: {selectedRecordForOverride.time_in} - {selectedRecordForOverride.time_out || '--:--'}
-                  </span>
-                ) : (
-                  <span className="inline-block px-2 py-0.5 rounded text-[10px] text-gray-500 bg-gray-100">
-                    No Scans
-                  </span>
-                )}
+                ))}
+              </div>
+
+              {/* Add Date Inline */}
+              <div className="flex items-center gap-2 pt-1 border-t border-slate-200/60">
+                <input
+                  type="date"
+                  className="form-input text-xs py-1 px-2 font-medium w-auto"
+                  value={newDateInput}
+                  onChange={e => {
+                    const val = e.target.value;
+                    setNewDateInput(val);
+                    if (datesForOverrideModal.length <= 1 && val) {
+                      setDatesForOverrideModal([val]);
+                    }
+                  }}
+                />
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-xs text-xs font-semibold py-1 px-2.5 text-blue-700 bg-blue-50/50 hover:bg-blue-100/60 border-blue-200"
+                  onClick={() => {
+                    if (newDateInput && !datesForOverrideModal.includes(newDateInput)) {
+                      setDatesForOverrideModal(prev => [...prev, newDateInput].sort());
+                      setNewDateInput('');
+                    } else if (datesForOverrideModal.includes(newDateInput)) {
+                      toast.error('Date already added');
+                    }
+                  }}
+                  disabled={!newDateInput || datesForOverrideModal.includes(newDateInput)}
+                >
+                  + Add Date
+                </button>
               </div>
             </div>
 
@@ -800,6 +908,7 @@ export default function AdminDTRViewer() {
       <BulkDTROverrideModal
         isOpen={bulkModalOpen}
         onClose={() => setBulkModalOpen(false)}
+        initialDates={selectedDates.length > 0 ? selectedDates : undefined}
         onSuccess={() => {
           if (selectedInternId) loadDTR();
         }}
@@ -827,8 +936,8 @@ export default function AdminDTRViewer() {
         />
       )}
 
-      {/* Superadmin Floating Action Dock for Excel Selection */}
-      {isSuperadmin && selectedDates.length > 0 && (
+      {/* Floating Action Dock for Selected Dates */}
+      {canManageOverrides && selectedDates.length > 0 && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 w-11/12 max-w-2xl bg-slate-900/95 backdrop-blur-md text-white shadow-2xl rounded-2xl p-3.5 px-5 border border-slate-700/80 flex flex-wrap items-center justify-between gap-3 animate-fade-in">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-xl bg-blue-600 flex items-center justify-center font-bold text-sm shadow-inner text-white">
@@ -839,12 +948,14 @@ export default function AdminDTRViewer() {
                 {selectedDates.length === 1 ? '1 Date Selected' : `${selectedDates.length} Dates Selected`}
               </p>
               <p className="text-[11px] text-slate-400">
-                Ready to alter official time or schedule overrides
+                {isSuperadmin
+                  ? 'Set attendance status (Absent, Holiday, Suspended) or alter time logs'
+                  : 'Ready to set attendance status (Absent, Holiday, Suspended)'}
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <button
               type="button"
               className="btn btn-sm btn-ghost text-slate-300 hover:text-white hover:bg-slate-800 text-xs"
@@ -854,12 +965,23 @@ export default function AdminDTRViewer() {
             </button>
             <button
               type="button"
-              className="btn btn-sm bg-blue-600 hover:bg-blue-500 text-white font-bold flex items-center gap-1.5 shadow-md text-xs px-4"
-              onClick={() => setBatchAlterModalOpen(true)}
+              id="dock-override-status-btn"
+              className="btn btn-sm bg-blue-600 hover:bg-blue-500 text-white font-bold flex items-center gap-1.5 shadow-md text-xs px-3.5"
+              onClick={handleOpenMultiOverrideModal}
             >
-              <Edit className="w-3.5 h-3.5" />
-              Alter Selected Date{selectedDates.length > 1 ? 's' : ''}
+              <Calendar className="w-3.5 h-3.5" />
+              Set Status ({selectedDates.length} Date{selectedDates.length > 1 ? 's' : ''})
             </button>
+            {isSuperadmin && (
+              <button
+                type="button"
+                className="btn btn-sm bg-slate-700 hover:bg-slate-600 text-white font-bold flex items-center gap-1.5 shadow-md text-xs px-3.5"
+                onClick={() => setBatchAlterModalOpen(true)}
+              >
+                <Edit className="w-3.5 h-3.5" />
+                Alter Times / Logs
+              </button>
+            )}
           </div>
         </div>
       )}
