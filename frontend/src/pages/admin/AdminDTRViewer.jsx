@@ -626,6 +626,7 @@ export default function AdminDTRViewer() {
             <div className="w-full max-w-[800px] border border-gray-300 rounded-xl p-4 bg-gray-50/50 overflow-x-auto">
               <DTRPrint
                 intern={selectedInternData}
+                internId={selectedInternId}
                 records={dtrRecords}
                 month={filters.month}
                 year={filters.year}
