@@ -1514,8 +1514,11 @@ export async function setDtrOverride(internId, payload = {}) {
   }
 
   const singleDate = targetDates[0];
-  const formattedType = String(type).toUpperCase();
-  const allowedTypes = new Set(['NONE', 'SUSPENDED', 'EXCUSED', 'HOURS', 'OTHERS', 'ABSENT', 'HOLIDAY']);
+  let formattedType = String(type || '').trim().toUpperCase().replace(/[-\s]/g, '_');
+  if (['SCHOOL_CLASS', 'SCHOOL_F2F', 'F2F', 'CLASS'].includes(formattedType)) {
+    formattedType = 'SCHOOL';
+  }
+  const allowedTypes = new Set(['NONE', 'SUSPENDED', 'EXCUSED', 'HOURS', 'OTHERS', 'ABSENT', 'HOLIDAY', 'SCHOOL']);
   if (!allowedTypes.has(formattedType)) {
     const validationError = new Error('Unsupported DTR override type');
     validationError.statusCode = 400;
@@ -1569,7 +1572,7 @@ export async function setDtrOverride(internId, payload = {}) {
     ? 8
     : (formattedType === 'SUSPENDED' || formattedType === 'ABSENT')
       ? 0
-      : formattedType === 'HOLIDAY'
+      : (formattedType === 'HOLIDAY' || formattedType === 'SCHOOL')
         ? (Number.isFinite(numericHours) && numericHours > 0 ? numericHours : 0)
         : numericHours;
   const cleanRemarks = String(remarks || '').trim();

@@ -121,7 +121,7 @@ export default function DTRBatchAlterModal({
         payload.override_type = overrideType.toUpperCase();
         payload.hours = (overrideType === 'hours' || overrideType === 'others')
           ? Number(overrideHours)
-          : (overrideType === 'excused' ? 8 : (overrideType === 'holiday' && Number(overrideHours) > 0 ? Number(overrideHours) : 0));
+          : (overrideType === 'excused' ? 8 : ((overrideType === 'holiday' || overrideType === 'school') && Number(overrideHours) > 0 ? Number(overrideHours) : 0));
         payload.remarks = overrideRemarks.trim();
       } else if (activeTab === 'clear') {
         payload.clear_target = clearTarget;
@@ -366,6 +366,7 @@ export default function DTRBatchAlterModal({
                 <option value="absent">Absent (Mark as Absent — 0 hrs credited)</option>
                 <option value="holiday">Holiday (Official Holiday — 0 hrs credited)</option>
                 <option value="suspended">Suspended (Class/Work Suspended — 0 hrs credited)</option>
+                <option value="school">School F2F / Class (School Face-to-Face Class — 0 hrs credited)</option>
                 <option value="excused">Excused (Excused Absence / Seminar — 8.00 hrs credited)</option>
                 <option value="hours">Custom Hours (Credit specific hours for selected dates)</option>
                 <option value="others">Others (Custom Banner Label and Custom Hours)</option>
@@ -395,6 +396,8 @@ export default function DTRBatchAlterModal({
                   ? 'Holiday Name / Banner Label'
                   : overrideType === 'absent'
                   ? 'Absent Reason / Remarks'
+                  : overrideType === 'school'
+                  ? 'School / Subject / Class Reason'
                   : 'Remarks / Note'}
               </label>
               <input
@@ -409,6 +412,8 @@ export default function DTRBatchAlterModal({
                     ? "e.g. Special Non-Working Holiday, Bonifacio Day"
                     : overrideType === 'absent'
                     ? "e.g. Unexcused Absence, Sick Leave"
+                    : overrideType === 'school'
+                    ? "e.g. University Face-to-Face Class, Midterm Exam, Major Subject"
                     : "e.g. Typhoon Suspension, Authorized leave, System adjustment..."
                 }
               />
@@ -447,6 +452,20 @@ export default function DTRBatchAlterModal({
                       key={preset}
                       type="button"
                       className="text-[10px] bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-200 px-2 py-0.5 rounded-full transition-colors font-medium"
+                      onClick={() => setOverrideRemarks(preset)}
+                    >
+                      + {preset}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {overrideType === 'school' && (
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {['University Face-to-Face Class', 'Academic Exam / Midterm', 'School Laboratory / Thesis', 'Official Class Schedule'].map(preset => (
+                    <button
+                      key={preset}
+                      type="button"
+                      className="text-[10px] bg-purple-50 hover:bg-purple-100 text-purple-900 border border-purple-200 px-2 py-0.5 rounded-full transition-colors font-medium"
                       onClick={() => setOverrideRemarks(preset)}
                     >
                       + {preset}

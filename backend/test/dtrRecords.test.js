@@ -156,4 +156,44 @@ test('absent and holiday overrides set zero credit and do not increment days pre
   assert.equal(summary.approved_minutes, 0);
 });
 
+test('school face to face / class override sets zero credit and does not increment days present', () => {
+  const parsedSchool = parseDtrOverride('OVERRIDE:SCHOOL:0:University Face-to-Face Class');
+  assert.deepEqual(parsedSchool, {
+    type: 'SCHOOL',
+    hours: 0,
+    remarks: 'University Face-to-Face Class',
+  });
+
+  const records = buildDtrRecords([
+    { ...scan(1, '08:00:00', 'time_in', 'approved', 'OVERRIDE:SCHOOL:0:University Face-to-Face Class'), scan_time: '2026-08-27T08:00:00+08:00' },
+  ]);
+  const [schoolRec] = records;
+
+  assert.equal(schoolRec.override_type, 'school');
+  assert.equal(schoolRec.total_minutes, 0);
+  assert.equal(schoolRec.approved_minutes, 0);
+  assert.equal(schoolRec.remarks, 'University Face-to-Face Class');
+
+  const summary = summarizeDtrRecords(records);
+  assert.equal(summary.days_present, 0);
+  assert.equal(summary.approved_minutes, 0);
+});
+
+test('school override synonyms (school_class, school_f2f, f2f) normalize to SCHOOL', () => {
+  const parsedSynonym1 = parseDtrOverride('OVERRIDE:SCHOOL_CLASS:0:Midterm Exam');
+  assert.deepEqual(parsedSynonym1, {
+    type: 'SCHOOL',
+    hours: 0,
+    remarks: 'Midterm Exam',
+  });
+
+  const parsedSynonym2 = parseDtrOverride('OVERRIDE:SCHOOL-F2F:0:Lab Class');
+  assert.deepEqual(parsedSynonym2, {
+    type: 'SCHOOL',
+    hours: 0,
+    remarks: 'Lab Class',
+  });
+});
+
+
 

@@ -262,6 +262,8 @@ export default function DTRTable({
                   ? 'bg-yellow-50/70 border-yellow-300 shadow-xs cursor-pointer active:bg-yellow-100/50'
                   : rec?.override_type === 'suspended'
                   ? 'bg-blue-50/70 border-blue-300 shadow-xs cursor-pointer active:bg-blue-100/50'
+                  : rec?.override_type === 'school'
+                  ? 'bg-purple-50/70 border-purple-300 shadow-xs cursor-pointer active:bg-purple-100/50'
                   : rec ? 'bg-white border-gray-200 shadow-sm cursor-pointer active:bg-gray-50' : 'bg-gray-100/40 border-gray-100 cursor-pointer'
               }`}
               onClick={(e) => {
@@ -309,6 +311,8 @@ export default function DTRTable({
                     ? 'text-yellow-900 bg-yellow-100 border border-yellow-300'
                     : rec.override_type === 'suspended'
                     ? 'text-blue-800 bg-blue-100 border border-blue-300'
+                    : rec.override_type === 'school'
+                    ? 'text-purple-800 bg-purple-100 border border-purple-300'
                     : 'text-purple-700 bg-purple-100 border border-purple-300'
                 }`}>
                   {rec.override_type === 'absent'
@@ -317,6 +321,8 @@ export default function DTRTable({
                     ? (rec.remarks ? `Holiday: ${rec.remarks}` : 'Holiday')
                     : rec.override_type === 'suspended'
                     ? (rec.remarks ? `Suspended: ${rec.remarks}` : 'Suspended')
+                    : rec.override_type === 'school'
+                    ? (rec.remarks ? `School F2F: ${rec.remarks}` : 'School F2F / Class')
                     : (rec.remarks || rec.override_type || 'Overridden')}
                   {getRecordMinutes(rec) > 0 && (
                     <span className="opacity-75 ml-1">({formatDuration(getRecordMinutes(rec))})</span>
@@ -624,6 +630,8 @@ export default function DTRTable({
                 ? '#fef9c3'
                 : effectiveType === 'suspended'
                 ? '#dbeafe'
+                : effectiveType === 'school'
+                ? '#ede9fe'
                 : undefined;
               const dateTextColor = effectiveType === 'absent'
                 ? '#b91c1c'
@@ -631,12 +639,14 @@ export default function DTRTable({
                 ? '#854d0e'
                 : effectiveType === 'suspended'
                 ? '#1d4ed8'
+                : effectiveType === 'school'
+                ? '#6b21a8'
                 : undefined;
 
               return (
                 <td
                   className={isClickable ? 'dtr-clickable-date hover:opacity-80 transition-opacity' : ''}
-                  title={isClickable ? 'Click to set attendance status (Absent, Holiday, Suspended, etc.)' : undefined}
+                  title={isClickable ? 'Click to set attendance status (Absent, Holiday, Suspended, School F2F, etc.)' : undefined}
                   style={tdStyle({
                     textAlign: 'center',
                     fontWeight: '600',
@@ -741,6 +751,33 @@ export default function DTRTable({
                       height: '18px'
                     })}>
                       {suspendedLabel}
+                    </td>
+                  </tr>
+                );
+              } else if (rec.override_type === 'school') {
+                const schoolLabel = rec.remarks
+                  ? `SCHOOL F2F / CLASS: ${rec.remarks.toUpperCase()}`
+                  : 'SCHOOL FACE TO FACE / CLASS';
+                return (
+                  <tr
+                    key={day}
+                    onClick={handleRowClick}
+                    style={rowStyle}
+                    className={rowClassName}
+                  >
+                    {renderSelectCell()}
+                    {renderDateCell(day, rec, 'school')}
+                    <td colSpan={6} style={tdStyle({
+                      textAlign: 'center',
+                      fontWeight: 'bold',
+                      fontStyle: 'italic',
+                      backgroundColor: isSelected ? '#ddd6fe' : '#ede9fe', // School = purple
+                      color: '#6b21a8',
+                      fontSize: '9px',
+                      letterSpacing: '1px',
+                      height: '18px'
+                    })}>
+                      {schoolLabel}
                     </td>
                   </tr>
                 );

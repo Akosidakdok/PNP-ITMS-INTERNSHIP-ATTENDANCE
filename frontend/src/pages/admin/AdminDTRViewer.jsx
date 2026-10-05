@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Clock, Filter, AlertCircle, Edit, Calendar, History, Shield, ShieldCheck, CheckSquare, Square, MousePointerClick, UserX, CheckCircle, RotateCcw, CloudRain, Check } from 'lucide-react';
+import { Clock, Filter, AlertCircle, Edit, Calendar, CalendarRange, History, Shield, ShieldCheck, CheckSquare, Square, MousePointerClick, UserX, CheckCircle, RotateCcw, CloudRain, Check, GraduationCap } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext.jsx';
 import api from '../../utils/api.js';
 import DTRPrint from '../../components/dtr/DTRPrint.jsx';
@@ -23,6 +23,30 @@ const getPhtTodayKey = () => {
   return `${values.year}-${values.month}-${values.day}`;
 };
 
+function generateDateRange(fromStr, toStr, excludeWeekends = false) {
+  if (!fromStr || !toStr) return [];
+  const start = new Date(fromStr + 'T00:00:00');
+  const end = new Date(toStr + 'T00:00:00');
+  if (isNaN(start.getTime()) || isNaN(end.getTime())) return [];
+
+  const minDate = start <= end ? start : end;
+  const maxDate = start <= end ? end : start;
+
+  const res = [];
+  const curr = new Date(minDate);
+  while (curr <= maxDate) {
+    const dayOfWeek = curr.getDay(); // 0 is Sunday, 6 is Saturday
+    if (!excludeWeekends || (dayOfWeek >= 1 && dayOfWeek <= 5)) {
+      const y = curr.getFullYear();
+      const m = String(curr.getMonth() + 1).padStart(2, '0');
+      const d = String(curr.getDate()).padStart(2, '0');
+      res.push(`${y}-${m}-${d}`);
+    }
+    curr.setDate(curr.getDate() + 1);
+  }
+  return res;
+}
+
 export default function AdminDTRViewer() {
   const { user } = useAuth();
   const isSuperadmin = user?.role === 'superadmin';
@@ -44,6 +68,12 @@ export default function AdminDTRViewer() {
   const lastClickedDateRef = useRef(null);
   const [batchAlterModalOpen, setBatchAlterModalOpen] = useState(false);
 
+  // Table selection toolbar range selector state
+  const [tableRangeOpen, setTableRangeOpen] = useState(false);
+  const [tableRangeFrom, setTableRangeFrom] = useState('');
+  const [tableRangeTo, setTableRangeTo] = useState('');
+  const [tableRangeExcludeWeekends, setTableRangeExcludeWeekends] = useState(true);
+
   // Superadmin DTR manual edit modal state
   const [dtrEditModalOpen, setDtrEditModalOpen] = useState(false);
   const [selectedRecordForEdit, setSelectedRecordForEdit] = useState(null);
@@ -58,6 +88,10 @@ export default function AdminDTRViewer() {
   const [selectedDateForOverride, setSelectedDateForOverride] = useState(null);
   const [datesForOverrideModal, setDatesForOverrideModal] = useState([]);
   const [newDateInput, setNewDateInput] = useState('');
+  const [overrideDateMode, setOverrideDateMode] = useState('single'); // 'single' | 'range' | 'multi'
+  const [rangeFrom, setRangeFrom] = useState(getPhtTodayKey());
+  const [rangeTo, setRangeTo] = useState(getPhtTodayKey());
+  const [excludeWeekends, setExcludeWeekends] = useState(true);
   const [selectedRecordForOverride, setSelectedRecordForOverride] = useState(null);
   const [overrideForm, setOverrideForm] = useState({
     type: 'absent', // 'absent' | 'holiday' | 'suspended' | 'excused' | 'hours' | 'others' | 'none'
@@ -109,13 +143,17 @@ export default function AdminDTRViewer() {
     }
   }, [selectedInternId, loadDTR]);
 
-  // Clear date selection when changing intern or month/year
+  const daysInMonth = filters.month && filters.year ? new Date(filters.year, filters.month, 0).getDate() : 31;
+
+  // Clear date selection when changing intern or month/year and set initial range
   useEffect(() => {
     setSelectedDates([]);
     lastClickedDateRef.current = null;
-  }, [selectedInternId, filters.month, filters.year]);
-
-  const daysInMonth = filters.month && filters.year ? new Date(filters.year, filters.month, 0).getDate() : 31;
+    const startStr = `${filters.year}-${String(filters.month).padStart(2, '0')}-01`;
+    const endStr = `${filters.year}-${String(filters.month).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
+    setTableRangeFrom(startStr);
+    setTableRangeTo(endStr);
+  }, [selectedInternId, filters.month, filters.year, daysInMonth]);
 
   const allMonthDates = useMemo(() => {
     return Array.from({ length: daysInMonth }, (_, i) => {
@@ -175,11 +213,32 @@ export default function AdminDTRViewer() {
     }
   };
 
+  // Compute effective dates for single-intern override modal
+  const effectiveOverrideDates = useMemo(() => {
+    if (overrideDateMode === 'range') {
+      return generateDateRange(rangeFrom, rangeTo, excludeWeekends);
+    }
+    if (overrideDateMode === 'single') {
+      return newDateInput ? [newDateInput] : (datesForOverrideModal[0] ? [datesForOverrideModal[0]] : [getPhtTodayKey()]);
+    }
+    // 'multi'
+    let result = [...datesForOverrideModal];
+    if (newDateInput && !result.includes(newDateInput)) {
+      result.push(newDateInput);
+    }
+    return result.filter(Boolean).sort();
+  }, [overrideDateMode, rangeFrom, rangeTo, excludeWeekends, datesForOverrideModal, newDateInput]);
+
   const handleOpenMultiOverrideModal = () => {
     if (selectedDates.length === 0) return;
-    setDatesForOverrideModal([...selectedDates].sort());
-    setNewDateInput('');
-    setSelectedDateForOverride(selectedDates[0]);
+    const sorted = [...selectedDates].sort();
+    setDatesForOverrideModal(sorted);
+    setNewDateInput(sorted[0] || '');
+    setRangeFrom(sorted[0] || getPhtTodayKey());
+    setRangeTo(sorted[sorted.length - 1] || getPhtTodayKey());
+    setOverrideDateMode(sorted.length > 1 ? 'multi' : 'single');
+    setExcludeWeekends(true);
+    setSelectedDateForOverride(sorted[0]);
     setSelectedDay(null);
     setSelectedRecordForOverride(null);
     setOverrideForm({
@@ -203,7 +262,11 @@ export default function AdminDTRViewer() {
     setSelectedDay(day);
     setSelectedDateForOverride(computedDateStr);
     setDatesForOverrideModal([computedDateStr]);
-    setNewDateInput('');
+    setNewDateInput(computedDateStr);
+    setRangeFrom(computedDateStr);
+    setRangeTo(computedDateStr);
+    setOverrideDateMode('single');
+    setExcludeWeekends(true);
     setSelectedRecordForOverride(record || null);
 
     if (record?.is_override) {
@@ -230,13 +293,9 @@ export default function AdminDTRViewer() {
   };
 
   const handleSaveOverride = async () => {
-    let effectiveDates = [...datesForOverrideModal];
-    if (newDateInput && !effectiveDates.includes(newDateInput)) {
-      effectiveDates.push(newDateInput);
-    }
-    effectiveDates = effectiveDates.filter(Boolean).sort();
+    const datesToSave = effectiveOverrideDates;
 
-    if (!selectedInternId || effectiveDates.length === 0) {
+    if (!selectedInternId || datesToSave.length === 0) {
       toast.error('Please select at least 1 date to override');
       return;
     }
@@ -248,14 +307,14 @@ export default function AdminDTRViewer() {
         ? 8
         : (type === 'absent' || type === 'suspended' || type === 'none')
           ? 0
-          : (type === 'holiday')
+          : (type === 'holiday' || type === 'school')
             ? (Number(overrideForm.hours) > 0 ? Number(overrideForm.hours) : 0)
             : Number(overrideForm.hours || 0);
 
       const cleanRemarks = overrideForm.remarks.trim();
 
       await api.post(`/admin/dtr/${selectedInternId}/override`, {
-        dates: effectiveDates,
+        dates: datesToSave,
         type: type,
         hours: hoursToSave,
         remarks: cleanRemarks
@@ -265,19 +324,20 @@ export default function AdminDTRViewer() {
         absent: 'ABSENT',
         holiday: 'HOLIDAY',
         suspended: 'SUSPENDED',
+        school: 'SCHOOL F2F / CLASS',
         excused: 'EXCUSED',
         hours: 'CUSTOM HOURS',
         others: 'CUSTOM OVERRIDE',
         none: 'NORMAL SCANS',
       };
-      const count = effectiveDates.length;
+      const count = datesToSave.length;
       toast.success(
         type === 'none'
           ? (count === 1
-              ? `Attendance override cleared and restored to normal scans for ${effectiveDates[0]}`
+              ? `Attendance override cleared and restored to normal scans for ${datesToSave[0]}`
               : `Attendance overrides cleared and restored to normal scans for ${count} dates!`)
           : (count === 1
-              ? `DTR attendance set to ${typeLabels[type] || type.toUpperCase()} for ${effectiveDates[0]}`
+              ? `DTR attendance set to ${typeLabels[type] || type.toUpperCase()} for ${datesToSave[0]}`
               : `DTR attendance set to ${typeLabels[type] || type.toUpperCase()} for ${count} dates!`)
       );
       setOverrideModalOpen(false);
@@ -450,52 +510,116 @@ export default function AdminDTRViewer() {
           {/* DTR Sheet Rendering */}
           <div className="xl:col-span-3 card p-6 bg-white overflow-hidden shadow-sm flex flex-col items-center dtr-sheet-card">
             {canManageOverrides && (
-              <div className="w-full max-w-[800px] mb-3 p-2.5 px-3 bg-gradient-to-r from-blue-50/90 to-indigo-50/90 border border-blue-200 rounded-xl flex flex-wrap items-center justify-between gap-2 text-xs shadow-xs">
-                <div className="flex items-center gap-2">
-                  <span className="font-bold text-blue-950 flex items-center gap-1.5">
-                    <MousePointerClick className="w-4 h-4 text-blue-600" />
-                    Select Dates to Override
-                  </span>
-                  <span className="text-[11px] text-blue-700 hidden sm:inline">
-                    Click rows/dates. Hold <kbd className="px-1 py-0.5 bg-white border border-blue-200 rounded font-mono text-[10px]">Shift</kbd> for range, <kbd className="px-1 py-0.5 bg-white border border-blue-200 rounded font-mono text-[10px]">Ctrl</kbd> for multi-select.
-                  </span>
-                </div>
-                <div className="flex items-center gap-1.5 ml-auto flex-wrap">
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-xs text-[11px] font-semibold text-blue-700 bg-white hover:bg-blue-50"
-                    onClick={() => setSelectedDates([...allWeekdayDates])}
-                  >
-                    Select Weekdays
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-xs text-[11px] font-semibold text-slate-700 bg-white hover:bg-slate-100"
-                    onClick={handleSelectAllToggle}
-                  >
-                    {selectedDates.length === allMonthDates.length ? 'Deselect All' : 'Select All Month'}
-                  </button>
-                  {selectedDates.length > 0 && (
+              <div className="w-full max-w-[800px] mb-3 p-2.5 px-3 bg-gradient-to-r from-blue-50/90 to-indigo-50/90 border border-blue-200 rounded-xl flex flex-col gap-2 text-xs shadow-xs">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-blue-950 flex items-center gap-1.5">
+                      <MousePointerClick className="w-4 h-4 text-blue-600" />
+                      Select Dates to Override
+                    </span>
+                    <span className="text-[11px] text-blue-700 hidden sm:inline">
+                      Click rows/dates. Hold <kbd className="px-1 py-0.5 bg-white border border-blue-200 rounded font-mono text-[10px]">Shift</kbd> for range, <kbd className="px-1 py-0.5 bg-white border border-blue-200 rounded font-mono text-[10px]">Ctrl</kbd> for multi-select.
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5 ml-auto flex-wrap">
                     <button
                       type="button"
-                      className="btn btn-xs text-[11px] text-red-600 hover:text-red-700 hover:bg-red-50 bg-white border border-red-200"
-                      onClick={() => setSelectedDates([])}
+                      className="btn btn-secondary btn-xs text-[11px] font-semibold text-blue-700 bg-white hover:bg-blue-50"
+                      onClick={() => setSelectedDates([...allWeekdayDates])}
                     >
-                      Clear ({selectedDates.length})
+                      Select Weekdays
                     </button>
-                  )}
-                  {selectedDates.length > 0 && (
                     <button
                       type="button"
-                      id="override-selected-dates-toolbar-btn"
-                      className="btn btn-primary btn-xs text-xs font-bold bg-blue-700 hover:bg-blue-800 text-white shadow-xs flex items-center gap-1.5"
-                      onClick={handleOpenMultiOverrideModal}
+                      className="btn btn-secondary btn-xs text-[11px] font-semibold text-slate-700 bg-white hover:bg-slate-100"
+                      onClick={handleSelectAllToggle}
                     >
-                      <Calendar className="w-3.5 h-3.5" />
-                      Override {selectedDates.length} Date{selectedDates.length > 1 ? 's' : ''}
+                      {selectedDates.length === allMonthDates.length ? 'Deselect All' : 'Select All Month'}
                     </button>
-                  )}
+                    <button
+                      type="button"
+                      className={`btn btn-secondary btn-xs text-[11px] font-semibold flex items-center gap-1 ${
+                        tableRangeOpen ? 'bg-blue-100 text-blue-800 border-blue-300' : 'text-blue-700 bg-white hover:bg-blue-50'
+                      }`}
+                      onClick={() => setTableRangeOpen(prev => !prev)}
+                    >
+                      <CalendarRange className="w-3.5 h-3.5" />
+                      {tableRangeOpen ? 'Hide Range' : 'Select Range...'}
+                    </button>
+                    {selectedDates.length > 0 && (
+                      <button
+                        type="button"
+                        className="btn btn-xs text-[11px] text-red-600 hover:text-red-700 hover:bg-red-50 bg-white border border-red-200"
+                        onClick={() => setSelectedDates([])}
+                      >
+                        Clear ({selectedDates.length})
+                      </button>
+                    )}
+                    {selectedDates.length > 0 && (
+                      <button
+                        type="button"
+                        id="override-selected-dates-toolbar-btn"
+                        className="btn btn-primary btn-xs text-xs font-bold bg-blue-700 hover:bg-blue-800 text-white shadow-xs flex items-center gap-1.5"
+                        onClick={handleOpenMultiOverrideModal}
+                      >
+                        <Calendar className="w-3.5 h-3.5" />
+                        Override {selectedDates.length} Date{selectedDates.length > 1 ? 's' : ''}
+                      </button>
+                    )}
+                  </div>
                 </div>
+
+                {/* Expandable Date Range Selector for DTR Table */}
+                {tableRangeOpen && (
+                  <div className="pt-2 border-t border-blue-200/70 flex flex-wrap items-center gap-2.5 animate-fade-in bg-white/70 p-2 rounded-lg">
+                    <span className="font-bold text-slate-700 text-xs flex items-center gap-1">
+                      <CalendarRange className="w-3.5 h-3.5 text-blue-600" />
+                      Select Range:
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-slate-500 font-semibold text-[11px]">From:</span>
+                      <input
+                        type="date"
+                        className="form-input text-xs py-1 px-2 font-semibold text-gray-800 w-auto"
+                        value={tableRangeFrom}
+                        onChange={(e) => setTableRangeFrom(e.target.value)}
+                      />
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-slate-500 font-semibold text-[11px]">To:</span>
+                      <input
+                        type="date"
+                        className="form-input text-xs py-1 px-2 font-semibold text-gray-800 w-auto"
+                        value={tableRangeTo}
+                        onChange={(e) => setTableRangeTo(e.target.value)}
+                      />
+                    </div>
+                    <label className="flex items-center gap-1 text-[11px] text-slate-700 font-medium cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={tableRangeExcludeWeekends}
+                        onChange={(e) => setTableRangeExcludeWeekends(e.target.checked)}
+                        className="rounded text-blue-600 focus:ring-blue-500 text-xs"
+                      />
+                      Exclude weekends
+                    </label>
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-xs text-xs font-bold bg-blue-700 hover:bg-blue-800 text-white ml-auto"
+                      onClick={() => {
+                        const range = generateDateRange(tableRangeFrom, tableRangeTo, tableRangeExcludeWeekends);
+                        if (range.length === 0) {
+                          toast.error('No dates found in the specified range');
+                          return;
+                        }
+                        setSelectedDates(range);
+                        toast.success(`Selected ${range.length} date(s)`);
+                      }}
+                    >
+                      Apply Selection
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 
@@ -520,7 +644,7 @@ export default function AdminDTRViewer() {
       )}
 
       {/* Override Single / Multi-Day Modal */}
-      {overrideModalOpen && datesForOverrideModal.length > 0 && (
+      {overrideModalOpen && (datesForOverrideModal.length > 0 || overrideDateMode === 'range') && (
         <Modal
           isOpen={overrideModalOpen}
           onClose={() => setOverrideModalOpen(false)}
@@ -530,7 +654,7 @@ export default function AdminDTRViewer() {
                 Set Attendance Status
               </span>
               <span className="text-xs bg-blue-100 text-blue-800 font-bold px-2.5 py-0.5 rounded-full">
-                {datesForOverrideModal.length === 1 ? datesForOverrideModal[0] : `${datesForOverrideModal.length} Dates`}
+                {effectiveOverrideDates.length === 1 ? effectiveOverrideDates[0] : `${effectiveOverrideDates.length} Dates`}
               </span>
             </div>
           }
@@ -554,6 +678,8 @@ export default function AdminDTRViewer() {
                     ? 'bg-yellow-600 hover:bg-yellow-700 text-white'
                     : overrideForm.type === 'suspended'
                     ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                    : overrideForm.type === 'school'
+                    ? 'bg-purple-600 hover:bg-purple-700 text-white'
                     : overrideForm.type === 'excused'
                     ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
                     : overrideForm.type === 'none'
@@ -561,39 +687,44 @@ export default function AdminDTRViewer() {
                     : 'btn-primary'
                 }`}
                 onClick={handleSaveOverride}
-                disabled={savingOverride}
+                disabled={savingOverride || effectiveOverrideDates.length === 0}
               >
                 {savingOverride ? (
                   'Saving...'
                 ) : overrideForm.type === 'absent' ? (
                   <>
                     <UserX className="w-3.5 h-3.5" />
-                    Set {datesForOverrideModal.length > 1 ? `${datesForOverrideModal.length} Dates` : 'Date'} as Absent
+                    Set {effectiveOverrideDates.length > 1 ? `${effectiveOverrideDates.length} Dates` : 'Date'} as Absent
                   </>
                 ) : overrideForm.type === 'holiday' ? (
                   <>
                     <Calendar className="w-3.5 h-3.5" />
-                    Set {datesForOverrideModal.length > 1 ? `${datesForOverrideModal.length} Dates` : 'Date'} as Holiday
+                    Set {effectiveOverrideDates.length > 1 ? `${effectiveOverrideDates.length} Dates` : 'Date'} as Holiday
                   </>
                 ) : overrideForm.type === 'suspended' ? (
                   <>
                     <CloudRain className="w-3.5 h-3.5" />
-                    Set {datesForOverrideModal.length > 1 ? `${datesForOverrideModal.length} Dates` : 'Date'} as Suspended
+                    Set {effectiveOverrideDates.length > 1 ? `${effectiveOverrideDates.length} Dates` : 'Date'} as Suspended
+                  </>
+                ) : overrideForm.type === 'school' ? (
+                  <>
+                    <GraduationCap className="w-3.5 h-3.5" />
+                    Set {effectiveOverrideDates.length > 1 ? `${effectiveOverrideDates.length} Dates` : 'Date'} as School Class / F2F
                   </>
                 ) : overrideForm.type === 'excused' ? (
                   <>
                     <CheckCircle className="w-3.5 h-3.5" />
-                    Set {datesForOverrideModal.length > 1 ? `${datesForOverrideModal.length} Dates` : 'Date'} as Excused
+                    Set {effectiveOverrideDates.length > 1 ? `${effectiveOverrideDates.length} Dates` : 'Date'} as Excused
                   </>
                 ) : overrideForm.type === 'none' ? (
                   <>
                     <RotateCcw className="w-3.5 h-3.5" />
-                    Reset {datesForOverrideModal.length > 1 ? `${datesForOverrideModal.length} Dates` : 'Date'}
+                    Reset {effectiveOverrideDates.length > 1 ? `${effectiveOverrideDates.length} Dates` : 'Date'}
                   </>
                 ) : (
                   <>
                     <Check className="w-3.5 h-3.5" />
-                    Apply Override ({datesForOverrideModal.length})
+                    Apply Override ({effectiveOverrideDates.length})
                   </>
                 )}
               </button>
@@ -611,74 +742,200 @@ export default function AdminDTRViewer() {
               </div>
               <div className="text-right">
                 <span className="font-bold text-blue-700 block text-xs">
-                  {datesForOverrideModal.length} Date{datesForOverrideModal.length > 1 ? 's' : ''} Selected
+                  {effectiveOverrideDates.length} Date{effectiveOverrideDates.length > 1 ? 's' : ''} Selected
                 </span>
               </div>
             </div>
 
-            {/* Target Dates to Override — multi-date chips and inline date add */}
-            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-xs text-slate-800">
-                  Target Date(s) to Override ({datesForOverrideModal.length}):
-                </span>
-                <span className="text-[11px] text-slate-500">
-                  Click &times; to remove, or add dates below
-                </span>
-              </div>
-
-              {/* Date Chips */}
-              <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
-                {datesForOverrideModal.map(d => (
-                  <span
-                    key={d}
-                    className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg font-mono text-xs font-bold bg-white text-slate-800 border border-slate-300 shadow-2xs"
-                  >
-                    {d}
-                    {datesForOverrideModal.length > 1 && (
-                      <button
-                        type="button"
-                        className="text-slate-400 hover:text-red-600 transition-colors font-bold text-sm leading-none"
-                        onClick={() => setDatesForOverrideModal(prev => prev.filter(x => x !== d))}
-                        title="Remove date"
-                      >
-                        &times;
-                      </button>
-                    )}
+            {/* Target Dates to Override with Mode Selector Tabs */}
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200/80 pb-2">
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-xs text-slate-800">
+                    Target Date(s) to Override ({effectiveOverrideDates.length})
                   </span>
-                ))}
+                  {effectiveOverrideDates.length > 0 && (
+                    <span className="text-[11px] font-semibold text-blue-700 bg-blue-100/70 px-2 py-0.5 rounded-full">
+                      {effectiveOverrideDates.length} date{effectiveOverrideDates.length === 1 ? '' : 's'}
+                    </span>
+                  )}
+                </div>
+
+                {/* Mode Selector Tabs */}
+                <div className="flex items-center gap-1 p-0.5 bg-slate-200/70 rounded-lg self-start sm:self-auto">
+                  <button
+                    type="button"
+                    className={`px-2.5 py-1 text-xs rounded-md transition-all ${
+                      overrideDateMode === 'single'
+                        ? 'bg-white text-blue-700 font-bold shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-900 font-medium'
+                    }`}
+                    onClick={() => setOverrideDateMode('single')}
+                  >
+                    Single Date
+                  </button>
+                  <button
+                    type="button"
+                    className={`px-2.5 py-1 text-xs rounded-md transition-all flex items-center gap-1 ${
+                      overrideDateMode === 'range'
+                        ? 'bg-white text-blue-700 font-bold shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-900 font-medium'
+                    }`}
+                    onClick={() => setOverrideDateMode('range')}
+                  >
+                    <CalendarRange className="w-3.5 h-3.5" />
+                    Date Range (From &rarr; To)
+                  </button>
+                  <button
+                    type="button"
+                    className={`px-2.5 py-1 text-xs rounded-md transition-all ${
+                      overrideDateMode === 'multi'
+                        ? 'bg-white text-blue-700 font-bold shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-900 font-medium'
+                    }`}
+                    onClick={() => setOverrideDateMode('multi')}
+                  >
+                    Custom List
+                  </button>
+                </div>
               </div>
 
-              {/* Add Date Inline */}
-              <div className="flex items-center gap-2 pt-1 border-t border-slate-200/60">
-                <input
-                  type="date"
-                  className="form-input text-xs py-1 px-2 font-medium w-auto"
-                  value={newDateInput}
-                  onChange={e => {
-                    const val = e.target.value;
-                    setNewDateInput(val);
-                    if (datesForOverrideModal.length <= 1 && val) {
-                      setDatesForOverrideModal([val]);
-                    }
-                  }}
-                />
-                <button
-                  type="button"
-                  className="btn btn-secondary btn-xs text-xs font-semibold py-1 px-2.5 text-blue-700 bg-blue-50/50 hover:bg-blue-100/60 border-blue-200"
-                  onClick={() => {
-                    if (newDateInput && !datesForOverrideModal.includes(newDateInput)) {
-                      setDatesForOverrideModal(prev => [...prev, newDateInput].sort());
-                      setNewDateInput('');
-                    } else if (datesForOverrideModal.includes(newDateInput)) {
-                      toast.error('Date already added');
-                    }
-                  }}
-                  disabled={!newDateInput || datesForOverrideModal.includes(newDateInput)}
-                >
-                  + Add Date
-                </button>
-              </div>
+              {/* Mode 1: Single Date */}
+              {overrideDateMode === 'single' && (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <input
+                    type="date"
+                    className="form-input text-xs py-1.5 px-3 font-semibold text-gray-800 w-full sm:w-auto min-w-[200px]"
+                    value={newDateInput || datesForOverrideModal[0] || getPhtTodayKey()}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val) {
+                        setDatesForOverrideModal([val]);
+                        setNewDateInput(val);
+                        setRangeFrom(val);
+                        setRangeTo(val);
+                      }
+                    }}
+                    required
+                  />
+                  <span className="text-xs text-slate-500 font-medium">
+                    Choose a single calendar date to override
+                  </span>
+                </div>
+              )}
+
+              {/* Mode 2: Date Range (From -> To) */}
+              {overrideDateMode === 'range' && (
+                <div className="space-y-2.5">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs font-bold text-slate-700">From:</span>
+                      <input
+                        type="date"
+                        className="form-input text-xs py-1.5 px-2.5 font-semibold text-gray-800 w-auto"
+                        value={rangeFrom}
+                        onChange={(e) => setRangeFrom(e.target.value)}
+                        required
+                      />
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs font-bold text-slate-700">To:</span>
+                      <input
+                        type="date"
+                        className="form-input text-xs py-1.5 px-2.5 font-semibold text-gray-800 w-auto"
+                        value={rangeTo}
+                        onChange={(e) => setRangeTo(e.target.value)}
+                        required
+                      />
+                    </div>
+                    <label className="flex items-center gap-1.5 text-xs text-slate-700 font-medium cursor-pointer select-none bg-white px-2.5 py-1.5 rounded-lg border border-slate-200">
+                      <input
+                        type="checkbox"
+                        checked={excludeWeekends}
+                        onChange={(e) => setExcludeWeekends(e.target.checked)}
+                        className="rounded text-blue-600 focus:ring-blue-500"
+                      />
+                      Exclude weekends (Sat &amp; Sun)
+                    </label>
+                  </div>
+
+                  {/* Range Preview Chips */}
+                  {effectiveOverrideDates.length > 0 ? (
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between text-xs text-slate-600">
+                        <span>
+                          Generated <strong>{effectiveOverrideDates.length}</strong> date(s) between {rangeFrom} and {rangeTo}:
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto p-1.5 bg-white rounded-lg border border-slate-200">
+                        {effectiveOverrideDates.map(d => (
+                          <span
+                            key={d}
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md font-mono text-[11px] font-bold bg-blue-50 text-blue-900 border border-blue-200"
+                          >
+                            {d}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-2 bg-amber-50 border border-amber-200 text-amber-800 rounded-lg text-xs">
+                      Please choose a valid From and To date.
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Mode 3: Custom List */}
+              {overrideDateMode === 'multi' && (
+                <div className="space-y-2">
+                  <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto p-1.5 bg-white rounded-lg border border-slate-200">
+                    {datesForOverrideModal.map(d => (
+                      <span
+                        key={d}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg font-mono text-xs font-bold bg-slate-100 text-slate-800 border border-slate-300 shadow-2xs"
+                      >
+                        {d}
+                        {datesForOverrideModal.length > 1 && (
+                          <button
+                            type="button"
+                            className="text-slate-400 hover:text-red-600 transition-colors font-bold text-sm leading-none ml-1"
+                            onClick={() => setDatesForOverrideModal(prev => prev.filter(x => x !== d))}
+                            title="Remove date"
+                          >
+                            &times;
+                          </button>
+                        )}
+                      </span>
+                    ))}
+                  </div>
+
+                  {/* Add Date Inline */}
+                  <div className="flex items-center gap-2 pt-1 border-t border-slate-200/60">
+                    <input
+                      type="date"
+                      className="form-input text-xs py-1 px-2 font-medium w-auto"
+                      value={newDateInput}
+                      onChange={e => setNewDateInput(e.target.value)}
+                    />
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-xs text-xs font-semibold py-1 px-2.5 text-blue-700 bg-blue-50/50 hover:bg-blue-100/60 border-blue-200"
+                      onClick={() => {
+                        if (newDateInput && !datesForOverrideModal.includes(newDateInput)) {
+                          setDatesForOverrideModal(prev => [...prev, newDateInput].sort());
+                          setNewDateInput('');
+                        } else if (datesForOverrideModal.includes(newDateInput)) {
+                          toast.error('Date already added');
+                        }
+                      }}
+                      disabled={!newDateInput || datesForOverrideModal.includes(newDateInput)}
+                    >
+                      + Add Date
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Status Option Grid */}
@@ -744,6 +1001,26 @@ export default function AdminDTRViewer() {
                   <div>
                     <p className="font-bold text-xs">Suspended</p>
                     <p className="text-[10px] text-slate-500 leading-tight">Typhoon/weather</p>
+                  </div>
+                </button>
+
+                {/* School Face to Face / Class Option */}
+                <button
+                  type="button"
+                  className={`p-2.5 rounded-xl border text-left transition-all flex flex-col justify-between ${
+                    overrideForm.type === 'school'
+                      ? 'border-purple-500 bg-purple-50 text-purple-950 ring-2 ring-purple-400 font-bold shadow-xs'
+                      : 'border-slate-200 hover:bg-slate-50 text-slate-700'
+                  }`}
+                  onClick={() => setOverrideForm(f => ({ ...f, type: 'school', hours: 0, remarks: f.remarks || 'University Face-to-Face Class' }))}
+                >
+                  <div className="flex items-center justify-between w-full mb-1">
+                    <GraduationCap className={`w-4 h-4 ${overrideForm.type === 'school' ? 'text-purple-600' : 'text-slate-500'}`} />
+                    <span className="text-[10px] px-1.5 py-0.5 rounded font-mono bg-purple-100 text-purple-800">0.0h</span>
+                  </div>
+                  <div>
+                    <p className="font-bold text-xs">School F2F / Class</p>
+                    <p className="text-[10px] text-slate-500 leading-tight">Face-to-face class</p>
                   </div>
                 </button>
 
@@ -833,6 +1110,8 @@ export default function AdminDTRViewer() {
                     ? 'Holiday Name / Banner Label'
                     : overrideForm.type === 'absent'
                     ? 'Absent Reason / Remarks'
+                    : overrideForm.type === 'school'
+                    ? 'School / Subject / Class Reason'
                     : 'Reason / Remarks'}
                 </label>
                 
@@ -853,7 +1132,7 @@ export default function AdminDTRViewer() {
 
                 {overrideForm.type === 'absent' && (
                   <div className="flex flex-wrap gap-1.5 mb-2">
-                    {['Sick Leave', 'Unexcused Absence', 'Family Emergency', 'School Event'].map((preset) => (
+                    {['Sick Leave', 'Unexcused Absence', 'Family Emergency', 'Personal Matter'].map((preset) => (
                       <button
                         key={preset}
                         type="button"
@@ -881,6 +1160,21 @@ export default function AdminDTRViewer() {
                   </div>
                 )}
 
+                {overrideForm.type === 'school' && (
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {['University Face-to-Face Class', 'Academic Exam / Midterms', 'School Laboratory / Thesis', 'Official Class Schedule'].map((preset) => (
+                      <button
+                        key={preset}
+                        type="button"
+                        className="px-2 py-0.5 bg-purple-50 hover:bg-purple-100 text-purple-900 border border-purple-200 rounded text-[11px] font-medium"
+                        onClick={() => setOverrideForm(f => ({ ...f, remarks: preset }))}
+                      >
+                        + {preset}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
                 <input
                   type="text"
                   className="form-input text-xs"
@@ -893,6 +1187,8 @@ export default function AdminDTRViewer() {
                       ? "e.g. Special Non-Working Holiday, Bonifacio Day (Default: Holiday)"
                       : overrideForm.type === 'suspended'
                       ? "e.g. Typhoon Suspension, Heavy Rain"
+                      : overrideForm.type === 'school'
+                      ? "e.g. University Face-to-Face Class, Midterm Exam, Major Subject"
                       : overrideForm.type === 'excused'
                       ? "e.g. ITMS General Assembly, Official school event"
                       : "Optional remarks or label..."

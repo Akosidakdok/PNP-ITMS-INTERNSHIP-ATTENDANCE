@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Calendar,
+  CalendarRange,
   Users,
   CheckSquare,
   Square,
@@ -12,7 +13,8 @@ import {
   UserX,
   CloudRain,
   CheckCircle,
-  RotateCcw
+  RotateCcw,
+  GraduationCap
 } from 'lucide-react';
 import Modal from '../common/Modal.jsx';
 import api from '../../utils/api.js';
@@ -23,6 +25,30 @@ import { divisionLabel } from '../../utils/display.js';
 const getPhtTodayKey = () => {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila' }).format(new Date());
 };
+
+function generateDateRange(fromStr, toStr, excludeWeekends = false) {
+  if (!fromStr || !toStr) return [];
+  const start = new Date(fromStr + 'T00:00:00');
+  const end = new Date(toStr + 'T00:00:00');
+  if (isNaN(start.getTime()) || isNaN(end.getTime())) return [];
+
+  const minDate = start <= end ? start : end;
+  const maxDate = start <= end ? end : start;
+
+  const res = [];
+  const curr = new Date(minDate);
+  while (curr <= maxDate) {
+    const dayOfWeek = curr.getDay(); // 0 is Sunday, 6 is Saturday
+    if (!excludeWeekends || (dayOfWeek >= 1 && dayOfWeek <= 5)) {
+      const y = curr.getFullYear();
+      const m = String(curr.getMonth() + 1).padStart(2, '0');
+      const d = String(curr.getDate()).padStart(2, '0');
+      res.push(`${y}-${m}-${d}`);
+    }
+    curr.setDate(curr.getDate() + 1);
+  }
+  return res;
+}
 
 const OVERRIDE_OPTIONS = [
   {
@@ -56,6 +82,17 @@ const OVERRIDE_OPTIONS = [
     icon: CloudRain,
     iconColor: 'text-blue-600',
     activeClass: 'border-blue-500 bg-blue-50 text-blue-950 ring-2 ring-blue-400 font-bold shadow-xs',
+    defaultHours: 0,
+  },
+  {
+    type: 'school',
+    title: 'School F2F / Class',
+    badge: '0.0h',
+    badgeClass: 'bg-purple-100 text-purple-800',
+    desc: 'Face-to-face class',
+    icon: GraduationCap,
+    iconColor: 'text-purple-600',
+    activeClass: 'border-purple-500 bg-purple-50 text-purple-950 ring-2 ring-purple-400 font-bold shadow-xs',
     defaultHours: 0,
   },
   {
@@ -97,6 +134,7 @@ const PRESETS = {
   absent: ['Unexcused Absence', 'Sick Leave', 'Personal Emergency', 'No Scans Recorded'],
   holiday: ['Special Non-Working Holiday', 'Regular Holiday', 'National Holiday', 'Local Holiday'],
   suspended: ['Typhoon Suspension', 'Inclement Weather', 'Office Maintenance'],
+  school: ['University Face-to-Face Class', 'Academic Exam / Midterm', 'School Laboratory / Thesis', 'Official Class Schedule'],
   excused: ['ITMS General Assembly', 'Official School Activity', 'Authorized Duty'],
 };
 
@@ -110,9 +148,13 @@ export default function BulkDTROverrideModal({
   const [divisions, setDivisions] = useState([]);
   const [loadingData, setLoadingData] = useState(false);
 
+  const [dateSelectionMode, setDateSelectionMode] = useState('single'); // 'single' | 'range' | 'multi'
   const [dates, setDates] = useState([]);
   const [newDateInput, setNewDateInput] = useState('');
-  const [multiDateMode, setMultiDateMode] = useState(false);
+  const [rangeFrom, setRangeFrom] = useState(getPhtTodayKey());
+  const [rangeTo, setRangeTo] = useState(getPhtTodayKey());
+  const [excludeWeekends, setExcludeWeekends] = useState(true);
+
   const [overrideType, setOverrideType] = useState('suspended'); // 'absent' | 'holiday' | 'suspended' | 'excused' | 'hours' | 'others' | 'none'
   const [hours, setHours] = useState(8);
   const [remarks, setRemarks] = useState('');
@@ -134,12 +176,16 @@ export default function BulkDTROverrideModal({
     if (!isOpen) return;
 
     const startDates = Array.isArray(initialDatesRef.current) && initialDatesRef.current.length > 0
-      ? [...initialDatesRef.current]
+      ? [...initialDatesRef.current].sort()
       : [getPhtTodayKey()];
 
     setDates(startDates);
     setNewDateInput(startDates[0] || getPhtTodayKey());
-    setMultiDateMode(startDates.length > 1);
+    setRangeFrom(startDates[0] || getPhtTodayKey());
+    setRangeTo(startDates[startDates.length - 1] || getPhtTodayKey());
+    setDateSelectionMode(startDates.length > 1 ? 'multi' : 'single');
+    setExcludeWeekends(true);
+
     setOverrideType('suspended');
     setHours(8);
     setRemarks('');
@@ -164,16 +210,19 @@ export default function BulkDTROverrideModal({
 
   // Compute effective dates ensuring whatever is typed/selected is never lost
   const effectiveDates = useMemo(() => {
+    if (dateSelectionMode === 'range') {
+      return generateDateRange(rangeFrom, rangeTo, excludeWeekends);
+    }
+    if (dateSelectionMode === 'single') {
+      return newDateInput ? [newDateInput] : (dates[0] ? [dates[0]] : [getPhtTodayKey()]);
+    }
+    // 'multi'
     let result = [...dates];
-    if (newDateInput) {
-      if (!multiDateMode) {
-        result = [newDateInput];
-      } else if (!result.includes(newDateInput)) {
-        result.push(newDateInput);
-      }
+    if (newDateInput && !result.includes(newDateInput)) {
+      result.push(newDateInput);
     }
     return result.filter(Boolean).sort();
-  }, [dates, newDateInput, multiDateMode]);
+  }, [dateSelectionMode, rangeFrom, rangeTo, excludeWeekends, dates, newDateInput]);
 
   // Compute targeted intern IDs based on scope
   const targetInterns = useMemo(() => {
@@ -271,6 +320,7 @@ export default function BulkDTROverrideModal({
       case 'absent': return 'Absent (0.00h Credit)';
       case 'holiday': return 'Holiday (0.00h Credit)';
       case 'suspended': return 'Suspended (0.00h Credit)';
+      case 'school': return 'School F2F / Class (0.00h Credit)';
       case 'excused': return 'Excused (8.00h Credit)';
       case 'hours': return `Custom Hours (${hours}h Credit)`;
       case 'others': return `Other / Custom (${hours}h)`;
@@ -284,6 +334,7 @@ export default function BulkDTROverrideModal({
       case 'absent': return 'Absent Reason / Remarks';
       case 'holiday': return 'Holiday Name / Occasion';
       case 'suspended': return 'Suspension Reason';
+      case 'school': return 'School / Subject / Reason';
       case 'excused': return 'Activity / Justification';
       default: return 'Reason / Remarks';
     }
@@ -294,6 +345,7 @@ export default function BulkDTROverrideModal({
       case 'absent': return 'e.g. Unexcused absence, Mass leave, Sick leave';
       case 'holiday': return 'e.g. Special Non-Working Holiday, Bonifacio Day';
       case 'suspended': return 'e.g. Typhoon Pepito work suspension, Office maintenance';
+      case 'school': return 'e.g. University Face-to-Face Class, Midterm Exam, Major Subject F2F';
       case 'excused': return 'e.g. ITMS General Assembly, Official school activity';
       case 'others': return 'e.g. SEMINAR, HOLIDAY, FOUNDATION DAY';
       default: return 'Add an optional note...';
@@ -350,65 +402,147 @@ export default function BulkDTROverrideModal({
     >
       <form onSubmit={handleSubmit} className="space-y-4 text-xs sm:text-sm">
         {/* Target Date(s) */}
-        <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2">
-          {!multiDateMode ? (
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <label className="form-label font-bold text-gray-800 text-xs">
-                  Target Date to Override
-                </label>
-                <button
-                  type="button"
-                  className="text-[11px] text-blue-600 hover:text-blue-800 hover:underline font-semibold"
-                  onClick={() => {
-                    setMultiDateMode(true);
-                    setNewDateInput('');
-                  }}
-                >
-                  + Add More Dates (Multi-Date)
-                </button>
-              </div>
-              <div className="flex items-center gap-2">
-                <input
-                  type="date"
-                  className="form-input text-xs py-1.5 px-3 font-semibold text-gray-800 w-full sm:w-auto min-w-[200px]"
-                  value={effectiveDates[0] || getPhtTodayKey()}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    if (val) {
-                      setDates([val]);
-                      setNewDateInput(val);
-                    }
-                  }}
-                  required
-                />
-                <span className="text-xs text-slate-500 font-medium hidden sm:inline">
-                  Select the calendar date to apply this action
+        <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-2.5">
+            <div className="flex items-center gap-2">
+              <label className="form-label font-bold text-gray-800 text-xs mb-0">
+                Target Date(s) ({effectiveDates.length})
+              </label>
+              {effectiveDates.length > 0 && (
+                <span className="text-[11px] font-semibold text-blue-700 bg-blue-100/70 px-2 py-0.5 rounded-full">
+                  {effectiveDates.length} date{effectiveDates.length === 1 ? '' : 's'} selected
                 </span>
-              </div>
+              )}
             </div>
-          ) : (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <label className="form-label font-bold text-gray-800 text-xs">
-                  Target Date(s) ({effectiveDates.length})
+
+            {/* Mode Selector Tabs */}
+            <div className="flex items-center gap-1 p-0.5 bg-slate-200/70 rounded-lg self-start sm:self-auto">
+              <button
+                type="button"
+                className={`px-2.5 py-1 text-xs rounded-md transition-all ${
+                  dateSelectionMode === 'single'
+                    ? 'bg-white text-blue-700 font-bold shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900 font-medium'
+                }`}
+                onClick={() => setDateSelectionMode('single')}
+              >
+                Single Date
+              </button>
+              <button
+                type="button"
+                className={`px-2.5 py-1 text-xs rounded-md transition-all flex items-center gap-1 ${
+                  dateSelectionMode === 'range'
+                    ? 'bg-white text-blue-700 font-bold shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900 font-medium'
+                }`}
+                onClick={() => setDateSelectionMode('range')}
+              >
+                <CalendarRange className="w-3.5 h-3.5" />
+                Date Range (From &rarr; To)
+              </button>
+              <button
+                type="button"
+                className={`px-2.5 py-1 text-xs rounded-md transition-all ${
+                  dateSelectionMode === 'multi'
+                    ? 'bg-white text-blue-700 font-bold shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900 font-medium'
+                }`}
+                onClick={() => setDateSelectionMode('multi')}
+              >
+                Custom List
+              </button>
+            </div>
+          </div>
+
+          {/* Mode 1: Single Date */}
+          {dateSelectionMode === 'single' && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <input
+                type="date"
+                className="form-input text-xs py-1.5 px-3 font-semibold text-gray-800 w-full sm:w-auto min-w-[200px]"
+                value={newDateInput || dates[0] || getPhtTodayKey()}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val) {
+                    setDates([val]);
+                    setNewDateInput(val);
+                    setRangeFrom(val);
+                    setRangeTo(val);
+                  }
+                }}
+                required
+              />
+              <span className="text-xs text-slate-500 font-medium">
+                Choose the single calendar date to apply this action
+              </span>
+            </div>
+          )}
+
+          {/* Mode 2: Date Range (From -> To) */}
+          {dateSelectionMode === 'range' && (
+            <div className="space-y-2.5">
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-bold text-slate-700">From:</span>
+                  <input
+                    type="date"
+                    className="form-input text-xs py-1.5 px-2.5 font-semibold text-gray-800 w-auto"
+                    value={rangeFrom}
+                    onChange={(e) => setRangeFrom(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-bold text-slate-700">To:</span>
+                  <input
+                    type="date"
+                    className="form-input text-xs py-1.5 px-2.5 font-semibold text-gray-800 w-auto"
+                    value={rangeTo}
+                    onChange={(e) => setRangeTo(e.target.value)}
+                    required
+                  />
+                </div>
+                <label className="flex items-center gap-1.5 text-xs text-slate-700 font-medium cursor-pointer select-none bg-white px-2.5 py-1.5 rounded-lg border border-slate-200">
+                  <input
+                    type="checkbox"
+                    checked={excludeWeekends}
+                    onChange={(e) => setExcludeWeekends(e.target.checked)}
+                    className="rounded text-blue-600 focus:ring-blue-500"
+                  />
+                  Exclude weekends (Sat &amp; Sun)
                 </label>
-                <button
-                  type="button"
-                  className="text-[11px] text-blue-600 hover:text-blue-800 hover:underline font-semibold"
-                  onClick={() => {
-                    setMultiDateMode(false);
-                    if (effectiveDates.length > 0) {
-                      setDates([effectiveDates[0]]);
-                      setNewDateInput(effectiveDates[0]);
-                    }
-                  }}
-                >
-                  Switch to Single Date
-                </button>
               </div>
 
-              {/* Chips */}
+              {/* Range Preview Chips */}
+              {effectiveDates.length > 0 ? (
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between text-xs text-slate-600">
+                    <span>
+                      Selected <strong>{effectiveDates.length}</strong> date(s) between {rangeFrom} and {rangeTo}:
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto p-1.5 bg-white rounded-lg border border-slate-200">
+                    {effectiveDates.map(d => (
+                      <span
+                        key={d}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md font-mono text-[11px] font-bold bg-blue-50 text-blue-900 border border-blue-200"
+                      >
+                        {d}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="p-2 bg-amber-50 border border-amber-200 text-amber-800 rounded-lg text-xs">
+                  Please choose a valid From and To date.
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Mode 3: Custom Multi-Date List */}
+          {dateSelectionMode === 'multi' && (
+            <div className="space-y-2">
               <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto p-1.5 bg-white rounded-lg border border-slate-200">
                 {effectiveDates.map(d => (
                   <span
@@ -433,7 +567,6 @@ export default function BulkDTROverrideModal({
                 ))}
               </div>
 
-              {/* Add Date Row */}
               <div className="flex items-center gap-2 pt-1 border-t border-slate-200/60 flex-wrap">
                 <input
                   type="date"
@@ -556,6 +689,8 @@ export default function BulkDTROverrideModal({
                           ? 'bg-yellow-600 text-white border-yellow-600'
                           : overrideType === 'suspended'
                           ? 'bg-blue-600 text-white border-blue-600'
+                          : overrideType === 'school'
+                          ? 'bg-purple-600 text-white border-purple-600'
                           : 'bg-emerald-600 text-white border-emerald-600'
                         : overrideType === 'absent'
                         ? 'bg-red-50 hover:bg-red-100 text-red-800 border-red-200'
@@ -563,6 +698,8 @@ export default function BulkDTROverrideModal({
                         ? 'bg-yellow-50 hover:bg-yellow-100 text-yellow-900 border-yellow-200'
                         : overrideType === 'suspended'
                         ? 'bg-blue-50 hover:bg-blue-100 text-blue-900 border-blue-200'
+                        : overrideType === 'school'
+                        ? 'bg-purple-50 hover:bg-purple-100 text-purple-900 border-purple-200'
                         : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-200'
                     }`}
                     onClick={() => setRemarks(preset)}
