@@ -341,6 +341,10 @@ export default function DTRPrint({
           <span className="w-2 h-2 rounded-full bg-blue-600"></span>
           Suspended (Blue)
         </span>
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full font-bold bg-purple-100 text-purple-800 border border-purple-300 text-[11px]">
+          <span className="w-2 h-2 rounded-full bg-purple-600"></span>
+          School F2F (Purple)
+        </span>
       </div>
 
       {/* The printable area — horizontal scroll on mobile */}
