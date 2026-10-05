@@ -97,11 +97,47 @@ export async function initializeFaceModels() {
   return true;
 }
 
-function assessSingleFace(landmarks) {
+function estimateFaceLuminance(element, minX, maxX, minY, maxY) {
+  try {
+    let canvas;
+    if (element instanceof HTMLCanvasElement) {
+      canvas = element;
+    } else {
+      canvas = document.createElement('canvas');
+      const w = element.videoWidth || element.naturalWidth || element.width || 320;
+      const h = element.videoHeight || element.naturalHeight || element.height || 240;
+      canvas.width = Math.min(160, w);
+      canvas.height = Math.min(120, h);
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return null;
+      ctx.drawImage(element, 0, 0, canvas.width, canvas.height);
+    }
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return null;
+    const startX = Math.floor(Math.max(0, minX) * canvas.width);
+    const endX = Math.ceil(Math.min(1, maxX) * canvas.width);
+    const startY = Math.floor(Math.max(0, minY) * canvas.height);
+    const endY = Math.ceil(Math.min(1, maxY) * canvas.height);
+    const width = Math.max(1, endX - startX);
+    const height = Math.max(1, endY - startY);
+    const imgData = ctx.getImageData(startX, startY, width, height).data;
+    let sum = 0;
+    const count = imgData.length / 4;
+    for (let i = 0; i < imgData.length; i += 4) {
+      sum += (imgData[i] * 0.299) + (imgData[i + 1] * 0.587) + (imgData[i + 2] * 0.114);
+    }
+    return count > 0 ? sum / count : null;
+  } catch {
+    return null;
+  }
+}
+
+function assessSingleFace(landmarks, element = null) {
   if (!Array.isArray(landmarks) || landmarks.length < 474) {
     return {
       valid: false,
       faceCount: 1,
+      code: 'LANDMARKS_INCOMPLETE',
       error: 'Face landmarks were incomplete. Hold still and try again.'
     };
   }
@@ -122,14 +158,16 @@ function assessSingleFace(landmarks) {
   const centerX = (minX + maxX) / 2;
   const centerY = (minY + maxY) / 2;
 
-  if (faceWidth < 0.12 || faceHeight < 0.12) {
-    return { valid: false, faceCount: 1, error: 'Face too far. Move closer to the camera.' };
+  // Handheld distance checks: relaxed slightly for mobile front cameras
+  if (faceWidth < 0.10 || faceHeight < 0.10) {
+    return { valid: false, faceCount: 1, code: 'FACE_TOO_FAR', error: 'Move closer to the camera.' };
   }
-  if (faceWidth > 0.85 || faceHeight > 0.85) {
-    return { valid: false, faceCount: 1, error: 'Face too close. Move slightly back.' };
+  if (faceWidth > 0.88 || faceHeight > 0.88) {
+    return { valid: false, faceCount: 1, code: 'FACE_TOO_CLOSE', error: 'Move slightly back.' };
   }
-  if (centerX < 0.28 || centerX > 0.72 || centerY < 0.25 || centerY > 0.72) {
-    return { valid: false, faceCount: 1, error: 'Center your full face inside the oval.' };
+  // Centering tolerance accommodated for various phone aspect ratios
+  if (centerX < 0.20 || centerX > 0.80 || centerY < 0.15 || centerY > 0.85) {
+    return { valid: false, faceCount: 1, code: 'FACE_OFF_CENTER', error: 'Center your face inside the frame.' };
   }
 
   const leftEye = landmarks[33];
@@ -138,20 +176,36 @@ function assessSingleFace(landmarks) {
   const leftCheek = landmarks[234];
   const rightCheek = landmarks[454];
 
+  // Head roll angle (rotation in 2D image plane)
   const rawRoll = Math.abs(
     Math.atan2(rightEye.y - leftEye.y, rightEye.x - leftEye.x) * (180 / Math.PI)
   );
   const rollDegrees = Math.min(rawRoll, Math.abs(180 - rawRoll));
-  if (rollDegrees > 14) {
-    return { valid: false, faceCount: 1, error: 'Keep your head upright and level.' };
+  // 25 degrees tolerance for natural mobile handheld phone grip
+  if (rollDegrees > 25) {
+    return { valid: false, faceCount: 1, code: 'HEAD_TILTED', error: 'Keep your head upright and level.' };
   }
 
+  // Yaw balance (horizontal head turn)
   const leftNoseSpan = Math.abs(nose.x - leftCheek.x);
   const rightNoseSpan = Math.abs(rightCheek.x - nose.x);
   const yawBalance = Math.min(leftNoseSpan, rightNoseSpan)
     / Math.max(leftNoseSpan, rightNoseSpan, 0.0001);
-  if (yawBalance < 0.5) {
-    return { valid: false, faceCount: 1, error: 'Face the camera directly—do not turn sideways.' };
+  if (yawBalance < 0.32) {
+    return { valid: false, faceCount: 1, code: 'HEAD_TURNED', error: 'Look directly at the camera.' };
+  }
+
+  // Lighting check if element is available
+  if (element) {
+    const luminance = estimateFaceLuminance(element, minX, maxX, minY, maxY);
+    if (luminance !== null) {
+      if (luminance < 28) {
+        return { valid: false, faceCount: 1, code: 'LIGHTING_TOO_DARK', error: 'Lighting is too dark. Move to a well-lit area.' };
+      }
+      if (luminance > 245) {
+        return { valid: false, faceCount: 1, code: 'LIGHTING_TOO_BRIGHT', error: 'Lighting is too bright or overexposed.' };
+      }
+    }
   }
 
   return {
@@ -164,7 +218,7 @@ function assessSingleFace(landmarks) {
 /**
  * Analyzes an image or HTML canvas/video element for face count and edge cases.
  * @param {HTMLImageElement|HTMLCanvasElement|HTMLVideoElement} imageElement 
- * @returns {Promise<{valid: boolean, faceCount: number, error?: string, detection?: any}>}
+ * @returns {Promise<{valid: boolean, faceCount: number, error?: string, code?: string, detection?: any}>}
  */
 export async function analyzeFaceQuality(imageElement) {
   try {
@@ -175,12 +229,12 @@ export async function analyzeFaceQuality(imageElement) {
         !imageElement.videoHeight ||
         imageElement.readyState < 2 // HAVE_CURRENT_DATA
       ) {
-        return { valid: false, faceCount: 0, error: 'Camera not ready yet. Please wait...' };
+        return { valid: false, faceCount: 0, code: 'CAMERA_NOT_READY', error: 'Camera initializing. Please wait...' };
       }
     }
     if (imageElement instanceof HTMLCanvasElement) {
       if (!imageElement.width || !imageElement.height) {
-        return { valid: false, faceCount: 0, error: 'Invalid image dimensions.' };
+        return { valid: false, faceCount: 0, code: 'INVALID_IMAGE', error: 'Invalid image dimensions.' };
       }
     }
 
@@ -192,7 +246,8 @@ export async function analyzeFaceQuality(imageElement) {
       return {
         valid: false,
         faceCount: 0,
-        error: 'No face detected. Please ensure your face is clearly visible inside the camera frame.'
+        code: 'NO_FACE_DETECTED',
+        error: 'Position your face inside the camera frame.'
       };
     }
 
@@ -200,16 +255,18 @@ export async function analyzeFaceQuality(imageElement) {
       return {
         valid: false,
         faceCount: faceLandmarks.length,
-        error: 'Multiple faces detected. Please ensure only you are visible in the frame.'
+        code: 'MULTIPLE_FACES',
+        error: 'Only one person should be visible in the frame.'
       };
     }
 
-    return assessSingleFace(faceLandmarks[0]);
+    return assessSingleFace(faceLandmarks[0], imageElement);
   } catch (err) {
     console.error('Error analyzing face quality:', err);
     return {
       valid: false,
       faceCount: 0,
+      code: 'DETECTION_ERROR',
       error: `Face detection error: ${err.message || 'Failed to detect face'}`
     };
   }

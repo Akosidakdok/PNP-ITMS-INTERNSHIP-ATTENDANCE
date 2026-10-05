@@ -113,25 +113,61 @@ export default function ScanAttendance() {
         });
         await modelPromise;
         if (!active) {
-          stream.getTracks().forEach(track => track.stop());
+          stream.getTracks().forEach(track => {
+            try {
+              track.stop();
+              track.enabled = false;
+            } catch {}
+          });
           return;
         }
         streamRef.current = stream;
         if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          // Use 'canplay' instead of 'loadedmetadata' so we know frames are renderable
-          videoRef.current.oncanplay = () => {
-            videoRef.current.play().catch(() => {});
-            // Extra 500ms buffer to ensure first real frames have pixel data
-            setTimeout(() => setVideoReady(true), 500);
-            setFaceStatus({ type: 'info', message: 'Position your face inside the circle' });
+          const vid = videoRef.current;
+          vid.srcObject = stream;
+          vid.setAttribute('playsinline', 'true');
+          vid.setAttribute('webkit-playsinline', 'true');
+          vid.muted = true;
+
+          const onReady = () => {
+            if (!active) return;
+            const playPromise = vid.play();
+            if (playPromise !== undefined) {
+              playPromise
+                .then(() => {
+                  if (active) {
+                    setTimeout(() => setVideoReady(true), 300);
+                    setFaceStatus({ type: 'info', message: 'Position your face inside the circle' });
+                  }
+                })
+                .catch(() => {
+                  if (active) {
+                    setVideoReady(true);
+                    setFaceStatus({ type: 'info', message: 'Position your face inside the circle' });
+                  }
+                });
+            } else {
+              setVideoReady(true);
+              setFaceStatus({ type: 'info', message: 'Position your face inside the circle' });
+            }
           };
+
+          vid.oncanplay = onReady;
+          vid.onloadedmetadata = onReady;
         }
       } catch (cameraError) {
         console.error('Face camera initialization failed:', cameraError);
-        const message = cameraError?.name === 'NotAllowedError'
-          ? 'Camera access denied. Please allow camera permissions.'
-          : cameraError?.message || 'Face ID engine could not start.';
+        let message = 'Face ID engine could not start.';
+        if (cameraError?.name === 'NotAllowedError' || cameraError?.name === 'PermissionDeniedError') {
+          message = 'Camera access denied. Please allow camera permissions in your browser or device settings.';
+        } else if (cameraError?.name === 'NotFoundError') {
+          message = 'No front camera found on this device.';
+        } else if (cameraError?.name === 'NotReadableError') {
+          message = 'Camera is currently in use by another app. Please close other camera tabs and try again.';
+        } else if (cameraError?.message) {
+          message = cameraError.message;
+        }
+
         setFaceStatus({ type: 'rejected', message });
         toast.error(message);
         setIsCameraOpen(false);
@@ -139,10 +175,13 @@ export default function ScanAttendance() {
         setScannerActive(true);
       }
     };
-    initializeCamera();
+
+    // Small delay to ensure QR rear camera tracks have fully released hardware
+    const timer = setTimeout(initializeCamera, 150);
 
     return () => {
       active = false;
+      clearTimeout(timer);
       stopStream();
     };
   }, [isCameraOpen]);
@@ -170,10 +209,10 @@ export default function ScanAttendance() {
         const quality = await analyzeFaceQuality(videoRef.current);
 
         if (quality.valid) {
-          validFramesRef.current += 1;
+          validFramesRef.current = Math.min(3, validFramesRef.current + 1);
           setFaceStatus({
             type: 'success',
-            message: `Face detected! Hold still... (${Math.min(validFramesRef.current, 3)}/3)`
+            message: `Face detected! Hold still... (${validFramesRef.current}/3)`
           });
 
           if (validFramesRef.current >= 3) {
@@ -183,13 +222,15 @@ export default function ScanAttendance() {
             runCaptureAndSubmit();
           }
         } else {
-          validFramesRef.current = 0;
+          // Soft decay rather than violent reset to 0 to tolerate slight phone shake
+          validFramesRef.current = Math.max(0, validFramesRef.current - 1);
           setFaceStatus({
             type: 'warning',
             message: quality.error || 'Position your face inside the circle'
           });
         }
       } catch (detectionError) {
+        validFramesRef.current = Math.max(0, validFramesRef.current - 1);
         setFaceStatus({
           type: 'warning',
           message: detectionError?.message || 'Face analysis failed. Hold still and try again.'
@@ -197,7 +238,7 @@ export default function ScanAttendance() {
       } finally {
         detectionBusyRef.current = false;
       }
-    }, 500);
+    }, 450);
 
     return () => {
       if (intervalRef.current) {
@@ -337,18 +378,25 @@ export default function ScanAttendance() {
           setErrorCode('');
           validFramesRef.current = 0;
           captureLockRef.current = false;
-          navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 640 } })
+          navigator.mediaDevices.getUserMedia({
+            video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }
+          })
             .then(stream => {
               streamRef.current = stream;
               if (videoRef.current) {
-                videoRef.current.srcObject = stream;
-                videoRef.current.oncanplay = () => {
-                  videoRef.current.play().catch(() => {});
+                const vid = videoRef.current;
+                vid.srcObject = stream;
+                vid.setAttribute('playsinline', 'true');
+                vid.setAttribute('webkit-playsinline', 'true');
+                vid.muted = true;
+                const onPlay = () => {
                   setTimeout(() => {
                     setVideoReady(true);
                     setFaceStatus({ type: 'info', message: 'Position your face inside the circle' });
                   }, 300);
                 };
+                vid.oncanplay = onPlay;
+                vid.play().catch(() => {});
               }
             }).catch(cameraError => {
               setFaceStatus({
@@ -365,7 +413,7 @@ export default function ScanAttendance() {
     } finally {
       setIsProcessing(false);
     }
-  }, [tempQrCode]);
+  }, [tempQrCode, nextScanHint, user]);
 
   // ─── QR scan handler ──────────────────────────────────────────────────────
   const handleScan = async (qrCode) => {
@@ -380,11 +428,15 @@ export default function ScanAttendance() {
       toast.success(res.data.message || 'QR valid! Now scanning your face...');
       setTempQrCode(qrCode);
       setScannerActive(false);
-      setIsCameraOpen(true);
+      // Wait 200ms to allow mobile hardware to fully switch from rear to front camera
+      setTimeout(() => {
+        setIsCameraOpen(true);
+      }, 200);
     } catch (err) {
       const msg = err?.response?.data?.error || 'QR validation failed. Please try again.';
       setError(msg);
       toast.error(msg);
+      setScannerActive(true);
     } finally {
       setScanning(false);
       scanLockRef.current = false;
