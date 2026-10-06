@@ -54,9 +54,11 @@ export function adminOnlyMiddleware(req, res, next) {
 }
 
 export function superadminMiddleware(req, res, next) {
-  if (!req.user || req.user.role !== 'superadmin') {
+  const role = req.user?.role?.toLowerCase();
+  if (!req.user || (role !== 'superadmin' && role !== 'super_admin')) {
     return res.status(403).json({ error: 'Superadmin access required' });
   }
   return next();
 }
+
 

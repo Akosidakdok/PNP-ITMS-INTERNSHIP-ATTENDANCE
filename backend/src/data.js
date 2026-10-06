@@ -6,6 +6,8 @@ import { getPhtDateKey, getPhtDayBoundsUtc } from './utils/attendanceTime.js';
 import { buildDtrRecords, summarizeDtrRecords } from './utils/dtrRecords.js';
 import { getAssignedProfileForAccount } from './services/attendanceControlService.js';
 import { validateUploadFile } from './utils/fileValidation.js';
+import { getAttachmentsForLogs, deleteAttendanceAttachment } from './services/attendanceAttachmentService.js';
+
 
 const INTERN_ROLE = 'intern';
 const ADMIN_ROLE = 'admin';
@@ -1069,12 +1071,23 @@ export async function getAttendanceLogs({ status, date, page = 1, limit = 15, di
     }
   }
 
+  const attendanceLogIds = (data || []).map(log => log.id).filter(Boolean);
+  let attachmentsMap = {};
+  try {
+    attachmentsMap = await getAttachmentsForLogs(attendanceLogIds);
+  } catch (attErr) {
+    console.warn('Could not load attendance attachments:', attErr.message);
+  }
+
   const mappedData = (data || []).map(log => {
     const accObj = accountsMap[log.intern_id];
     const photo = log.attendance_photos?.[0]?.photo || null;
+    const attachment = attachmentsMap[log.id] || null;
     return {
       ...log,
       photo,
+      attachment,
+      has_attachment: Boolean(attachment),
       full_name: accObj?.full_name || log.intern_name,
       division_name: accObj?.division_name,
       department_name: accObj?.division_name
@@ -1148,6 +1161,12 @@ export async function removeRejectedAttendanceForRescan(attendanceId) {
 
   if (photoDeleteError) throw photoDeleteError;
 
+  try {
+    await deleteAttendanceAttachment({ attendanceId: attendance.id, user: null, skipAudit: true });
+  } catch (attErr) {
+    console.warn('Failed to clean up attachment during rescan removal:', attErr?.message);
+  }
+
   const { data: removed, error: removeError } = await supabase
     .from('attendance_logs')
     .delete()
@@ -1187,6 +1206,12 @@ export async function deleteAttendanceEntry(attendanceId) {
     .eq('attendance_log_id', normalizedId);
 
   if (photoDeleteError) throw photoDeleteError;
+
+  try {
+    await deleteAttendanceAttachment({ attendanceId: normalizedId, user: null, skipAudit: true });
+  } catch (attErr) {
+    console.warn('Failed to clean up attachment during attendance entry deletion:', attErr?.message);
+  }
 
   const { data: removed, error: removeError } = await supabase
     .from('attendance_logs')

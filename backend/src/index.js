@@ -30,6 +30,12 @@ import {
   getDtrEditHistory,
 } from './services/attendanceControlService.js';
 import {
+  getAttendanceAttachment,
+  saveAttendanceAttachment,
+  deleteAttendanceAttachment,
+} from './services/attendanceAttachmentService.js';
+
+import {
   getAdminDashboardStats,
   getDivisions,
   createDivision,
@@ -146,6 +152,19 @@ const uploadSingle = fieldName => (req, res, next) => upload.single(fieldName)(r
   }
   return next();
 });
+
+const ATTENDANCE_ATTACHMENT_MAX_BYTES = 5 * 1024 * 1024; // 5 MB
+const uploadAttachment = multer({ storage, limits: { fileSize: ATTENDANCE_ATTACHMENT_MAX_BYTES, files: 1 } });
+const uploadAttachmentSingle = fieldName => (req, res, next) => uploadAttachment.single(fieldName)(req, res, error => {
+  if (error) {
+    const message = error.code === 'LIMIT_FILE_SIZE'
+      ? 'Image is too large. Maximum file size is 5 MB.'
+      : error.message || 'Invalid file upload';
+    return res.status(error.code === 'LIMIT_FILE_SIZE' ? 400 : 400).json({ error: message });
+  }
+  return next();
+});
+
 const SELF_PROFILE_FIELDS = new Set([
   'email',
   'phone',
@@ -320,6 +339,97 @@ app.patch('/attendance/:id/:action', authMiddleware, adminMiddleware, async (req
     return res.status(error.statusCode || 500).json({ error: error.message });
   }
 });
+
+// GET /attendance/:attendanceId/image - Retrieve manual attendance image attachment (Admin, Supervisor, Superadmin)
+app.get('/attendance/:attendanceId/image', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const attendanceId = Number(req.params.attendanceId);
+    if (!attendanceId) {
+      return res.status(400).json({ error: 'Valid attendance ID is required' });
+    }
+    const attachment = await getAttendanceAttachment(attendanceId);
+    return res.json({
+      has_image: Boolean(attachment),
+      attachment: attachment || null,
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message });
+  }
+});
+
+// POST /attendance/:attendanceId/image - Upload manual attendance image attachment (Super Admin only)
+app.post('/attendance/:attendanceId/image', authMiddleware, superadminMiddleware, uploadAttachmentSingle('image'), async (req, res) => {
+  try {
+    const attendanceId = Number(req.params.attendanceId);
+    if (!attendanceId) {
+      return res.status(400).json({ error: 'Valid attendance ID is required' });
+    }
+    if (!req.file) {
+      return res.status(400).json({ error: 'No image file uploaded' });
+    }
+    const attachment = await saveAttendanceAttachment({
+      attendanceId,
+      file: req.file,
+      user: req.user,
+      isReplace: false,
+    });
+    return res.json({
+      success: true,
+      message: 'Attendance image uploaded successfully.',
+      attachment,
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 400).json({ error: error.message });
+  }
+});
+
+// PUT /attendance/:attendanceId/image - Replace manual attendance image attachment (Super Admin only)
+app.put('/attendance/:attendanceId/image', authMiddleware, superadminMiddleware, uploadAttachmentSingle('image'), async (req, res) => {
+  try {
+    const attendanceId = Number(req.params.attendanceId);
+    if (!attendanceId) {
+      return res.status(400).json({ error: 'Valid attendance ID is required' });
+    }
+    if (!req.file) {
+      return res.status(400).json({ error: 'No image file uploaded' });
+    }
+    const attachment = await saveAttendanceAttachment({
+      attendanceId,
+      file: req.file,
+      user: req.user,
+      isReplace: true,
+    });
+    return res.json({
+      success: true,
+      message: 'Attendance image updated successfully.',
+      attachment,
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 400).json({ error: error.message });
+  }
+});
+
+// DELETE /attendance/:attendanceId/image - Remove manual attendance image attachment (Super Admin only)
+app.delete('/attendance/:attendanceId/image', authMiddleware, superadminMiddleware, async (req, res) => {
+  try {
+    const attendanceId = Number(req.params.attendanceId);
+    if (!attendanceId) {
+      return res.status(400).json({ error: 'Valid attendance ID is required' });
+    }
+    const result = await deleteAttendanceAttachment({
+      attendanceId,
+      user: req.user,
+    });
+    return res.json({
+      success: true,
+      message: 'Attendance image removed.',
+      ...result,
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message });
+  }
+});
+
 
 app.get('/divisions', authMiddleware, async (req, res) => {
   try {
