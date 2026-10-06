@@ -1560,11 +1560,43 @@ export async function setDtrOverride(internId, payload = {}) {
     if (previousOverrideIds.length === 0) {
       return { cleared: true, removed_count: 0 };
     }
+
+    try {
+      await supabase
+        .from('attendance_photos')
+        .delete()
+        .in('attendance_log_id', previousOverrideIds);
+    } catch (photoErr) {
+      console.warn('Notice deleting attendance_photos during override reset:', photoErr?.message || photoErr);
+    }
+
     const { error: removeError } = await supabase
       .from('attendance_logs')
       .delete()
       .in('id', previousOverrideIds);
     if (removeError) throw removeError;
+
+    try {
+      const remainingLogs = (existingLogs || []).filter(l => !previousOverrideIds.includes(l.id));
+      if (remainingLogs.length === 0) {
+        const { data: rec } = await supabase
+          .from('attendance_records')
+          .select('id, actual_time_in, actual_time_out')
+          .eq('account_id', internId)
+          .eq('attendance_date', singleDate)
+          .maybeSingle();
+
+        if (rec && !rec.actual_time_in && !rec.actual_time_out) {
+          await supabase
+            .from('attendance_records')
+            .delete()
+            .eq('id', rec.id);
+        }
+      }
+    } catch (cleanRecErr) {
+      console.warn('Notice cleaning attendance_records during override reset:', cleanRecErr?.message || cleanRecErr);
+    }
+
     return { cleared: true, removed_count: previousOverrideIds.length };
   }
 
@@ -1612,6 +1644,14 @@ export async function setDtrOverride(internId, payload = {}) {
     if (error) throw error;
 
     if (duplicateOverrideIds.length > 0) {
+      try {
+        await supabase
+          .from('attendance_photos')
+          .delete()
+          .in('attendance_log_id', duplicateOverrideIds);
+      } catch (photoErr) {
+        console.warn('Notice deleting attendance_photos during duplicate override cleanup:', photoErr?.message || photoErr);
+      }
       const { error: removeDuplicateError } = await supabase
         .from('attendance_logs')
         .delete()

@@ -38,9 +38,11 @@ function hoursFromMinutes(minutes) {
 }
 
 export function parseDtrOverride(remarks) {
-  if (typeof remarks !== 'string' || !remarks.startsWith('OVERRIDE:')) return null;
+  if (typeof remarks !== 'string') return null;
+  const clean = remarks.trim();
+  if (!clean.toUpperCase().startsWith('OVERRIDE:')) return null;
 
-  const parts = remarks.split(':');
+  const parts = clean.split(':');
   let type = String(parts[1] || '').trim().toUpperCase().replace(/[-\s]/g, '_');
   if (['SCHOOL_CLASS', 'SCHOOL_F2F', 'F2F', 'CLASS'].includes(type)) {
     type = 'SCHOOL';

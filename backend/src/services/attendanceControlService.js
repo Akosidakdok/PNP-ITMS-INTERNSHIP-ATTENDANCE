@@ -1190,7 +1190,7 @@ export async function deleteDtrAttendance({
 
   let targetLogs = [];
   if (target === 'override') {
-    targetLogs = allLogs.filter(l => typeof l.remarks === 'string' && l.remarks.startsWith('OVERRIDE:'));
+    targetLogs = allLogs.filter(l => typeof l.remarks === 'string' && l.remarks.trim().toUpperCase().startsWith('OVERRIDE:'));
   } else {
     // When deleting attendance ('attendance' or 'all'), remove all attendance entries for the date
     targetLogs = allLogs;
@@ -1221,9 +1221,14 @@ export async function deleteDtrAttendance({
     }
   }
 
-  // 5. Delete attendance_records row if target is 'attendance' or 'all'
+  // 5. Delete attendance_records row if target is 'attendance' or 'all',
+  // or if target is 'override' and the record contains no actual biometric scans
   let recordDeleted = false;
-  if (target === 'attendance' || target === 'all') {
+  const shouldDeleteRecord = target === 'attendance'
+    || target === 'all'
+    || (target === 'override' && !record?.actual_time_in && !record?.actual_time_out);
+
+  if (shouldDeleteRecord) {
     if (record?.id) {
       // Detach from dtr_edit_history so history is NOT cascade-deleted
       try {

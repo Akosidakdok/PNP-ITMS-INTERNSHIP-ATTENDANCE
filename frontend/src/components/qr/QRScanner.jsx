@@ -24,7 +24,7 @@ export default function QRScanner({ onScan, onError, isActive = true }) {
     }
   }, []);
 
-  // Safe scanner stopper
+  // Safe scanner stopper that completely releases hardware tracks on mobile
   const stopScanner = useCallback(async () => {
     if (isStoppingRef.current) return;
     isStoppingRef.current = true;
@@ -48,7 +48,7 @@ export default function QRScanner({ onScan, onError, isActive = true }) {
         } catch {}
       }
 
-      // Explicitly turn off any media tracks to ensure hardware release
+      // Explicitly turn off all media tracks to guarantee hardware release on iOS/Android
       const container = document.getElementById(containerIdRef.current);
       if (container) {
         const videos = container.querySelectorAll('video');
@@ -73,7 +73,7 @@ export default function QRScanner({ onScan, onError, isActive = true }) {
     }
   }, [logDebug]);
 
-  // Enumerate cameras and select rear/environment by default
+  // Enumerate cameras (best-effort)
   const discoverCameras = useCallback(async () => {
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
@@ -86,13 +86,12 @@ export default function QRScanner({ onScan, onError, isActive = true }) {
           setHasMultipleCameras(devices.length > 1);
         }
 
-        // Prefer rear/environment camera
+        // Identify rear/environment camera index if labeled
         const rearIdx = devices.findIndex(d => 
-          /back|rear|environment|posterior|reverse/i.test(d.label)
+          /back|rear|environment|posterior|reverse/i.test(d.label || '')
         );
-        const preferredIndex = rearIdx >= 0 ? rearIdx : 0;
-        if (isMountedRef.current) {
-          setCurrentCameraIndex(preferredIndex);
+        if (rearIdx >= 0 && isMountedRef.current) {
+          setCurrentCameraIndex(rearIdx);
         }
         return devices;
       }
@@ -103,8 +102,8 @@ export default function QRScanner({ onScan, onError, isActive = true }) {
     }
   }, [logDebug]);
 
-  // Main scanner starter
-  const startScanner = useCallback(async (forcedCameraId = null) => {
+  // Main scanner starter: tailored for iOS Safari, Android Chrome & PWAs
+  const startScanner = useCallback(async (forcedCameraConfig = null) => {
     if (!isActive || !isMountedRef.current) return;
     if (isStartingRef.current) return;
 
@@ -119,7 +118,7 @@ export default function QRScanner({ onScan, onError, isActive = true }) {
         throw new Error('UNSUPPORTED_BROWSER');
       }
 
-      // Check HTTPS or localhost
+      // Check secure context (HTTPS / localhost required for camera access)
       if (window.isSecureContext === false) {
         throw new Error('INSECURE_CONTEXT');
       }
@@ -133,50 +132,47 @@ export default function QRScanner({ onScan, onError, isActive = true }) {
         throw new Error('CONTAINER_NOT_FOUND');
       }
 
-      // Step 2: Enumerate devices if not already found
-      let availableCameras = cameras;
-      if (availableCameras.length === 0) {
-        availableCameras = await discoverCameras();
-      }
+      // Observe video element insertion to guarantee iOS Safari inline playback attributes
+      const videoObserver = new MutationObserver(() => {
+        const vid = targetElement.querySelector('video');
+        if (vid) {
+          vid.setAttribute('playsinline', 'true');
+          vid.setAttribute('webkit-playsinline', 'true');
+          vid.muted = true;
+          vid.setAttribute('muted', 'true');
+        }
+      });
+      videoObserver.observe(targetElement, { childList: true, subtree: true });
 
-      // Step 3: Determine camera configuration
+      // Step 2: Determine camera configuration
+      // On mobile devices, { facingMode: 'environment' } is the most robust constraint.
+      // Avoid rigid videoConstraints or forced aspectRatio that trigger OverconstrainedError on iOS Safari.
       let cameraConfig;
-      if (forcedCameraId) {
-        cameraConfig = { deviceId: { exact: forcedCameraId } };
-        activeCameraIdRef.current = forcedCameraId;
-      } else if (availableCameras.length > 0) {
-        const preferred = availableCameras[currentCameraIndex] || availableCameras[0];
-        cameraConfig = { deviceId: { exact: preferred.id } };
-        activeCameraIdRef.current = preferred.id;
+      if (forcedCameraConfig) {
+        cameraConfig = forcedCameraConfig;
       } else {
-        // Fallback constraint: prefer environment
         cameraConfig = { facingMode: 'environment' };
-        activeCameraIdRef.current = 'environment';
       }
 
       const html5Qr = new Html5Qrcode(containerIdRef.current, {
         verbose: false,
-        formatsToSupport: [0], // 0 is QR_CODE in Html5QrcodeSupportedFormats
       });
       scannerRef.current = html5Qr;
 
       logDebug('Starting scanner with config:', cameraConfig);
 
-      // Step 4: Start scanning
+      // Step 3: Start scanning
       await html5Qr.start(
         cameraConfig,
         {
-          fps: 15, // Smooth real-time detection without CPU overheating
-          aspectRatio: 1.0,
-          videoConstraints: {
-            facingMode: 'environment',
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
-          },
-          // Do not rigidly crop the scan box — allows detection anywhere on screen
+          fps: 10, // 10 fps is optimal for mobile CPU, heat & battery
           qrbox: (viewfinderWidth, viewfinderHeight) => {
-            const edge = Math.floor(Math.min(viewfinderWidth, viewfinderHeight) * 0.85);
-            return { width: Math.max(160, edge), height: Math.max(160, edge) };
+            const minDim = Math.min(viewfinderWidth, viewfinderHeight);
+            const edge = Math.floor(minDim * 0.72);
+            return {
+              width: Math.max(120, edge),
+              height: Math.max(120, edge),
+            };
           },
         },
         (decodedText) => {
@@ -184,10 +180,12 @@ export default function QRScanner({ onScan, onError, isActive = true }) {
           if (scanLockedRef.current) return;
           scanLockedRef.current = true;
 
-          logDebug('QR detected:', decodedText?.slice(0, 20));
+          logDebug('QR detected successfully:', decodedText?.slice(0, 24));
           if (isMountedRef.current) {
             setScanState('detected');
           }
+
+          videoObserver.disconnect();
 
           // Immediately stop scanner to release camera hardware for face verification
           stopScanner().then(() => {
@@ -195,15 +193,13 @@ export default function QRScanner({ onScan, onError, isActive = true }) {
           });
         },
         () => {
-          // Frame scan error callback: normal in search mode, ignore
+          // Normal frame search tick — ignore
         }
       );
 
-      if (isMountedRef.current) {
-        setScanState('scanning');
-      }
+      videoObserver.disconnect();
 
-      // Enhance video playback on iOS Safari
+      // Ensure video element plays on iOS Safari
       const vid = targetElement.querySelector('video');
       if (vid) {
         vid.setAttribute('playsinline', 'true');
@@ -211,11 +207,35 @@ export default function QRScanner({ onScan, onError, isActive = true }) {
         vid.muted = true;
         vid.play().catch(() => {});
       }
+
+      if (isMountedRef.current) {
+        setScanState('scanning');
+      }
+
+      // Asynchronously discover available cameras for switching (without blocking start)
+      if (cameras.length === 0) {
+        discoverCameras();
+      }
     } catch (err) {
       logDebug('Camera start error:', err);
-      let userMsg = 'Could not access camera. Ensure your device has a camera.';
       const errName = err?.name || '';
       const errMsg = err?.message || '';
+
+      // If OverconstrainedError occurs (e.g. device has no environment camera), fallback to user camera
+      if (errName === 'OverconstrainedError' || errMsg.includes('overconstrained')) {
+        logDebug('Environment camera overconstrained, trying user camera fallback...');
+        isStartingRef.current = false;
+        if (isMountedRef.current && isActive) {
+          try {
+            await startScanner({ facingMode: 'user' });
+            return;
+          } catch (fallbackErr) {
+            logDebug('User camera fallback failed:', fallbackErr);
+          }
+        }
+      }
+
+      let userMsg = 'Could not access camera. Ensure your device has an active camera.';
 
       if (
         errName === 'NotAllowedError' ||
@@ -236,15 +256,6 @@ export default function QRScanner({ onScan, onError, isActive = true }) {
         errMsg.includes('already in use')
       ) {
         userMsg = 'Camera is currently in use by another app or tab. Please close other camera apps and try again.';
-      } else if (errName === 'OverconstrainedError') {
-        userMsg = 'Selected camera settings not supported. Trying fallback camera...';
-        // Auto-retry with simple environment constraint
-        setTimeout(() => {
-          if (isMountedRef.current && isActive) {
-            startScanner('fallback-environment');
-          }
-        }, 600);
-        return;
       } else if (errMsg === 'INSECURE_CONTEXT') {
         userMsg = 'Camera access requires a secure HTTPS connection or localhost.';
       } else if (errMsg === 'UNSUPPORTED_BROWSER') {
@@ -267,8 +278,8 @@ export default function QRScanner({ onScan, onError, isActive = true }) {
     const nextIdx = (currentCameraIndex + 1) % cameras.length;
     setCurrentCameraIndex(nextIdx);
     const nextCamera = cameras[nextIdx];
-    logDebug('Switching to camera:', nextCamera.label || nextCamera.id);
-    await startScanner(nextCamera.id);
+    logDebug('Switching camera to:', nextCamera.label || nextCamera.id);
+    await startScanner({ deviceId: { exact: nextCamera.id } });
   }, [cameras, currentCameraIndex, logDebug, startScanner]);
 
   // Auto-start when isActive becomes true; stop when false
@@ -291,10 +302,10 @@ export default function QRScanner({ onScan, onError, isActive = true }) {
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'hidden') {
-        logDebug('App hidden/backgrounded — pausing scanner');
+        logDebug('App hidden/backgrounded — releasing camera');
         stopScanner();
       } else if (document.visibilityState === 'visible' && isActive) {
-        logDebug('App foregrounded/active — restarting fresh scanner');
+        logDebug('App foregrounded/active — restarting camera');
         setTimeout(() => {
           if (isMountedRef.current && isActive) {
             startScanner();
@@ -313,7 +324,7 @@ export default function QRScanner({ onScan, onError, isActive = true }) {
     <div className="qr-scanner animate-fade-in">
       {/* Camera Viewport Container */}
       <div className="qr-scanner-container relative rounded-2xl overflow-hidden bg-black shadow-inner border border-gray-800">
-        <div id={containerIdRef.current} className="qr-reader-surface w-full" />
+        <div id={containerIdRef.current} className="qr-reader-surface w-full min-h-[280px]" />
 
         {/* State 1: Initializing */}
         {scanState === 'initializing' && (
@@ -337,6 +348,7 @@ export default function QRScanner({ onScan, onError, isActive = true }) {
               </p>
             </div>
             <button
+              type="button"
               onClick={() => startScanner()}
               className="btn btn-primary px-6 py-2.5 text-sm font-semibold rounded-xl mt-2 flex items-center gap-2 shadow-lg"
             >

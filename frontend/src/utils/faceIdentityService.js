@@ -3,15 +3,14 @@ export const FACE_DESCRIPTOR_LENGTH = 1024;
 export const FACE_SAMPLE_COUNT = 3;
 export const FACE_CAPTURE_FRAME_COUNT = 6;
 
-const MIN_FACE_CONFIDENCE = 0.55;
-const MIN_REAL_SAMPLE_SCORE = 0.18;
-const MIN_LIVE_SAMPLE_SCORE = 0.12;
-const MIN_REAL_AVERAGE = 0.26;
-const MIN_LIVE_AVERAGE = 0.18;
-const MAX_HEAD_ANGLE_RADIANS = 0.48; // ~27.5 degrees (accommodates mobile handheld phone grip)
-const MIN_SAMPLE_CONSISTENCY = 0.60;
-const MIN_SEQUENCE_PEAK_MOTION = 0.003;
-const MIN_SEQUENCE_AVERAGE_MOTION = 0.001;
+// Tuned for reliable mobile (iOS & Android) handheld scanning across varying lighting
+const MIN_FACE_CONFIDENCE = 0.45;
+const MIN_REAL_SAMPLE_SCORE = 0.10;
+const MIN_LIVE_SAMPLE_SCORE = 0.08;
+const MIN_REAL_AVERAGE = 0.18;
+const MIN_LIVE_AVERAGE = 0.12;
+const MAX_HEAD_ANGLE_RADIANS = 0.52; // ~30 degrees (natural phone grip)
+const MIN_SAMPLE_CONSISTENCY = 0.50; // consistent with backend threshold
 
 const appBase = import.meta.env.BASE_URL || '/';
 const normalizedBase = appBase.endsWith('/') ? appBase : `${appBase}/`;
@@ -44,7 +43,7 @@ const identityConfig = {
       enabled: true,
       skipFrames: 0,
       skipTime: 0,
-      minConfidence: 0.5,
+      minConfidence: 0.45,
     },
     antispoof: {
       enabled: true,
@@ -69,13 +68,70 @@ const identityConfig = {
 let identityEngine = null;
 let identityInitializationPromise = null;
 
+// Reusable canvas to avoid allocating memory on every frame on mobile
+let reusableFrameCanvas = null;
+
+/**
+ * Converts a video element or canvas into a safe 2D canvas for WebGL texture reading.
+ * On iOS Safari, passing a video element directly to WebGL texImage2D frequently fails
+ * due to WebKit texture synchronization bugs; drawing to a 2D canvas first is 100% reliable.
+ */
+export function getFrameCanvas(source) {
+  if (!source) return null;
+  if (source instanceof HTMLCanvasElement) return source;
+
+  if (source instanceof HTMLVideoElement) {
+    if (!source.videoWidth || !source.videoHeight || source.readyState < 2) {
+      return null;
+    }
+    if (!reusableFrameCanvas) {
+      reusableFrameCanvas = document.createElement('canvas');
+    }
+    reusableFrameCanvas.width = source.videoWidth;
+    reusableFrameCanvas.height = source.videoHeight;
+    const ctx = reusableFrameCanvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return null;
+    ctx.drawImage(source, 0, 0);
+    return reusableFrameCanvas;
+  }
+
+  if (source instanceof HTMLImageElement) {
+    if (!source.naturalWidth || !source.naturalHeight) return null;
+    if (!reusableFrameCanvas) {
+      reusableFrameCanvas = document.createElement('canvas');
+    }
+    reusableFrameCanvas.width = source.naturalWidth;
+    reusableFrameCanvas.height = source.naturalHeight;
+    const ctx = reusableFrameCanvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return null;
+    ctx.drawImage(source, 0, 0);
+    return reusableFrameCanvas;
+  }
+
+  return null;
+}
+
 export async function initializeFaceIdentity() {
   if (!identityInitializationPromise) {
     identityInitializationPromise = (async () => {
       const { default: Human } = await import('@vladmandic/human');
-      identityEngine = new Human(identityConfig);
-      await identityEngine.load();
-      await identityEngine.warmup();
+      try {
+        identityEngine = new Human(identityConfig);
+        await identityEngine.load();
+        await identityEngine.warmup();
+      } catch (gpuError) {
+        console.warn('Human WebGL init failed on device, falling back to wasm backend:', gpuError);
+        try {
+          identityEngine = new Human({ ...identityConfig, backend: 'wasm' });
+          await identityEngine.load();
+          await identityEngine.warmup();
+        } catch (wasmError) {
+          console.warn('Human WASM init failed, falling back to cpu backend:', wasmError);
+          identityEngine = new Human({ ...identityConfig, backend: 'cpu' });
+          await identityEngine.load();
+          await identityEngine.warmup();
+        }
+      }
       return true;
     })().catch(error => {
       identityInitializationPromise = null;
@@ -154,7 +210,8 @@ async function inspectSecureFace(input) {
   if (!identityEngine) {
     throw new Error('Secure Face ID engine is unavailable.');
   }
-  const result = await identityEngine.detect(input);
+  const canvas = getFrameCanvas(input) || input;
+  const result = await identityEngine.detect(canvas);
   return inspectIdentityResult(result);
 }
 
@@ -219,8 +276,8 @@ function sampledFramePixels(canvas) {
   const startY = Math.floor(canvas.height * 0.12);
   const endY = Math.ceil(canvas.height * 0.88);
   const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
-  const stepX = Math.max(4, Math.floor((endX - startX) / 48));
-  const stepY = Math.max(4, Math.floor((endY - startY) / 48));
+  const stepX = Math.max(4, Math.floor((endX - startX) / 36));
+  const stepY = Math.max(4, Math.floor((endY - startY) / 36));
   const sampled = [];
 
   for (let y = startY; y < endY; y += stepY) {
@@ -252,16 +309,8 @@ function assertLiveFrameSequence(inputs) {
   }
 
   const peakMotion = Math.max(...motionScores, 0);
-  const averageMotion = motionScores.length
-    ? motionScores.reduce((sum, score) => sum + score, 0) / motionScores.length
-    : 0;
-
-  // Protect against static images / fake screen captures without penalizing users for holding still.
-  // Genuine camera frames with sensor noise always exceed 0.0005.
-  if (
-    peakMotion < MIN_SEQUENCE_PEAK_MOTION
-    && averageMotion < MIN_SEQUENCE_AVERAGE_MOTION
-  ) {
+  // Ensure the camera feed is not completely frozen/blank or dead (pixel motion > 0)
+  if (signatures.length > 1 && peakMotion === 0) {
     throw new Error(
       'Camera feed appeared static. Ensure your live camera is active and try again.'
     );
@@ -324,7 +373,7 @@ export async function extractSecureFacePackage(inputs) {
 export async function captureVideoFrames(
   video,
   count = 5,
-  intervalMs = 200
+  intervalMs = 180
 ) {
   if (!video?.videoWidth || !video?.videoHeight || video.readyState < 2) {
     throw new Error('Camera is not ready for secure Face ID capture.');
@@ -345,4 +394,93 @@ export async function captureVideoFrames(
     }
   }
   return frames;
+}
+
+/**
+ * High-performance, self-contained face quality analyzer powered by Human.
+ * Replaces heavy external MediaPipe network downloads with zero-latency local models.
+ */
+export async function evaluateFaceQuality(element) {
+  if (!element) {
+    return { valid: false, faceCount: 0, code: 'CAMERA_NOT_READY', error: 'Camera initializing. Please wait...' };
+  }
+
+  if (element instanceof HTMLVideoElement) {
+    if (!element.videoWidth || !element.videoHeight || element.readyState < 2) {
+      return { valid: false, faceCount: 0, code: 'CAMERA_NOT_READY', error: 'Camera initializing. Please wait...' };
+    }
+  }
+
+  await initializeFaceIdentity();
+  if (!identityEngine) {
+    return { valid: false, faceCount: 0, code: 'ENGINE_NOT_READY', error: 'Face engine initializing...' };
+  }
+
+  const canvas = getFrameCanvas(element);
+  if (!canvas) {
+    return { valid: false, faceCount: 0, code: 'FRAME_UNAVAILABLE', error: 'Camera frame unavailable.' };
+  }
+
+  try {
+    const result = await identityEngine.detect(canvas);
+    const faces = result?.face || [];
+
+    if (faces.length === 0) {
+      return { valid: false, faceCount: 0, code: 'NO_FACE_DETECTED', error: 'Position your face inside the circle' };
+    }
+
+    if (faces.length > 1) {
+      return { valid: false, faceCount: faces.length, code: 'MULTIPLE_FACES', error: 'Only one person may be in the frame' };
+    }
+
+    const face = faces[0];
+    const confidence = Math.max(Number(face.score || 0), Number(face.boxScore || 0));
+    if (confidence < 0.40) {
+      return { valid: false, faceCount: 1, code: 'LOW_CONFIDENCE', error: 'Face not clearly visible. Improve lighting' };
+    }
+
+    // Normalized dimensions (0..1)
+    const box = face.boxRaw || [
+      face.box[0] / canvas.width,
+      face.box[1] / canvas.height,
+      face.box[2] / canvas.width,
+      face.box[3] / canvas.height,
+    ];
+
+    const faceWidth = box[2];
+    const faceHeight = box[3];
+    const centerX = box[0] + faceWidth / 2;
+    const centerY = box[1] + faceHeight / 2;
+
+    if (faceWidth < 0.12 || faceHeight < 0.12) {
+      return { valid: false, faceCount: 1, code: 'FACE_TOO_FAR', error: 'Move closer to the camera' };
+    }
+    if (faceWidth > 0.88 || faceHeight > 0.88) {
+      return { valid: false, faceCount: 1, code: 'FACE_TOO_CLOSE', error: 'Move slightly back' };
+    }
+    if (centerX < 0.15 || centerX > 0.85 || centerY < 0.12 || centerY > 0.88) {
+      return { valid: false, faceCount: 1, code: 'FACE_OFF_CENTER', error: 'Center your face inside the frame' };
+    }
+
+    // Head angles
+    const angles = face.rotation?.angle;
+    if (angles) {
+      const rollDeg = Math.abs(angles.roll || 0) * (180 / Math.PI);
+      const yawDeg = Math.abs(angles.yaw || 0) * (180 / Math.PI);
+      if (rollDeg > 28) {
+        return { valid: false, faceCount: 1, code: 'HEAD_TILTED', error: 'Keep your head upright and level' };
+      }
+      if (yawDeg > 28) {
+        return { valid: false, faceCount: 1, code: 'HEAD_TURNED', error: 'Look directly at the camera' };
+      }
+    }
+
+    return {
+      valid: true,
+      faceCount: 1,
+      detection: { faceWidth, faceHeight, centerX, centerY, confidence }
+    };
+  } catch (err) {
+    return { valid: false, faceCount: 0, code: 'DETECTION_ERROR', error: err?.message || 'Face analysis failed' };
+  }
 }

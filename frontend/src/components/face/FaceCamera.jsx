@@ -64,24 +64,53 @@ export default function FaceCamera({
         } catch {}
       }
 
-      const modelPromise = Promise.all([
-        initializeFaceModels(),
-        initializeFaceIdentity(),
-      ]);
+      await initializeFaceIdentity();
+      if (!isMountedRef.current) return;
+      setModelReady(true);
 
       stopCamera();
 
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: desiredFacingMode,
-          width: { ideal: 640 },
-          height: { ideal: 480 }
+      // Delay to allow iOS/Android camera hardware to fully release
+      await new Promise(resolve => setTimeout(resolve, 300));
+      if (!isMountedRef.current) return;
+
+      let stream = null;
+      let attempts = 0;
+      let lastErr = null;
+
+      while (attempts < 3 && !stream && isMountedRef.current) {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: desiredFacingMode,
+              width: { ideal: 640 },
+              height: { ideal: 480 }
+            }
+          });
+        } catch (camErr) {
+          lastErr = camErr;
+          attempts += 1;
+          if (attempts >= 3 || (camErr.name !== 'NotReadableError' && camErr.name !== 'TrackStartError')) {
+            throw camErr;
+          }
+          await new Promise(resolve => setTimeout(resolve, 450));
         }
-      });
+      }
 
       if (!isMountedRef.current) {
-        stream.getTracks().forEach(t => t.stop());
+        if (stream) {
+          stream.getTracks().forEach(t => {
+            try {
+              t.stop();
+              t.enabled = false;
+            } catch {}
+          });
+        }
         return;
+      }
+
+      if (!stream && lastErr) {
+        throw lastErr;
       }
 
       streamRef.current = stream;
@@ -92,6 +121,7 @@ export default function FaceCamera({
         vid.setAttribute('playsinline', 'true');
         vid.setAttribute('webkit-playsinline', 'true');
         vid.muted = true;
+        vid.playsInline = true;
 
         const onReady = () => {
           if (!isMountedRef.current) return;
@@ -99,25 +129,32 @@ export default function FaceCamera({
           if (playPromise !== undefined) {
             playPromise
               .then(() => {
-                if (isMountedRef.current) setVideoReady(true);
+                if (isMountedRef.current) {
+                  setTimeout(() => {
+                    if (isMountedRef.current) {
+                      setVideoReady(true);
+                      setStatusMessage('Position your face inside the oval');
+                      setStatusType('info');
+                    }
+                  }, 250);
+                }
               })
               .catch(() => {
-                if (isMountedRef.current) setVideoReady(true);
+                if (isMountedRef.current) {
+                  setVideoReady(true);
+                  setStatusMessage('Position your face inside the oval');
+                  setStatusType('info');
+                }
               });
           } else {
             setVideoReady(true);
+            setStatusMessage('Position your face inside the oval');
+            setStatusType('info');
           }
         };
 
         vid.onloadedmetadata = onReady;
         vid.oncanplay = onReady;
-      }
-
-      await modelPromise;
-      if (isMountedRef.current) {
-        setModelReady(true);
-        setStatusMessage('Position your face inside the oval');
-        setStatusType('info');
       }
     } catch (err) {
       console.error('Face camera initialization error:', err);

@@ -100,27 +100,48 @@ export default function ScanAttendance() {
     const initializeCamera = async () => {
       try {
         setFaceStatus({ type: 'info', message: 'Loading Face ID engine...' });
-        const modelPromise = Promise.all([
-          initializeFaceModels(),
-          initializeFaceIdentity(),
-        ]);
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: 'user',
-            width: { ideal: 640 },
-            height: { ideal: 480 }
+        await initializeFaceIdentity();
+
+        let stream = null;
+        let attempts = 0;
+        let lastErr = null;
+
+        while (attempts < 3 && !stream && active) {
+          try {
+            stream = await navigator.mediaDevices.getUserMedia({
+              video: {
+                facingMode: 'user',
+                width: { ideal: 640 },
+                height: { ideal: 480 }
+              }
+            });
+          } catch (camErr) {
+            lastErr = camErr;
+            attempts += 1;
+            if (attempts >= 3 || (camErr.name !== 'NotReadableError' && camErr.name !== 'TrackStartError')) {
+              throw camErr;
+            }
+            // Wait 450ms for previous camera session to fully release hardware
+            await new Promise(resolve => setTimeout(resolve, 450));
           }
-        });
-        await modelPromise;
+        }
+
         if (!active) {
-          stream.getTracks().forEach(track => {
-            try {
-              track.stop();
-              track.enabled = false;
-            } catch {}
-          });
+          if (stream) {
+            stream.getTracks().forEach(track => {
+              try {
+                track.stop();
+                track.enabled = false;
+              } catch {}
+            });
+          }
           return;
         }
+
+        if (!stream && lastErr) {
+          throw lastErr;
+        }
+
         streamRef.current = stream;
         if (videoRef.current) {
           const vid = videoRef.current;
@@ -136,7 +157,7 @@ export default function ScanAttendance() {
               playPromise
                 .then(() => {
                   if (active) {
-                    setTimeout(() => setVideoReady(true), 300);
+                    setTimeout(() => setVideoReady(true), 250);
                     setFaceStatus({ type: 'info', message: 'Position your face inside the circle' });
                   }
                 })
@@ -162,7 +183,7 @@ export default function ScanAttendance() {
           message = 'Camera access denied. Please allow camera permissions in your browser or device settings.';
         } else if (cameraError?.name === 'NotFoundError') {
           message = 'No front camera found on this device.';
-        } else if (cameraError?.name === 'NotReadableError') {
+        } else if (cameraError?.name === 'NotReadableError' || cameraError?.name === 'TrackStartError') {
           message = 'Camera is currently in use by another app. Please close other camera tabs and try again.';
         } else if (cameraError?.message) {
           message = cameraError.message;
@@ -176,8 +197,8 @@ export default function ScanAttendance() {
       }
     };
 
-    // Small delay to ensure QR rear camera tracks have fully released hardware
-    const timer = setTimeout(initializeCamera, 150);
+    // Delay to ensure rear camera tracks have fully released hardware on mobile
+    const timer = setTimeout(initializeCamera, 350);
 
     return () => {
       active = false;
@@ -271,8 +292,6 @@ export default function ScanAttendance() {
       const video = videoRef.current;
       setFaceStatus({ type: 'success', message: 'Capturing a short live sequence—blink once...' });
       const canvases = await captureVideoFrames(video);
-      stopStream();
-
       setFaceStatus({ type: 'success', message: 'Checking identity and liveness...' });
       const embedding = await extractSecureFacePackage(canvases);
       const canvas = canvases[canvases.length - 1];
@@ -330,6 +349,7 @@ export default function ScanAttendance() {
         face_embedding: embedding
       });
 
+      stopStream();
       setScanResult(res.data);
       setIsCameraOpen(false);
       setTempQrCode(null);
@@ -350,12 +370,12 @@ export default function ScanAttendance() {
 
       // ── 2-second rejection flash (like phone face unlock) ──
       setFaceStatus({ type: 'rejected', message: 'Face not recognized' });
-      setVideoReady(false);
       captureLockRef.current = true;
 
       if (retryTimeoutRef.current) clearTimeout(retryTimeoutRef.current);
 
       if (code === 'FACE_COOLDOWN' || code === 'FACE_TEMPORARILY_LOCKED') {
+        stopStream();
         setFaceCooldown(retryAfter);
         setIsCameraOpen(false);
         setTempQrCode(null);
@@ -363,6 +383,7 @@ export default function ScanAttendance() {
         toast.error(msg);
       } else if (code === 'FACE_NOT_REGISTERED') {
         // Registration issue — show error, don't auto-retry
+        stopStream();
         toast.error(msg);
         captureLockRef.current = false;
         setFaceStatus({ type: 'rejected', message: 'Face not registered' });
@@ -371,41 +392,22 @@ export default function ScanAttendance() {
         || code === 'INVALID_FACE_CAPTURE'
         || !err?.response
       ) {
-        // Wrong face — 2 second cooldown then retry automatically
+        // Wrong face or lighting issue — 2 second cooldown then retry automatically without stopping camera
         toast.error(`${msg} Retrying in 2 seconds...`);
         retryTimeoutRef.current = setTimeout(() => {
           setError('');
           setErrorCode('');
           validFramesRef.current = 0;
           captureLockRef.current = false;
-          navigator.mediaDevices.getUserMedia({
-            video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }
-          })
-            .then(stream => {
-              streamRef.current = stream;
-              if (videoRef.current) {
-                const vid = videoRef.current;
-                vid.srcObject = stream;
-                vid.setAttribute('playsinline', 'true');
-                vid.setAttribute('webkit-playsinline', 'true');
-                vid.muted = true;
-                const onPlay = () => {
-                  setTimeout(() => {
-                    setVideoReady(true);
-                    setFaceStatus({ type: 'info', message: 'Position your face inside the circle' });
-                  }, 300);
-                };
-                vid.oncanplay = onPlay;
-                vid.play().catch(() => {});
-              }
-            }).catch(cameraError => {
-              setFaceStatus({
-                type: 'rejected',
-                message: cameraError?.message || 'Could not restart the camera.'
-              });
-            });
+          if (streamRef.current && streamRef.current.active) {
+            setVideoReady(true);
+            setFaceStatus({ type: 'info', message: 'Position your face inside the circle' });
+          } else {
+            initializeCamera();
+          }
         }, 2000);
       } else {
+        stopStream();
         toast.error(msg);
         setFaceStatus({ type: 'rejected', message: msg });
         captureLockRef.current = false;

@@ -195,16 +195,25 @@ export default function BulkDTROverrideModal({
     setSearchIntern('');
 
     setLoadingData(true);
-    Promise.all([
+    Promise.allSettled([
       fetchAllInterns(),
       api.get('/divisions')
     ])
-      .then(([internsRes, divRes]) => {
-        const activeInterns = (internsRes || []).filter(i => i.status !== 'archived');
-        setInterns(activeInterns);
-        setDivisions(divRes.data.divisions || []);
+      .then(([internsResult, divResult]) => {
+        if (internsResult.status === 'fulfilled') {
+          const activeInterns = (internsResult.value || []).filter(i => i.status !== 'archived');
+          setInterns(activeInterns);
+        } else {
+          console.warn('Failed to load interns in bulk override:', internsResult.reason);
+          toast.error('Failed to load interns list');
+        }
+
+        if (divResult.status === 'fulfilled') {
+          setDivisions(divResult.value?.data?.divisions || []);
+        } else {
+          console.warn('Failed to load divisions in bulk override:', divResult.reason);
+        }
       })
-      .catch(() => toast.error('Failed to load interns or divisions'))
       .finally(() => setLoadingData(false));
   }, [isOpen]); // ← intentionally only isOpen; initialDates read via ref above
 

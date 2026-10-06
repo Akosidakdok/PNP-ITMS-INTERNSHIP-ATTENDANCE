@@ -4,7 +4,7 @@ export const FACE_SAMPLE_COUNT = 3;
 
 const DEFAULT_MATCH_THRESHOLD = 0.52;
 const DEFAULT_AVERAGE_THRESHOLD = 0.55;
-const DEFAULT_CONSISTENCY_THRESHOLD = 0.60;
+const DEFAULT_CONSISTENCY_THRESHOLD = 0.50;
 
 function finiteDescriptor(descriptor) {
   return Array.isArray(descriptor)
