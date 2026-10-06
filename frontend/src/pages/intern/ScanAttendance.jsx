@@ -84,7 +84,16 @@ export default function ScanAttendance() {
     }
   }, [faceCooldown, errorCode]);
 
+  // ─── Preload Face ID models as soon as user opens Scan page ─────────────────
+  useEffect(() => {
+    initializeFaceIdentity().catch(err => {
+      console.warn('Face ID background preload notice:', err?.message || err);
+    });
+  }, []);
+
   // ─── Camera open / close ──────────────────────────────────────────────────
+  const initializeCameraRef = useRef(null);
+
   useEffect(() => {
     if (!isCameraOpen) {
       stopStream();
@@ -94,13 +103,13 @@ export default function ScanAttendance() {
     validFramesRef.current = 0;
     captureLockRef.current = false;
     setVideoReady(false);
-    setFaceStatus({ type: 'info', message: 'Initializing camera...' });
+    setFaceStatus({ type: 'info', message: 'Opening front camera...' });
 
     let active = true;
     const initializeCamera = async () => {
       try {
-        setFaceStatus({ type: 'info', message: 'Loading Face ID engine...' });
-        await initializeFaceIdentity();
+        // Kick off Face ID model preparation in parallel with camera stream request
+        const modelInitPromise = initializeFaceIdentity();
 
         let stream = null;
         let attempts = 0;
@@ -159,33 +168,40 @@ export default function ScanAttendance() {
           vid.setAttribute('playsinline', 'true');
           vid.setAttribute('webkit-playsinline', 'true');
           vid.muted = true;
+          vid.playsInline = true;
 
-          const onReady = () => {
+          const markReady = () => {
             if (!active) return;
-            const playPromise = vid.play();
-            if (playPromise !== undefined) {
-              playPromise
-                .then(() => {
-                  if (active) {
-                    setTimeout(() => setVideoReady(true), 250);
-                    setFaceStatus({ type: 'info', message: 'Position your face inside the circle' });
-                  }
-                })
-                .catch(() => {
-                  if (active) {
-                    setVideoReady(true);
-                    setFaceStatus({ type: 'info', message: 'Position your face inside the circle' });
-                  }
-                });
-            } else {
-              setVideoReady(true);
-              setFaceStatus({ type: 'info', message: 'Position your face inside the circle' });
-            }
+            setVideoReady(true);
+            setFaceStatus({ type: 'info', message: 'Position your face inside the circle' });
           };
 
-          vid.oncanplay = onReady;
-          vid.onloadedmetadata = onReady;
+          const playPromise = vid.play();
+          if (playPromise !== undefined) {
+            playPromise
+              .then(() => {
+                if (active) markReady();
+              })
+              .catch(() => {
+                if (active) markReady();
+              });
+          } else {
+            markReady();
+          }
+
+          if (vid.readyState >= 2) {
+            markReady();
+          } else {
+            vid.onloadedmetadata = () => {
+              vid.play().catch(() => {});
+              markReady();
+            };
+            vid.oncanplay = markReady;
+          }
         }
+
+        // Ensure Face ID model is fully loaded before allowing detection passes
+        await modelInitPromise;
       } catch (cameraError) {
         console.error('Face camera initialization failed:', cameraError);
         let message = 'Face ID engine could not start.';
@@ -207,6 +223,7 @@ export default function ScanAttendance() {
       }
     };
 
+    initializeCameraRef.current = initializeCamera;
     // Delay to ensure rear camera tracks have fully released hardware on mobile
     const timer = setTimeout(initializeCamera, 350);
 
@@ -379,7 +396,7 @@ export default function ScanAttendance() {
       setErrorCode(code);
 
       // ── 2-second rejection flash (like phone face unlock) ──
-      setFaceStatus({ type: 'rejected', message: 'Face not recognized' });
+      setFaceStatus({ type: 'rejected', message: msg || 'Face not recognized' });
       captureLockRef.current = true;
 
       if (retryTimeoutRef.current) clearTimeout(retryTimeoutRef.current);
@@ -412,8 +429,8 @@ export default function ScanAttendance() {
           if (streamRef.current && streamRef.current.active) {
             setVideoReady(true);
             setFaceStatus({ type: 'info', message: 'Position your face inside the circle' });
-          } else {
-            initializeCamera();
+          } else if (initializeCameraRef.current) {
+            initializeCameraRef.current();
           }
         }, 2000);
       } else {

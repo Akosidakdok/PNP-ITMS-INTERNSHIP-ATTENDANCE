@@ -1,5 +1,5 @@
 // PNP-ITMS Service Worker — App Shell Cache
-const CACHE_NAME = "pnp-itms-shell-v5";
+const CACHE_NAME = "pnp-itms-shell-v6";
 
 const APP_SHELL = [
   "/",

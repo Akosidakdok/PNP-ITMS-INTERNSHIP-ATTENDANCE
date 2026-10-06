@@ -12,17 +12,101 @@ const MIN_LIVE_AVERAGE = 0.12;
 const MAX_HEAD_ANGLE_RADIANS = 0.52; // ~30 degrees (natural phone grip)
 const MIN_SAMPLE_CONSISTENCY = 0.50; // consistent with backend threshold
 
-const appBase = import.meta.env.BASE_URL || '/';
-const normalizedBase = appBase.endsWith('/') ? appBase : `${appBase}/`;
+const getModelBasePath = () => {
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    const base = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '') + '/';
+    return `${window.location.origin}${base}models/human/`;
+  }
+  return '/models/human/';
+};
 
-const identityConfig = {
+const BASE_HUMAN_CONFIG = {
   backend: 'webgl',
-  modelBasePath: `${normalizedBase}models/human/`,
+  modelBasePath: getModelBasePath(),
   cacheSensitivity: 0,
   filter: {
     enabled: false,
     equalization: false,
   },
+  face: {
+    enabled: true,
+    detector: {
+      rotation: true,
+      return: true,
+      maxDetected: 2,
+      skipFrames: 0,
+      skipTime: 0,
+      minConfidence: MIN_FACE_CONFIDENCE,
+    },
+    mesh: {
+      enabled: true,
+    },
+    iris: {
+      enabled: true,
+    },
+    description: {
+      enabled: true,
+      skipFrames: 0,
+      skipTime: 0,
+      minConfidence: 0.45,
+    },
+    antispoof: {
+      enabled: true,
+      skipFrames: 0,
+      skipTime: 0,
+    },
+    liveness: {
+      enabled: true,
+      skipFrames: 0,
+      skipTime: 0,
+    },
+    emotion: {
+      enabled: false,
+    },
+  },
+  body: { enabled: false },
+  hand: { enabled: false },
+  object: { enabled: false },
+  gesture: { enabled: false },
+};
+
+export const REALTIME_GUIDE_CONFIG = {
+  face: {
+    enabled: true,
+    detector: {
+      rotation: true,
+      return: true,
+      maxDetected: 2,
+      skipFrames: 0,
+      skipTime: 0,
+      minConfidence: MIN_FACE_CONFIDENCE,
+    },
+    mesh: {
+      enabled: true,
+    },
+    iris: {
+      enabled: false,
+    },
+    description: {
+      enabled: false,
+    },
+    antispoof: {
+      enabled: false,
+    },
+    liveness: {
+      enabled: false,
+    },
+    emotion: {
+      enabled: false,
+    },
+  },
+  body: { enabled: false },
+  hand: { enabled: false },
+  object: { enabled: false },
+  gesture: { enabled: false },
+};
+
+export const FULL_EXTRACTION_CONFIG = {
   face: {
     enabled: true,
     detector: {
@@ -119,21 +203,28 @@ export async function initializeFaceIdentity() {
   if (!identityInitializationPromise) {
     identityInitializationPromise = (async () => {
       const { default: Human } = await import('@vladmandic/human');
+      const resolvedConfig = {
+        ...BASE_HUMAN_CONFIG,
+        modelBasePath: getModelBasePath(),
+      };
+
       try {
-        identityEngine = new Human(identityConfig);
+        identityEngine = new Human(resolvedConfig);
         await identityEngine.load();
-        await identityEngine.warmup();
-      } catch (gpuError) {
-        console.warn('Human WebGL init failed on device, falling back to wasm backend:', gpuError);
         try {
-          identityEngine = new Human({ ...identityConfig, backend: 'wasm' });
-          await identityEngine.load();
+          // Warmup is non-fatal on iOS Safari / WebKit
           await identityEngine.warmup();
-        } catch (wasmError) {
-          console.warn('Human WASM init failed, falling back to cpu backend:', wasmError);
-          identityEngine = new Human({ ...identityConfig, backend: 'cpu' });
+        } catch (warmupError) {
+          console.warn('Human WebGL warmup notice (non-fatal):', warmupError?.message || warmupError);
+        }
+      } catch (gpuError) {
+        console.warn('Human WebGL init failed on device, falling back to cpu backend:', gpuError);
+        try {
+          identityEngine = new Human({ ...resolvedConfig, backend: 'cpu' });
           await identityEngine.load();
-          await identityEngine.warmup();
+        } catch (cpuError) {
+          console.error('Human CPU init failed:', cpuError);
+          throw cpuError;
         }
       }
       return true;
@@ -215,7 +306,7 @@ async function inspectSecureFace(input) {
     throw new Error('Secure Face ID engine is unavailable.');
   }
   const canvas = getFrameCanvas(input) || input;
-  const result = await identityEngine.detect(canvas);
+  const result = await identityEngine.detect(canvas, FULL_EXTRACTION_CONFIG);
   return inspectIdentityResult(result);
 }
 
@@ -427,14 +518,7 @@ export async function evaluateFaceQuality(element) {
 
   try {
     // Quality evaluation only checks centering and tilt (mesh/detector); disable expensive models for maximum 60fps smoothness
-    const result = await identityEngine.detect(canvas, {
-      face: {
-        iris: { enabled: false },
-        description: { enabled: false },
-        antispoof: { enabled: false },
-        liveness: { enabled: false },
-      },
-    });
+    const result = await identityEngine.detect(canvas, REALTIME_GUIDE_CONFIG);
     const faces = result?.face || [];
 
     if (faces.length === 0) {

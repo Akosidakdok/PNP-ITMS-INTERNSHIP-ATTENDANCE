@@ -153,8 +153,12 @@ export default function FaceCamera({
           }
         };
 
-        vid.onloadedmetadata = onReady;
-        vid.oncanplay = onReady;
+        if (vid.readyState >= 2) {
+          onReady();
+        } else {
+          vid.onloadedmetadata = onReady;
+          vid.oncanplay = onReady;
+        }
       }
     } catch (err) {
       console.error('Face camera initialization error:', err);
