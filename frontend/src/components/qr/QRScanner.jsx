@@ -152,16 +152,12 @@ export default function QRScanner({ onScan, onError, isActive = true }) {
       videoObserver.observe(targetElement, { childList: true, subtree: true });
 
       // Step 2: Determine camera configuration
-      // On mobile devices, ideal environment mode with 720p constraints guarantees selecting the primary rear camera
+      // html5-qrcode strictly requires cameraIdOrConfig to have exactly 1 key: either 'facingMode' or 'deviceId'
       let cameraConfig;
       if (forcedCameraConfig) {
         cameraConfig = forcedCameraConfig;
       } else {
-        cameraConfig = {
-          facingMode: { ideal: 'environment' },
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-        };
+        cameraConfig = { facingMode: 'environment' };
       }
 
       const html5Qr = new Html5Qrcode(containerIdRef.current, {
@@ -175,34 +171,56 @@ export default function QRScanner({ onScan, onError, isActive = true }) {
 
       logDebug('Starting scanner with config:', cameraConfig);
 
-      // Step 3: Start scanning full-frame (omitting qrbox fixes iOS Safari aspect-ratio crop offset bug)
-      await html5Qr.start(
-        cameraConfig,
-        {
-          fps: 15,
-          disableFlip: true,
-        },
-        (decodedText) => {
-          // Success callback: prevent duplicates immediately
-          if (scanLockedRef.current) return;
-          scanLockedRef.current = true;
+      const onScanSuccess = (decodedText) => {
+        // Success callback: prevent duplicates immediately
+        if (scanLockedRef.current) return;
+        scanLockedRef.current = true;
 
-          logDebug('QR detected successfully:', decodedText?.slice(0, 24));
-          if (isMountedRef.current) {
-            setScanState('detected');
-          }
-
-          videoObserver.disconnect();
-
-          // Immediately stop scanner to release camera hardware for face verification
-          stopScanner().then(() => {
-            if (onScan) onScan(decodedText);
-          });
-        },
-        () => {
-          // Normal frame search tick — ignore
+        logDebug('QR detected successfully:', decodedText?.slice(0, 24));
+        if (isMountedRef.current) {
+          setScanState('detected');
         }
-      );
+
+        videoObserver.disconnect();
+
+        // Immediately stop scanner to release camera hardware for face verification
+        stopScanner().then(() => {
+          if (onScan) onScan(decodedText);
+        });
+      };
+
+      const onScanFailure = () => {
+        // Normal frame search tick — ignore
+      };
+
+      // Step 3: Start scanning full-frame (omitting qrbox fixes iOS Safari aspect-ratio crop offset bug)
+      try {
+        await html5Qr.start(
+          cameraConfig,
+          {
+            fps: 15,
+            disableFlip: true,
+            videoConstraints: {
+              facingMode: cameraConfig.facingMode || 'environment',
+              width: { ideal: 1280 },
+              height: { ideal: 720 },
+            },
+          },
+          onScanSuccess,
+          onScanFailure
+        );
+      } catch (constraintErr) {
+        logDebug('Starting with 720p constraints failed, retrying with basic configuration:', constraintErr);
+        await html5Qr.start(
+          cameraConfig,
+          {
+            fps: 15,
+            disableFlip: true,
+          },
+          onScanSuccess,
+          onScanFailure
+        );
+      }
 
       videoObserver.disconnect();
 
@@ -225,11 +243,15 @@ export default function QRScanner({ onScan, onError, isActive = true }) {
       }
     } catch (err) {
       logDebug('Camera start error:', err);
+      const rawErr = typeof err === 'string' ? err : (err?.message || err?.name || String(err || ''));
       const errName = err?.name || '';
-      const errMsg = err?.message || '';
+      const errMsg = (err?.message || rawErr).toLowerCase();
 
       // If OverconstrainedError occurs (e.g. device has no environment camera), fallback to user camera
-      if (errName === 'OverconstrainedError' || errMsg.includes('overconstrained')) {
+      if (
+        (errName === 'OverconstrainedError' || errMsg.includes('overconstrained')) &&
+        (!forcedCameraConfig || forcedCameraConfig.facingMode !== 'user')
+      ) {
         logDebug('Environment camera overconstrained, trying user camera fallback...');
         isStartingRef.current = false;
         if (isMountedRef.current && isActive) {
@@ -247,26 +269,35 @@ export default function QRScanner({ onScan, onError, isActive = true }) {
       if (
         errName === 'NotAllowedError' ||
         errName === 'PermissionDeniedError' ||
+        errMsg.includes('notallowederror') ||
         errMsg.includes('permission') ||
-        errMsg === 'PERMISSION_DENIED'
+        errMsg.includes('denied') ||
+        errMsg.includes('not allowed') ||
+        errMsg.includes('user denied')
       ) {
-        userMsg = 'Camera permission is required. On iOS/iPhone, open Settings > Safari (or Settings > Privacy) > Camera and set to "Allow", then reopen the app.';
+        userMsg = 'Camera permission was not granted.';
       } else if (
         errName === 'NotFoundError' ||
         errName === 'DevicesNotFoundError' ||
-        errMsg === 'NO_CAMERA_FOUND'
+        errMsg.includes('notfounderror') ||
+        errMsg.includes('no_camera_found') ||
+        errMsg.includes('no cameras')
       ) {
         userMsg = 'No camera device found on this device.';
       } else if (
         errName === 'NotReadableError' ||
         errName === 'TrackStartError' ||
+        errMsg.includes('notreadableerror') ||
+        errMsg.includes('trackstarterror') ||
         errMsg.includes('already in use')
       ) {
         userMsg = 'Camera is currently in use by another app or tab. Please close other camera apps and try again.';
-      } else if (errMsg === 'INSECURE_CONTEXT') {
+      } else if (errMsg.includes('insecure') || errMsg.includes('https')) {
         userMsg = 'Camera access requires a secure HTTPS connection or localhost.';
-      } else if (errMsg === 'UNSUPPORTED_BROWSER') {
+      } else if (errMsg.includes('unsupported')) {
         userMsg = 'Your browser does not support camera access. Please use modern Chrome or Safari.';
+      } else if (rawErr) {
+        userMsg = `Camera error: ${rawErr}`;
       }
 
       if (isMountedRef.current) {
@@ -278,6 +309,28 @@ export default function QRScanner({ onScan, onError, isActive = true }) {
       isStartingRef.current = false;
     }
   }, [isActive, cameras, currentCameraIndex, discoverCameras, logDebug, onError, onScan, stopScanner]);
+
+  // Direct user-gesture retry handler: triggers explicit getUserMedia on click to wake up iOS permission dialog
+  const handleRetry = useCallback(async () => {
+    setScanState('initializing');
+    setErrorMessage('');
+    try {
+      if (navigator?.mediaDevices?.getUserMedia) {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        stream.getTracks().forEach(t => {
+          try {
+            t.stop();
+            t.enabled = false;
+          } catch {}
+        });
+        // Short buffer to let iOS hardware release track before html5-qrcode binds
+        await new Promise(r => setTimeout(r, 250));
+      }
+    } catch (testErr) {
+      logDebug('Direct permission check notice:', testErr?.name || testErr?.message);
+    }
+    startScanner();
+  }, [logDebug, startScanner]);
 
   // Switch between front / rear or multi-rear cameras
   const handleSwitchCamera = useCallback(async () => {
@@ -408,13 +461,29 @@ export default function QRScanner({ onScan, onError, isActive = true }) {
 
       {/* Error banner */}
       {errorMessage && (
-        <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 flex items-start gap-2.5 animate-fade-in">
-          <AlertCircle className="w-4 h-4 mt-0.5 text-red-600 flex-shrink-0" />
-          <div className="flex-1 space-y-1">
-            <p className="font-semibold">{errorMessage}</p>
-            <p className="text-[11px] text-red-600/90">
-              Tap &quot;Retry Camera&quot; to request camera permissions again or select another camera.
-            </p>
+        <div className="p-3.5 bg-red-50 border border-red-200 rounded-2xl text-xs text-red-700 space-y-2 animate-fade-in shadow-sm">
+          <div className="flex items-start gap-2.5">
+            <AlertCircle className="w-4 h-4 mt-0.5 text-red-600 flex-shrink-0" />
+            <div className="flex-1 space-y-1">
+              <p className="font-semibold text-red-900">{errorMessage}</p>
+              <p className="text-[11px] text-red-700/90 leading-relaxed">
+                If camera permission was not granted or blocked, check the settings below:
+              </p>
+            </div>
+          </div>
+          <div className="bg-white/90 p-2.5 rounded-xl border border-red-100 text-[11px] text-red-950 space-y-1.5">
+            <p className="font-semibold text-red-900">How to allow camera on iPhone:</p>
+            <ul className="list-disc list-inside space-y-1 text-gray-700 pl-0.5">
+              <li>
+                <span className="font-medium text-gray-900">Safari Browser:</span> Tap <span className="font-mono bg-gray-100 px-1 py-0.5 rounded text-[10px]">aA</span> in the URL bar &gt; <strong>Website Settings</strong> &gt; set <strong>Camera</strong> to <strong>Allow</strong>.
+              </li>
+              <li>
+                <span className="font-medium text-gray-900">Home Screen App (PWA):</span> Open iPhone <strong>Settings</strong> &gt; <strong>Safari</strong> &gt; <strong>Camera</strong> &gt; choose <strong>Allow</strong>.
+              </li>
+              <li>
+                Ensure iPhone <strong>Settings &gt; Privacy &amp; Security &gt; Camera</strong> has Safari enabled.
+              </li>
+            </ul>
           </div>
         </div>
       )}
@@ -448,7 +517,7 @@ export default function QRScanner({ onScan, onError, isActive = true }) {
         ) : scanState === 'error' ? (
           <button
             type="button"
-            onClick={() => startScanner()}
+            onClick={handleRetry}
             className="btn btn-primary text-xs flex items-center gap-1.5 py-2 px-4 rounded-xl shadow-md"
           >
             <RefreshCw className="w-4 h-4" />
