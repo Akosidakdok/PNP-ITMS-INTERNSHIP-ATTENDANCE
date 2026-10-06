@@ -2911,3 +2911,565 @@ body {
   }
 }
 
+/* =========================================================
+   P-IDTMS Attendance Verification — Scoped Dark Mode System
+   ========================================================= */
+
+.attendance-verification-page {
+  --attendance-bg: #f8fafc;
+  --attendance-surface: #ffffff;
+  --attendance-surface-secondary: #f1f5f9;
+  --attendance-border: #e2e8f0;
+  --attendance-border-soft: #edf2f7;
+  --attendance-text-primary: #0f172a;
+  --attendance-text-secondary: #475569;
+  --attendance-text-muted: #64748b;
+  --attendance-blue: #1677ff;
+  --attendance-blue-hover: #0f6de8;
+  --attendance-blue-soft: rgba(22, 119, 255, 0.08);
+  --attendance-green: #10b981;
+  --attendance-green-soft: rgba(16, 185, 129, 0.10);
+  --attendance-yellow: #f6c744;
+  --attendance-yellow-soft: rgba(246, 199, 68, 0.12);
+  --attendance-red: #ef4444;
+  --attendance-red-soft: rgba(239, 68, 68, 0.10);
+  transition: background-color 0.25s ease, color 0.25s ease;
+}
+
+.dark .attendance-verification-page {
+  --attendance-bg: #07111f;
+  --attendance-surface: #0f1a2c;
+  --attendance-surface-secondary: #152238;
+  --attendance-border: #283a52;
+  --attendance-border-soft: #1e3048;
+  --attendance-text-primary: #f8fafc;
+  --attendance-text-secondary: #aeb9c9;
+  --attendance-text-muted: #7f8da3;
+  --attendance-blue: #1677ff;
+  --attendance-blue-hover: #0f6de8;
+  --attendance-blue-soft: rgba(22, 119, 255, 0.14);
+  --attendance-green: #10b981;
+  --attendance-green-soft: rgba(16, 185, 129, 0.15);
+  --attendance-yellow: #f6c744;
+  --attendance-yellow-soft: rgba(246, 199, 68, 0.14);
+  --attendance-red: #ef4444;
+  --attendance-red-soft: rgba(239, 68, 68, 0.14);
+}
+
+.dark .page-content:has(.attendance-verification-page) {
+  background-color: #07111f;
+}
+
+/* Page Header */
+.attendance-header-title {
+  color: #0f172a;
+  font-family: 'Outfit', sans-serif;
+}
+.dark .attendance-header-title {
+  color: #f8fafc;
+}
+
+.attendance-header-subtitle {
+  color: #64748b;
+}
+.dark .attendance-header-subtitle {
+  color: #aeb9c9;
+}
+
+/* Main Attendance Card */
+.attendance-main-card {
+  background: #ffffff;
+  border: 1px solid #f1f5f9;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  transition: background-color 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+}
+.dark .attendance-main-card {
+  background: #0f1a2c !important;
+  border: 1px solid #283a52 !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22) !important;
+}
+
+/* Step Progress Indicator */
+.attendance-step-track {
+  background: #e2e8f0;
+}
+.dark .attendance-step-track {
+  background: #24354c !important;
+}
+
+.attendance-step-circle--active {
+  background: #1677ff;
+  color: #ffffff;
+  box-shadow: 0 0 0 4px rgba(22, 119, 255, 0.18);
+}
+.dark .attendance-step-circle--active {
+  background: #1677ff !important;
+  color: #ffffff !important;
+  box-shadow: 0 0 0 4px rgba(22, 119, 255, 0.25) !important;
+}
+.attendance-step-label--active {
+  color: #1d4ed8;
+  font-weight: 700;
+}
+.dark .attendance-step-label--active {
+  color: #60a5fa !important;
+  font-weight: 700;
+}
+
+.attendance-step-circle--completed {
+  background: #10b981;
+  color: #ffffff;
+  box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.14);
+}
+.dark .attendance-step-circle--completed {
+  background: #10b981 !important;
+  color: #ffffff !important;
+  box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.2) !important;
+}
+.attendance-step-label--completed {
+  color: #047857;
+  font-weight: 600;
+}
+.dark .attendance-step-label--completed {
+  color: #6ee7b7 !important;
+  font-weight: 600;
+}
+
+.attendance-step-circle--inactive {
+  background: #ffffff;
+  border: 2px solid #cbd5e1;
+  color: #94a3b8;
+}
+.dark .attendance-step-circle--inactive {
+  background: #0f1a2c !important;
+  border: 2px solid #334155 !important;
+  color: #7f8da3 !important;
+}
+.attendance-step-dot--inactive {
+  background: #cbd5e1;
+}
+.dark .attendance-step-dot--inactive {
+  background: #334155 !important;
+}
+.attendance-step-label--inactive {
+  color: #94a3b8;
+}
+.dark .attendance-step-label--inactive {
+  color: #7f8da3 !important;
+}
+
+.attendance-step-circle--error {
+  background: #ef4444;
+  color: #ffffff;
+  box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.16);
+}
+.dark .attendance-step-circle--error {
+  background: #ef4444 !important;
+  color: #ffffff !important;
+  box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.25) !important;
+}
+.attendance-step-label--error {
+  color: #b91c1c;
+  font-weight: 600;
+}
+.dark .attendance-step-label--error {
+  color: #f87171 !important;
+  font-weight: 600;
+}
+
+/* Camera-Off Area */
+.attendance-camera-off-viewport {
+  background: #0f172a;
+  border: 1px solid #1e293b;
+}
+.dark .attendance-camera-off-viewport {
+  background: #0c1728 !important;
+  border: 1px solid #1f3149 !important;
+}
+.attendance-camera-off-icon-box {
+  background: rgba(22, 119, 255, 0.10);
+  border: 1px solid rgba(96, 165, 250, 0.2);
+  color: #60a5fa;
+}
+.dark .attendance-camera-off-icon-box {
+  background: rgba(22, 119, 255, 0.10) !important;
+  border: 1px solid rgba(96, 165, 250, 0.2) !important;
+  color: #60a5fa !important;
+}
+.attendance-camera-off-title {
+  color: #f8fafc;
+}
+.attendance-camera-off-desc {
+  color: #94a3b8;
+}
+.dark .attendance-camera-off-desc {
+  color: #aeb9c9 !important;
+}
+
+/* Next Attendance Card */
+.attendance-next-card {
+  background: rgba(239, 246, 255, 0.7);
+  border: 1px solid #dbeafe;
+}
+.dark .attendance-next-card {
+  background: #132344 !important;
+  border: 1px solid #315c9e !important;
+}
+.attendance-next-icon-box {
+  background: rgba(37, 99, 235, 0.1);
+  color: #2563eb;
+}
+.dark .attendance-next-icon-box {
+  background: rgba(96, 165, 250, 0.15) !important;
+  color: #60a5fa !important;
+}
+.attendance-next-label {
+  color: #2563eb;
+  font-weight: 700;
+}
+.dark .attendance-next-label {
+  color: #93c5fd !important;
+  font-weight: 700;
+}
+.attendance-next-value {
+  color: #0f172a;
+  font-weight: 600;
+}
+.dark .attendance-next-value {
+  color: #f8fafc !important;
+  font-weight: 600;
+}
+.attendance-time-pill {
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(191, 219, 254, 0.6);
+  color: #1d4ed8;
+  font-weight: 700;
+}
+.dark .attendance-time-pill {
+  background: rgba(96, 165, 250, 0.15) !important;
+  border: 1px solid rgba(96, 165, 250, 0.35) !important;
+  color: #93c5fd !important;
+  font-weight: 700;
+}
+
+/* Start Camera Button */
+.attendance-start-btn {
+  background: #1677ff !important;
+  color: #ffffff !important;
+  transition: all 0.2s ease;
+}
+.attendance-start-btn:hover:not(:disabled) {
+  background: #0f6de8 !important;
+}
+.attendance-start-btn:active:not(:disabled) {
+  background: #0b5fcf !important;
+}
+.dark .attendance-start-btn {
+  background: #1677ff !important;
+  color: #ffffff !important;
+}
+.dark .attendance-start-btn:hover:not(:disabled) {
+  background: #0f6de8 !important;
+}
+.dark .attendance-start-btn:active:not(:disabled) {
+  background: #0b5fcf !important;
+}
+
+/* Secondary Button (Cancel / Rescan) */
+.attendance-secondary-btn {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  color: #475569;
+  transition: all 0.2s ease;
+}
+.attendance-secondary-btn:hover:not(:disabled) {
+  background: #f8fafc;
+  color: #1e293b;
+}
+.dark .attendance-secondary-btn {
+  background: #152238 !important;
+  border: 1px solid #283a52 !important;
+  color: #aeb9c9 !important;
+}
+.dark .attendance-secondary-btn:hover:not(:disabled) {
+  background: #1e3048 !important;
+  color: #f8fafc !important;
+}
+
+/* Account Security Section */
+.attendance-security-note {
+  color: #64748b;
+}
+.dark .attendance-security-note {
+  color: #aeb9c9 !important;
+}
+.attendance-security-icon {
+  color: #2563eb;
+}
+.dark .attendance-security-icon {
+  color: #60a5fa !important;
+}
+
+/* Account Verified Card */
+.attendance-account-card {
+  background: #ffffff;
+  border: 1px solid #e0f2fe;
+}
+.dark .attendance-account-card {
+  background: #0f1a2c !important;
+  border: 1px solid #283a52 !important;
+}
+.attendance-account-name {
+  color: #0f172a;
+}
+.dark .attendance-account-name {
+  color: #f8fafc !important;
+}
+.attendance-account-role {
+  color: #2563eb;
+}
+.dark .attendance-account-role {
+  color: #93c5fd !important;
+}
+.attendance-account-preparing {
+  color: #64748b;
+}
+.dark .attendance-account-preparing {
+  color: #aeb9c9 !important;
+}
+
+/* Face Verification Identity Card */
+.attendance-identity-card {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+}
+.dark .attendance-identity-card {
+  background: #152238 !important;
+  border: 1px solid #283a52 !important;
+}
+.attendance-identity-label {
+  color: #64748b;
+}
+.dark .attendance-identity-label {
+  color: #aeb9c9 !important;
+}
+.attendance-identity-name {
+  color: #0f172a;
+}
+.dark .attendance-identity-name {
+  color: #f8fafc !important;
+}
+.attendance-identity-role-badge {
+  color: #1d4ed8;
+  background: rgba(22, 119, 255, 0.08);
+}
+.dark .attendance-identity-role-badge {
+  color: #93c5fd !important;
+  background: rgba(22, 119, 255, 0.15) !important;
+  border: 1px solid rgba(96, 165, 250, 0.25);
+}
+
+/* Status Pills */
+.attendance-status-pill--info {
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #1d4ed8;
+}
+.dark .attendance-status-pill--info {
+  background: rgba(22, 119, 255, 0.12) !important;
+  border: 1px solid rgba(96, 165, 250, 0.3) !important;
+  color: #93c5fd !important;
+}
+.attendance-status-pill--success {
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  color: #047857;
+}
+.dark .attendance-status-pill--success {
+  background: rgba(16, 185, 129, 0.12) !important;
+  border: 1px solid rgba(52, 211, 153, 0.3) !important;
+  color: #6ee7b7 !important;
+}
+.attendance-status-pill--rejected {
+  background: #fff1f2;
+  border: 1px solid #fecdd3;
+  color: #be123c;
+}
+.dark .attendance-status-pill--rejected {
+  background: rgba(239, 68, 68, 0.12) !important;
+  border: 1px solid rgba(248, 113, 113, 0.3) !important;
+  color: #fca5a5 !important;
+}
+
+/* Attendance Success Card */
+.attendance-success-icon-box {
+  background: #d1fae5;
+  color: #059669;
+  border: 1px solid #a7f3d0;
+}
+.dark .attendance-success-icon-box {
+  background: rgba(16, 185, 129, 0.12) !important;
+  border: 1px solid rgba(52, 211, 153, 0.3) !important;
+  color: #34d399 !important;
+  box-shadow: none !important;
+}
+.attendance-success-title {
+  color: #0f172a;
+}
+.dark .attendance-success-title {
+  color: #f8fafc !important;
+}
+.attendance-success-subtitle {
+  color: #64748b;
+}
+.dark .attendance-success-subtitle {
+  color: #aeb9c9 !important;
+}
+
+/* Badges (Time In / Time Out) */
+.attendance-badge-timein {
+  background: #059669 !important;
+  color: #ffffff !important;
+}
+.attendance-badge-timeout {
+  background: #2563eb !important;
+  color: #ffffff !important;
+}
+
+/* Attendance Details Card */
+.attendance-details-card {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+}
+.dark .attendance-details-card {
+  background: #162237 !important;
+  border: 1px solid #304157 !important;
+}
+.attendance-details-row {
+  border-color: #f1f5f9;
+}
+.dark .attendance-details-row {
+  border-color: #334155 !important;
+}
+.attendance-details-label {
+  color: #64748b;
+}
+.dark .attendance-details-label {
+  color: #aeb9c9 !important;
+}
+.attendance-details-value {
+  color: #0f172a;
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+.dark .attendance-details-value {
+  color: #f8fafc !important;
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+/* Verified & Pending Badges */
+.attendance-badge-verified {
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  color: #047857;
+}
+.dark .attendance-badge-verified {
+  background: rgba(16, 185, 129, 0.16) !important;
+  border: 1px solid rgba(52, 211, 153, 0.35) !important;
+  color: #6ee7b7 !important;
+}
+
+.attendance-badge-pending {
+  background: rgba(246, 199, 68, 0.16);
+  border: 1px solid rgba(246, 199, 68, 0.3);
+  color: #b45309;
+}
+.dark .attendance-badge-pending {
+  background: rgba(246, 199, 68, 0.14) !important;
+  border: 1px solid rgba(246, 199, 68, 0.35) !important;
+  color: #fde68a !important;
+}
+
+/* Done / Cooldown Button */
+.attendance-done-btn {
+  background: #1677ff !important;
+  color: #ffffff !important;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.attendance-done-btn:hover:not(:disabled) {
+  background: #0f6de8 !important;
+}
+.attendance-done-btn:disabled {
+  background: #cbd5e1 !important;
+  color: #64748b !important;
+  cursor: not-allowed !important;
+  opacity: 1 !important;
+}
+.dark .attendance-done-btn {
+  background: #1677ff !important;
+  color: #ffffff !important;
+  cursor: pointer;
+}
+.dark .attendance-done-btn:hover:not(:disabled) {
+  background: #0f6de8 !important;
+}
+.dark .attendance-done-btn:disabled {
+  background: #17355f !important;
+  border: 1px solid #234b82 !important;
+  color: #8fa7c5 !important;
+  cursor: not-allowed !important;
+  opacity: 1 !important;
+}
+
+/* Inline Error Card */
+.attendance-error-card {
+  background: #ffffff;
+  border: 1px solid #fecdd3;
+}
+.dark .attendance-error-card {
+  background: #0f1a2c !important;
+  border: 1px solid #4a232e !important;
+}
+.attendance-error-icon-box {
+  background: #fff1f2;
+  border: 1px solid #fecdd3;
+}
+.dark .attendance-error-icon-box {
+  background: rgba(239, 68, 68, 0.12) !important;
+  border: 1px solid rgba(248, 113, 113, 0.25) !important;
+}
+.attendance-error-title {
+  color: #0f172a;
+}
+.dark .attendance-error-title {
+  color: #f8fafc !important;
+}
+.attendance-error-desc {
+  color: #475569;
+}
+.dark .attendance-error-desc {
+  color: #aeb9c9 !important;
+}
+.attendance-error-account-badge {
+  background: #fff1f2;
+  border: 1px solid #fecdd3;
+  color: #9f1239;
+}
+.dark .attendance-error-account-badge {
+  background: rgba(239, 68, 68, 0.15) !important;
+  border: 1px solid rgba(248, 113, 113, 0.3) !important;
+  color: #fca5a5 !important;
+}
+.attendance-error-instructions {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  color: #334155;
+}
+.dark .attendance-error-instructions {
+  background: #152238 !important;
+  border: 1px solid #283a52 !important;
+  color: #aeb9c9 !important;
+}
+

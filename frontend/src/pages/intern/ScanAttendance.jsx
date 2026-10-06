@@ -118,29 +118,37 @@ function StepProgressIndicator({ stage }) {
   return (
     <nav
       aria-label="Attendance verification progress"
-      className="w-full max-w-[480px] mx-auto px-2 py-1"
+      className="attendance-step-indicator w-full max-w-[480px] mx-auto px-2 py-1"
     >
       <div className="flex items-center justify-between relative">
         {/* Subtle connector track behind items */}
-        <div className="absolute left-8 right-8 top-4 -translate-y-1/2 h-0.5 bg-gray-200 z-0" />
+        <div className="attendance-step-track absolute left-8 right-8 top-4 -translate-y-1/2 h-0.5 z-0" />
 
         {steps.map((step) => {
           const isCompleted = step.status === 'completed';
           const isActive = step.status === 'active';
           const isError = step.status === 'error';
 
+          const circleClass = isCompleted
+            ? 'attendance-step-circle--completed'
+            : isError
+            ? 'attendance-step-circle--error'
+            : isActive
+            ? 'attendance-step-circle--active'
+            : 'attendance-step-circle--inactive';
+
+          const labelClass = isCompleted
+            ? 'attendance-step-label--completed'
+            : isError
+            ? 'attendance-step-label--error'
+            : isActive
+            ? 'attendance-step-label--active'
+            : 'attendance-step-label--inactive';
+
           return (
             <div key={step.num} className="flex flex-col items-center relative z-10">
               <div
-                className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs transition-all duration-300 shadow-xs ${
-                  isCompleted
-                    ? 'bg-emerald-600 text-white ring-4 ring-emerald-50'
-                    : isError
-                    ? 'bg-rose-600 text-white ring-4 ring-rose-50'
-                    : isActive
-                    ? 'bg-blue-600 text-white ring-4 ring-blue-100 scale-105'
-                    : 'bg-white border-2 border-gray-300 text-gray-400'
-                }`}
+                className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs transition-all duration-300 shadow-xs ${circleClass}`}
               >
                 {isCompleted ? (
                   <Check className="w-4 h-4 stroke-[3]" />
@@ -149,19 +157,11 @@ function StepProgressIndicator({ stage }) {
                 ) : isActive ? (
                   <span className="w-2.5 h-2.5 rounded-full bg-white animate-pulse" />
                 ) : (
-                  <span className="w-2 h-2 rounded-full bg-gray-300" />
+                  <span className="attendance-step-dot--inactive w-2 h-2 rounded-full" />
                 )}
               </div>
               <span
-                className={`mt-1.5 text-[11px] sm:text-xs font-semibold whitespace-nowrap transition-colors ${
-                  isCompleted
-                    ? 'text-emerald-700'
-                    : isError
-                    ? 'text-rose-700'
-                    : isActive
-                    ? 'text-blue-700 font-bold'
-                    : 'text-gray-400'
-                }`}
+                className={`mt-1.5 text-[11px] sm:text-xs font-semibold whitespace-nowrap transition-colors ${labelClass}`}
               >
                 {step.num}. {step.label}
               </span>
@@ -191,7 +191,7 @@ function InlineErrorCard({
 
   let title = 'Verification Notice';
   let message = errorMsg || 'Please try again.';
-  let icon = <AlertCircle className="w-8 h-8 text-rose-600" />;
+  let icon = <AlertCircle className="w-8 h-8 text-rose-500" />;
 
   if (isMismatch) {
     title = "Face Doesn't Match";
@@ -199,15 +199,15 @@ function InlineErrorCard({
   } else if (isNoFace) {
     title = 'Face Registration Required';
     message = 'No registered face was found for this account. Please contact the administrator or complete face registration first.';
-    icon = <UserCheck className="w-8 h-8 text-amber-600" />;
+    icon = <UserCheck className="w-8 h-8 text-amber-500" />;
   } else if (isLighting) {
     title = 'Lighting is too low';
     message = 'Move to a brighter area and make sure your face is clearly visible.';
-    icon = <SunMedium className="w-8 h-8 text-amber-600" />;
+    icon = <SunMedium className="w-8 h-8 text-amber-500" />;
   } else if (isCameraPermission) {
     title = 'Camera Access Required';
     message = 'P-IDTMS needs camera access to scan your QR code and verify your face.';
-    icon = <CameraOff className="w-8 h-8 text-rose-600" />;
+    icon = <CameraOff className="w-8 h-8 text-rose-500" />;
   } else if (isInvalidAccountQr) {
     title = 'Invalid Attendance QR';
     message = 'This QR code is not associated with an active P-IDTMS account.';
@@ -217,22 +217,22 @@ function InlineErrorCard({
   }
 
   return (
-    <div className="w-full max-w-[480px] mx-auto bg-white border border-rose-100 rounded-2xl p-5 shadow-sm text-center space-y-4 animate-scale-in">
-      <div className="w-14 h-14 rounded-full bg-rose-50 border border-rose-100 flex items-center justify-center mx-auto">
+    <div className="attendance-error-card w-full max-w-[480px] mx-auto rounded-2xl p-5 shadow-sm text-center space-y-4 animate-scale-in">
+      <div className="attendance-error-icon-box w-14 h-14 rounded-full flex items-center justify-center mx-auto">
         {icon}
       </div>
 
       <div className="space-y-1">
-        <h3 className="text-base font-bold text-gray-900" style={{ fontFamily: 'Outfit, sans-serif' }}>
+        <h3 className="attendance-error-title text-base font-bold" style={{ fontFamily: 'Outfit, sans-serif' }}>
           {title}
         </h3>
-        <p className="text-xs text-gray-600 leading-relaxed max-w-sm mx-auto">
+        <p className="attendance-error-desc text-xs leading-relaxed max-w-sm mx-auto">
           {message}
         </p>
 
         {isMismatch && userName && (
           <div className="pt-2">
-            <span className="inline-block text-xs font-semibold text-rose-800 bg-rose-50 border border-rose-200/60 px-3 py-1 rounded-full">
+            <span className="attendance-error-account-badge inline-block text-xs font-semibold px-3 py-1 rounded-full">
               Account: {userName}
             </span>
           </div>
@@ -240,10 +240,10 @@ function InlineErrorCard({
       </div>
 
       {isCameraPermission && (
-        <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-left text-[11px] text-gray-700 space-y-1.5">
-          <p className="font-semibold text-gray-900">How to allow camera on your device:</p>
-          <ul className="list-disc list-inside space-y-0.5 text-gray-600 pl-1">
-            <li><strong>iOS Safari:</strong> Tap the <code className="bg-gray-200 px-1 py-0.5 rounded text-[10px]">aA</code> icon &gt; Website Settings &gt; Camera: <strong>Allow</strong>.</li>
+        <div className="attendance-error-instructions p-3 rounded-xl text-left text-[11px] space-y-1.5">
+          <p className="font-semibold">How to allow camera on your device:</p>
+          <ul className="list-disc list-inside space-y-0.5 pl-1 opacity-90">
+            <li><strong>iOS Safari:</strong> Tap the <code className="bg-slate-200 dark:bg-slate-700 px-1 py-0.5 rounded text-[10px]">aA</code> icon &gt; Website Settings &gt; Camera: <strong>Allow</strong>.</li>
             <li><strong>Android Chrome:</strong> Tap Lock/Tune icon in URL bar &gt; Permissions &gt; Camera: <strong>Allow</strong>.</li>
           </ul>
         </div>
@@ -255,7 +255,7 @@ function InlineErrorCard({
             type="button"
             onClick={onRetryRegistration}
             disabled={registrationRetryState?.isRetrying}
-            className="btn btn-primary w-full h-11 text-xs font-semibold rounded-xl flex items-center justify-center gap-2 shadow-sm"
+            className="attendance-start-btn w-full h-11 text-xs font-semibold rounded-xl flex items-center justify-center gap-2 shadow-sm"
           >
             <RotateCcw className={`w-4 h-4 ${registrationRetryState?.isRetrying ? 'animate-spin' : ''}`} />
             {registrationRetryState?.isRetrying
@@ -270,7 +270,7 @@ function InlineErrorCard({
           <button
             type="button"
             onClick={onRetry}
-            className="btn btn-primary w-full h-11 text-xs font-semibold rounded-xl flex items-center justify-center gap-2 shadow-sm"
+            className="attendance-start-btn w-full h-11 text-xs font-semibold rounded-xl flex items-center justify-center gap-2 shadow-sm"
           >
             <RefreshCw className="w-4 h-4" />
             {isInvalidAccountQr ? 'Scan Again' : 'Try Again'}
@@ -281,7 +281,7 @@ function InlineErrorCard({
           <button
             type="button"
             onClick={onCancel}
-            className="btn btn-secondary w-full py-2.5 text-xs font-medium rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50 flex items-center justify-center gap-1.5"
+            className="attendance-secondary-btn w-full py-2.5 text-xs font-medium rounded-xl flex items-center justify-center gap-1.5"
           >
             <CameraOff className="w-3.5 h-3.5 text-gray-500" />
             Cancel Verification
@@ -1142,16 +1142,15 @@ export default function ScanAttendance() {
 
   // ─── Render View ──────────────────────────────────────────────────────────
   return (
-    <div className="w-full max-w-xl mx-auto px-4 py-3 sm:py-6 space-y-4 animate-fade-in">
+    <div className="attendance-verification-page w-full max-w-xl mx-auto px-4 py-3 sm:py-6 space-y-4 animate-fade-in">
       {/* 1. Page Header */}
       <div className="text-center space-y-1">
         <h1
-          className="text-2xl sm:text-3xl font-extrabold text-gray-900 tracking-tight"
-          style={{ fontFamily: 'Outfit, sans-serif' }}
+          className="attendance-header-title text-2xl sm:text-3xl font-extrabold tracking-tight"
         >
           Attendance Verification
         </h1>
-        <p className="text-xs sm:text-sm text-gray-500 font-medium">
+        <p className="attendance-header-subtitle text-xs sm:text-sm font-medium">
           Secure attendance authentication
         </p>
       </div>
@@ -1160,7 +1159,7 @@ export default function ScanAttendance() {
       <StepProgressIndicator stage={stage} />
 
       {/* 3. Main Attendance Card Container */}
-      <div className="bg-white rounded-2xl sm:rounded-3xl shadow-sm border border-gray-100 p-4 sm:p-6 space-y-4">
+      <div className="attendance-main-card rounded-2xl sm:rounded-3xl p-4 sm:p-6 space-y-4">
         {/* Error Card Overlay (if in error state) */}
         {(stage === STAGES.QR_INVALID || stage === STAGES.VERIFICATION_FAILED) && (
           <InlineErrorCard
@@ -1178,36 +1177,36 @@ export default function ScanAttendance() {
         {stage === STAGES.CAMERA_OFF && (
           <div className="space-y-4">
             {/* Camera-off Placeholder Viewport */}
-            <div className="w-full aspect-[4/3] max-w-[480px] mx-auto rounded-2xl bg-slate-900 border border-slate-800 flex flex-col items-center justify-center p-6 text-center text-white space-y-3 relative overflow-hidden shadow-inner">
-              <div className="w-16 h-16 rounded-full bg-blue-500/10 border border-blue-400/20 flex items-center justify-center text-blue-400">
+            <div className="attendance-camera-off-viewport w-full aspect-[4/3] max-w-[480px] mx-auto rounded-2xl flex flex-col items-center justify-center p-6 text-center space-y-3 relative overflow-hidden shadow-inner">
+              <div className="attendance-camera-off-icon-box w-16 h-16 rounded-full flex items-center justify-center">
                 <CameraOff className="w-8 h-8" />
               </div>
               <div className="space-y-1">
-                <p className="font-bold text-base text-gray-100">
+                <p className="attendance-camera-off-title font-bold text-base">
                   Camera is currently off.
                 </p>
-                <p className="text-xs text-gray-400 max-w-xs leading-relaxed">
+                <p className="attendance-camera-off-desc text-xs max-w-xs leading-relaxed">
                   Start the camera when you're ready to verify your attendance.
                 </p>
               </div>
             </div>
 
             {/* Next Attendance Card */}
-            <div className="w-full max-w-[480px] mx-auto bg-blue-50/70 border border-blue-100/80 rounded-xl p-3.5 flex items-center justify-between">
+            <div className="attendance-next-card w-full max-w-[480px] mx-auto rounded-xl p-3.5 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-blue-600/10 text-blue-600 flex items-center justify-center flex-shrink-0">
+                <div className="attendance-next-icon-box w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0">
                   <Clock className="w-5 h-5" />
                 </div>
                 <div>
-                  <span className="text-[10px] font-bold text-blue-600 uppercase tracking-wider block">
+                  <span className="attendance-next-label text-[10px] uppercase tracking-wider block">
                     Next Attendance
                   </span>
-                  <span className="text-sm font-semibold text-gray-900">
+                  <span className="attendance-next-value text-sm">
                     {nextScanInfo.label}
                   </span>
                 </div>
               </div>
-              <span className="text-sm font-bold text-blue-700 bg-white/90 border border-blue-200/60 px-3 py-1 rounded-md shadow-xs">
+              <span className="attendance-time-pill text-sm px-3 py-1 rounded-md shadow-xs">
                 {nextScanInfo.time}
               </span>
             </div>
@@ -1219,7 +1218,7 @@ export default function ScanAttendance() {
                 type="button"
                 onClick={handleStartCamera}
                 disabled={isStartingCamera || cooldown > 0 || faceCooldown > 0}
-                className="btn btn-primary w-full h-12 text-sm sm:text-base font-semibold rounded-xl flex items-center justify-center gap-2 shadow-sm transition-all disabled:opacity-50"
+                className="attendance-start-btn w-full h-12 text-sm sm:text-base font-semibold rounded-xl flex items-center justify-center gap-2 shadow-sm"
               >
                 {isStartingCamera ? (
                   <>
@@ -1236,8 +1235,8 @@ export default function ScanAttendance() {
             </div>
 
             {/* Account security helper */}
-            <div className="max-w-[480px] mx-auto flex items-center gap-2 text-[11px] text-gray-500 justify-center">
-              <Shield className="w-3.5 h-3.5 text-blue-600 flex-shrink-0" />
+            <div className="attendance-security-note max-w-[480px] mx-auto flex items-center gap-2 text-[11px] justify-center">
+              <Shield className="attendance-security-icon w-3.5 h-3.5 flex-shrink-0" />
               <span><strong>Account Security:</strong> Face verification matches only this account.</span>
             </div>
           </div>
@@ -1247,12 +1246,12 @@ export default function ScanAttendance() {
         {(stage === STAGES.QR_SCANNING || stage === STAGES.QR_VERIFYING) && (
           <div className="space-y-3">
             {/* Secondary Next Attendance indicator */}
-            <div className="max-w-[480px] mx-auto flex items-center justify-between text-xs text-gray-500 px-1">
-              <span className="font-medium flex items-center gap-1.5">
-                <Clock className="w-3.5 h-3.5 text-blue-600" />
-                Next: <strong className="text-gray-800">{nextScanInfo.label}</strong>
+            <div className="max-w-[480px] mx-auto flex items-center justify-between text-xs px-1">
+              <span className="attendance-security-note font-medium flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5 text-blue-500" />
+                Next: <strong className="attendance-next-value">{nextScanInfo.label}</strong>
               </span>
-              <span className="font-semibold text-blue-700">{nextScanInfo.time}</span>
+              <span className="attendance-next-label font-semibold">{nextScanInfo.time}</span>
             </div>
 
             {/* QR Scanner Container */}
@@ -1263,17 +1262,17 @@ export default function ScanAttendance() {
             {/* Guidance status */}
             <div className="max-w-[480px] mx-auto text-center space-y-1">
               {stage === STAGES.QR_VERIFYING ? (
-                <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl flex items-center justify-center gap-2 text-xs font-semibold text-blue-800 animate-pulse">
-                  <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
+                <div className="attendance-status-pill--info p-3 rounded-xl flex items-center justify-center gap-2 text-xs font-semibold animate-pulse">
+                  <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
                   <span>✓ QR Code Detected — Verifying account...</span>
                 </div>
               ) : (
                 <div className="space-y-1">
-                  <div className="inline-flex items-center gap-2 text-xs font-semibold text-blue-600 bg-blue-50 px-3 py-1 rounded-full">
-                    <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse" />
+                  <div className="attendance-status-pill--info inline-flex items-center gap-2 text-xs font-semibold px-3 py-1 rounded-full">
+                    <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
                     Scanning QR Code...
                   </div>
-                  <p className="text-xs text-gray-500">
+                  <p className="attendance-header-subtitle text-xs">
                     Place your attendance QR code inside the frame.
                   </p>
                 </div>
@@ -1285,7 +1284,7 @@ export default function ScanAttendance() {
               <button
                 type="button"
                 onClick={handleCancel}
-                className="btn btn-secondary w-full py-2.5 text-xs font-medium rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50 flex items-center justify-center gap-1.5"
+                className="attendance-secondary-btn w-full py-2.5 text-xs font-medium rounded-xl flex items-center justify-center gap-1.5"
               >
                 <CameraOff className="w-4 h-4 text-gray-500" />
                 Cancel & Turn Off Camera
@@ -1296,25 +1295,25 @@ export default function ScanAttendance() {
 
         {/* State C: Account Verified Card */}
         {stage === STAGES.ACCOUNT_VERIFIED && (
-          <div className="w-full aspect-[4/3] max-w-[480px] mx-auto rounded-2xl bg-white border border-blue-100 shadow-inner flex flex-col items-center justify-center p-6 text-center space-y-3 animate-fade-in">
-            <div className="w-14 h-14 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center shadow-xs">
+          <div className="attendance-account-card w-full aspect-[4/3] max-w-[480px] mx-auto rounded-2xl shadow-inner flex flex-col items-center justify-center p-6 text-center space-y-3 animate-fade-in">
+            <div className="attendance-success-icon-box w-14 h-14 rounded-full flex items-center justify-center shadow-xs">
               <Check className="w-8 h-8 stroke-[3]" />
             </div>
 
             <div className="space-y-1">
-              <span className="text-[11px] font-bold text-emerald-700 uppercase tracking-wider bg-emerald-50 px-3 py-0.5 rounded-full border border-emerald-200 inline-block mb-1">
+              <span className="attendance-badge-verified text-[11px] font-bold uppercase tracking-wider px-3 py-0.5 rounded-full inline-block mb-1">
                 ✓ Account Verified
               </span>
-              <h3 className="text-lg sm:text-xl font-bold text-gray-900" style={{ fontFamily: 'Outfit, sans-serif' }}>
+              <h3 className="attendance-account-name text-lg sm:text-xl font-bold" style={{ fontFamily: 'Outfit, sans-serif' }}>
                 {userName}
               </h3>
-              <p className="text-xs font-semibold text-blue-600">
+              <p className="attendance-account-role text-xs font-semibold">
                 {userRole}
               </p>
             </div>
 
-            <div className="flex items-center gap-2 text-xs font-medium text-gray-500 pt-2">
-              <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-600" />
+            <div className="attendance-account-preparing flex items-center gap-2 text-xs font-medium pt-2">
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-500" />
               <span>Preparing Face Verification...</span>
             </div>
           </div>
@@ -1323,7 +1322,7 @@ export default function ScanAttendance() {
         {/* State D: Face Verification Interface */}
         {(stage === STAGES.FACE_SCANNING || stage === STAGES.FACE_VERIFYING || stage === STAGES.ATTENDANCE_RECORDING) && (
           <div className="space-y-3 max-w-[480px] mx-auto">
-            {/* Front Camera Video Box with Oval Face Guide */}
+            {/* Front Camera Video Box with Biometric Face Guide */}
             <div className="relative w-full aspect-[4/3] rounded-2xl overflow-hidden bg-black shadow-inner border border-gray-800 flex items-center justify-center">
               <video
                 ref={videoRef}
@@ -1507,46 +1506,46 @@ export default function ScanAttendance() {
             </div>
 
             {/* Account Specific Identity Context Card */}
-            <div className="bg-slate-50 border border-slate-200/90 rounded-xl p-3 text-center space-y-0.5">
-              <p className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold">
+            <div className="attendance-identity-card rounded-xl p-3 text-center space-y-0.5">
+              <p className="attendance-identity-label text-[10px] uppercase tracking-wider font-semibold">
                 Verifying the registered face of:
               </p>
-              <p className="text-sm font-bold text-gray-900">
+              <p className="attendance-identity-name text-sm font-bold">
                 {userName}
               </p>
-              <p className="text-xs text-blue-700 font-medium">
+              <span className="attendance-identity-role-badge text-xs font-medium px-2 py-0.5 rounded-full inline-block mt-0.5">
                 {userRole}
-              </p>
+              </span>
             </div>
 
             {/* Live Verification Status Bar */}
             <div
               className={`p-3 rounded-xl flex items-center justify-center gap-2 text-xs font-semibold text-center transition-all ${
                 stage === STAGES.ATTENDANCE_RECORDING || faceStatus.type === 'success'
-                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                  ? 'attendance-status-pill--success'
                   : faceStatus.type === 'rejected'
-                  ? 'bg-rose-50 text-rose-700 border border-rose-200'
-                  : 'bg-blue-50 text-blue-700 border border-blue-200'
+                  ? 'attendance-status-pill--rejected'
+                  : 'attendance-status-pill--info'
               }`}
             >
               {stage === STAGES.ATTENDANCE_RECORDING ? (
                 <>
-                  <Loader2 className="w-4 h-4 animate-spin text-emerald-600" />
+                  <Loader2 className="w-4 h-4 animate-spin text-emerald-500" />
                   <span>✓ Face Verified — Recording attendance...</span>
                 </>
               ) : isProcessing ? (
                 <>
-                  <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
+                  <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
                   <span>● Verifying Face... Please hold still</span>
                 </>
               ) : faceStatus.type === 'success' ? (
                 <>
-                  <Check className="w-4 h-4 text-emerald-600 stroke-[3]" />
+                  <Check className="w-4 h-4 text-emerald-500 stroke-[3]" />
                   <span>{faceStatus.message}</span>
                 </>
               ) : (
                 <>
-                  <Camera className="w-4 h-4 text-blue-600" />
+                  <Camera className="w-4 h-4 text-blue-500" />
                   <span>{faceStatus.message || 'Position your face inside the guide'}</span>
                 </>
               )}
@@ -1557,7 +1556,7 @@ export default function ScanAttendance() {
               type="button"
               onClick={handleRescanQr}
               disabled={isProcessing || stage === STAGES.ATTENDANCE_RECORDING}
-              className="btn btn-secondary w-full py-2.5 text-xs font-medium rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50 flex items-center justify-center gap-1.5 disabled:opacity-50"
+              className="attendance-secondary-btn w-full py-2.5 text-xs font-medium rounded-xl flex items-center justify-center gap-1.5 disabled:opacity-50"
             >
               <RotateCcw className="w-3.5 h-3.5 text-gray-500" />
               Cancel & Rescan QR
@@ -1569,19 +1568,19 @@ export default function ScanAttendance() {
         {stage === STAGES.VERIFICATION_SUCCESS && scanResult && (
           <div className="text-center p-2 sm:p-4 space-y-4 max-w-[480px] mx-auto animate-scale-in">
             {/* Green Check Badge */}
-            <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 mx-auto flex items-center justify-center shadow-sm ring-8 ring-emerald-50">
+            <div className="attendance-success-icon-box w-16 h-16 rounded-full mx-auto flex items-center justify-center shadow-sm">
               <Check className="w-8 h-8 stroke-[3]" />
             </div>
 
             <div className="space-y-1">
               <h2
-                className="text-2xl font-bold text-gray-900 tracking-tight"
+                className="attendance-success-title text-2xl font-bold tracking-tight"
                 style={{ fontFamily: 'Outfit, sans-serif' }}
               >
                 Attendance Recorded
               </h2>
-              <p className="text-xs text-gray-500">
-                {scanResult.message || 'Your attendance has been recorded successfully.'}
+              <p className="attendance-success-subtitle text-xs">
+                {scanResult.message || 'Face verified successfully. Time In recorded!'}
               </p>
             </div>
 
@@ -1590,8 +1589,8 @@ export default function ScanAttendance() {
               <span
                 className={`text-xs font-extrabold uppercase tracking-widest px-4 py-1.5 rounded-full shadow-xs ${
                   scanResult.scan_type === 'time_in'
-                    ? 'bg-emerald-600 text-white'
-                    : 'bg-purple-600 text-white'
+                    ? 'attendance-badge-timein'
+                    : 'attendance-badge-timeout'
                 }`}
               >
                 {scanResult.scan_label || (scanResult.scan_type === 'time_in' ? 'TIME IN' : 'TIME OUT')}
@@ -1599,47 +1598,47 @@ export default function ScanAttendance() {
             </div>
 
             {/* Structured Attendance Details Grid */}
-            <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 text-left divide-y divide-gray-100 text-xs">
-              <div className="py-2 flex justify-between items-center">
-                <span className="text-gray-500 font-medium">Time</span>
-                <span className="font-bold text-gray-900 text-sm">
+            <div className="attendance-details-card rounded-2xl p-4 text-left divide-y text-xs">
+              <div className="attendance-details-row py-2.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+                <span className="attendance-details-label font-medium flex-shrink-0">Time</span>
+                <span className="attendance-details-value font-bold text-sm sm:text-right">
                   {safeFormatDate(scanResult.scan_time, 'hh:mm:ss a')}
                 </span>
               </div>
-              <div className="py-2 flex justify-between items-center">
-                <span className="text-gray-500 font-medium">Intern</span>
-                <span className="font-semibold text-gray-900">
+              <div className="attendance-details-row py-2.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+                <span className="attendance-details-label font-medium flex-shrink-0">Intern</span>
+                <span className="attendance-details-value font-semibold sm:text-right" style={{ overflowWrap: 'anywhere', wordBreak: 'normal' }}>
                   {scanResult.intern_name || userName}
                 </span>
               </div>
-              <div className="py-2 flex justify-between items-center">
-                <span className="text-gray-500 font-medium">Date</span>
-                <span className="font-medium text-gray-800">
+              <div className="attendance-details-row py-2.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+                <span className="attendance-details-label font-medium flex-shrink-0">Date</span>
+                <span className="attendance-details-value font-medium sm:text-right">
                   {safeFormatDate(scanResult.scan_time, 'MMMM dd, yyyy')}
                 </span>
               </div>
-              <div className="py-2 flex justify-between items-center">
-                <span className="text-gray-500 font-medium">Verification</span>
-                <span className="inline-flex items-center gap-1 font-semibold text-emerald-700 bg-emerald-100/70 px-2 py-0.5 rounded-full text-[11px]">
+              <div className="attendance-details-row py-2.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+                <span className="attendance-details-label font-medium flex-shrink-0">Verification</span>
+                <span className="attendance-badge-verified inline-flex items-center gap-1 font-semibold px-2.5 py-0.5 rounded-full text-[11px] self-start sm:self-auto">
                   <Check className="w-3 h-3 stroke-[3]" />
                   Verified ({Math.round((scanResult.similarity || 0.95) * 100)}%)
                 </span>
               </div>
-              <div className="py-2 flex justify-between items-center">
-                <span className="text-gray-500 font-medium">Status</span>
-                <span className="inline-flex items-center gap-1 font-semibold text-amber-700 bg-amber-100/70 px-2 py-0.5 rounded-full text-[11px]">
+              <div className="attendance-details-row py-2.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+                <span className="attendance-details-label font-medium flex-shrink-0">Status</span>
+                <span className="attendance-badge-pending inline-flex items-center gap-1 font-semibold px-2.5 py-0.5 rounded-full text-[11px] self-start sm:self-auto">
                   <Clock className="w-3 h-3" />
                   Pending Approval
                 </span>
               </div>
             </div>
 
-            {/* Done Action Button */}
+            {/* Done / Cooldown Button */}
             <button
               type="button"
               onClick={handleReset}
               disabled={cooldown > 0}
-              className="btn btn-primary w-full h-12 text-sm font-semibold rounded-xl flex items-center justify-center gap-2 shadow-sm transition-all disabled:opacity-50"
+              className="attendance-done-btn w-full h-12 text-sm font-semibold rounded-xl flex items-center justify-center gap-2 shadow-sm transition-all"
             >
               {cooldown > 0 ? `Done (Cooldown ${cooldown}s)` : 'Done'}
             </button>
