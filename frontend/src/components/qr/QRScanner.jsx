@@ -412,6 +412,7 @@ export default function QRScanner({ onScan, onError, isActive = true }) {
             </div>
             <button
               type="button"
+              id="qr-start-btn"
               onClick={() => startScanner()}
               className="btn btn-primary px-6 py-2.5 text-sm font-semibold rounded-xl mt-2 flex items-center gap-2 shadow-lg"
             >
@@ -492,62 +493,44 @@ export default function QRScanner({ onScan, onError, isActive = true }) {
       )}
 
       {/* Controls & Camera Switcher */}
-      <div className="qr-scanner-controls flex items-center justify-center gap-2 pt-1">
-        {scanState === 'scanning' ? (
-          <>
-            {hasMultipleCameras && (
+      {(scanState === 'scanning' || scanState === 'error') && (
+        <div className="qr-scanner-controls flex items-center justify-center gap-2 pt-1">
+          {scanState === 'scanning' ? (
+            <>
+              {hasMultipleCameras && (
+                <button
+                  type="button"
+                  onClick={handleSwitchCamera}
+                  className="btn btn-secondary text-xs flex items-center gap-1.5 py-2 px-3 rounded-xl border border-gray-300 hover:bg-gray-100 transition-colors"
+                  title="Switch Camera (Front/Rear)"
+                >
+                  <SwitchCamera className="w-4 h-4 text-gray-700" />
+                  Switch Camera
+                </button>
+              )}
+
               <button
                 type="button"
-                onClick={handleSwitchCamera}
+                id="qr-stop-btn"
+                onClick={stopScanner}
                 className="btn btn-secondary text-xs flex items-center gap-1.5 py-2 px-3 rounded-xl border border-gray-300 hover:bg-gray-100 transition-colors"
-                title="Switch Camera (Front/Rear)"
               >
-                <SwitchCamera className="w-4 h-4 text-gray-700" />
-                Switch Camera
+                <CameraOff className="w-4 h-4 text-red-600" />
+                Stop Camera
               </button>
-            )}
-
+            </>
+          ) : (
             <button
               type="button"
-              id="qr-stop-btn"
-              onClick={stopScanner}
-              className="btn btn-secondary text-xs flex items-center gap-1.5 py-2 px-3 rounded-xl border border-gray-300 hover:bg-gray-100 transition-colors"
+              onClick={handleRetry}
+              className="btn btn-primary text-xs flex items-center gap-1.5 py-2 px-4 rounded-xl shadow-md"
             >
-              <CameraOff className="w-4 h-4 text-red-600" />
-              Stop Camera
+              <RefreshCw className="w-4 h-4" />
+              Retry Camera
             </button>
-          </>
-        ) : scanState === 'error' ? (
-          <button
-            type="button"
-            onClick={handleRetry}
-            className="btn btn-primary text-xs flex items-center gap-1.5 py-2 px-4 rounded-xl shadow-md"
-          >
-            <RefreshCw className="w-4 h-4" />
-            Retry Camera
-          </button>
-        ) : (
-          <button
-            type="button"
-            id="qr-start-btn"
-            onClick={() => startScanner()}
-            disabled={scanState === 'initializing'}
-            className="btn btn-primary text-xs flex items-center gap-1.5 py-2 px-4 rounded-xl shadow-md disabled:opacity-50"
-          >
-            {scanState === 'initializing' ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Starting Camera...
-              </>
-            ) : (
-              <>
-                <Camera className="w-4 h-4" />
-                Start Camera
-              </>
-            )}
-          </button>
-        )}
-      </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
