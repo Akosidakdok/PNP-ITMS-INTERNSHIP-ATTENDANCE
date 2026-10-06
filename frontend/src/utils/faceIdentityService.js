@@ -20,8 +20,8 @@ const identityConfig = {
   modelBasePath: `${normalizedBase}models/human/`,
   cacheSensitivity: 0,
   filter: {
-    enabled: true,
-    equalization: true,
+    enabled: false,
+    equalization: false,
   },
   face: {
     enabled: true,
@@ -87,8 +87,10 @@ export function getFrameCanvas(source) {
     if (!reusableFrameCanvas) {
       reusableFrameCanvas = document.createElement('canvas');
     }
-    reusableFrameCanvas.width = source.videoWidth;
-    reusableFrameCanvas.height = source.videoHeight;
+    if (reusableFrameCanvas.width !== source.videoWidth || reusableFrameCanvas.height !== source.videoHeight) {
+      reusableFrameCanvas.width = source.videoWidth;
+      reusableFrameCanvas.height = source.videoHeight;
+    }
     const ctx = reusableFrameCanvas.getContext('2d', { willReadFrequently: true });
     if (!ctx) return null;
     ctx.drawImage(source, 0, 0);
@@ -100,8 +102,10 @@ export function getFrameCanvas(source) {
     if (!reusableFrameCanvas) {
       reusableFrameCanvas = document.createElement('canvas');
     }
-    reusableFrameCanvas.width = source.naturalWidth;
-    reusableFrameCanvas.height = source.naturalHeight;
+    if (reusableFrameCanvas.width !== source.naturalWidth || reusableFrameCanvas.height !== source.naturalHeight) {
+      reusableFrameCanvas.width = source.naturalWidth;
+      reusableFrameCanvas.height = source.naturalHeight;
+    }
     const ctx = reusableFrameCanvas.getContext('2d', { willReadFrequently: true });
     if (!ctx) return null;
     ctx.drawImage(source, 0, 0);
@@ -422,7 +426,15 @@ export async function evaluateFaceQuality(element) {
   }
 
   try {
-    const result = await identityEngine.detect(canvas);
+    // Quality evaluation only checks centering and tilt (mesh/detector); disable expensive models for maximum 60fps smoothness
+    const result = await identityEngine.detect(canvas, {
+      face: {
+        iris: { enabled: false },
+        description: { enabled: false },
+        antispoof: { enabled: false },
+        liveness: { enabled: false },
+      },
+    });
     const faces = result?.face || [];
 
     if (faces.length === 0) {

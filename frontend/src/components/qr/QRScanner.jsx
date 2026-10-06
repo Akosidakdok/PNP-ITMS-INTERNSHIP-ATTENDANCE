@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { Html5Qrcode } from 'html5-qrcode';
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import { Camera, CameraOff, Loader2, SwitchCamera, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
 
 export default function QRScanner({ onScan, onError, isActive = true }) {
@@ -73,27 +73,34 @@ export default function QRScanner({ onScan, onError, isActive = true }) {
     }
   }, [logDebug]);
 
-  // Enumerate cameras (best-effort)
+  // Enumerate cameras safely using enumerateDevices without triggering secondary getUserMedia on iOS
   const discoverCameras = useCallback(async () => {
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
         return [];
       }
-      const devices = await Html5Qrcode.getCameras();
-      if (Array.isArray(devices) && devices.length > 0) {
+      const allDevices = await navigator.mediaDevices.enumerateDevices();
+      const videoDevices = allDevices
+        .filter(d => d.kind === 'videoinput')
+        .map((d, index) => ({
+          id: d.deviceId,
+          label: d.label || `Camera ${index + 1}`
+        }));
+
+      if (videoDevices.length > 0) {
         if (isMountedRef.current) {
-          setCameras(devices);
-          setHasMultipleCameras(devices.length > 1);
+          setCameras(videoDevices);
+          setHasMultipleCameras(videoDevices.length > 1);
         }
 
         // Identify rear/environment camera index if labeled
-        const rearIdx = devices.findIndex(d => 
+        const rearIdx = videoDevices.findIndex(d => 
           /back|rear|environment|posterior|reverse/i.test(d.label || '')
         );
         if (rearIdx >= 0 && isMountedRef.current) {
           setCurrentCameraIndex(rearIdx);
         }
-        return devices;
+        return videoDevices;
       }
       return [];
     } catch (err) {
@@ -145,35 +152,35 @@ export default function QRScanner({ onScan, onError, isActive = true }) {
       videoObserver.observe(targetElement, { childList: true, subtree: true });
 
       // Step 2: Determine camera configuration
-      // On mobile devices, { facingMode: 'environment' } is the most robust constraint.
-      // Avoid rigid videoConstraints or forced aspectRatio that trigger OverconstrainedError on iOS Safari.
+      // On mobile devices, ideal environment mode with 720p constraints guarantees selecting the primary rear camera
       let cameraConfig;
       if (forcedCameraConfig) {
         cameraConfig = forcedCameraConfig;
       } else {
-        cameraConfig = { facingMode: 'environment' };
+        cameraConfig = {
+          facingMode: { ideal: 'environment' },
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+        };
       }
 
       const html5Qr = new Html5Qrcode(containerIdRef.current, {
+        formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
+        experimentalFeatures: {
+          useBarCodeDetectorIfSupported: true,
+        },
         verbose: false,
       });
       scannerRef.current = html5Qr;
 
       logDebug('Starting scanner with config:', cameraConfig);
 
-      // Step 3: Start scanning
+      // Step 3: Start scanning full-frame (omitting qrbox fixes iOS Safari aspect-ratio crop offset bug)
       await html5Qr.start(
         cameraConfig,
         {
-          fps: 10, // 10 fps is optimal for mobile CPU, heat & battery
-          qrbox: (viewfinderWidth, viewfinderHeight) => {
-            const minDim = Math.min(viewfinderWidth, viewfinderHeight);
-            const edge = Math.floor(minDim * 0.72);
-            return {
-              width: Math.max(120, edge),
-              height: Math.max(120, edge),
-            };
-          },
+          fps: 15,
+          disableFlip: true,
         },
         (decodedText) => {
           // Success callback: prevent duplicates immediately
@@ -243,7 +250,7 @@ export default function QRScanner({ onScan, onError, isActive = true }) {
         errMsg.includes('permission') ||
         errMsg === 'PERMISSION_DENIED'
       ) {
-        userMsg = 'Camera permission is required. Please allow camera access in your browser or device settings and try again.';
+        userMsg = 'Camera permission is required. On iOS/iPhone, open Settings > Safari (or Settings > Privacy) > Camera and set to "Allow", then reopen the app.';
       } else if (
         errName === 'NotFoundError' ||
         errName === 'DevicesNotFoundError' ||

@@ -1,5 +1,5 @@
 // PNP-ITMS Service Worker — App Shell Cache
-const CACHE_NAME = "pnp-itms-shell-v4";
+const CACHE_NAME = "pnp-itms-shell-v5";
 
 const APP_SHELL = [
   "/",
@@ -61,10 +61,11 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  const isModelRequest = url.pathname.startsWith("/models/");
   const cacheableDestination = ["script", "style", "image", "font", "manifest"].includes(
     event.request.destination
   );
-  if (!cacheableDestination) return;
+  if (!cacheableDestination && !isModelRequest) return;
 
   event.respondWith(
     caches.match(event.request).then((cached) => {

@@ -108,9 +108,10 @@ export default function ScanAttendance() {
 
         while (attempts < 3 && !stream && active) {
           try {
+            // Attempt standard front camera with ideal constraints
             stream = await navigator.mediaDevices.getUserMedia({
               video: {
-                facingMode: 'user',
+                facingMode: attempts === 0 ? 'user' : { ideal: 'user' },
                 width: { ideal: 640 },
                 height: { ideal: 480 }
               }
@@ -118,11 +119,20 @@ export default function ScanAttendance() {
           } catch (camErr) {
             lastErr = camErr;
             attempts += 1;
-            if (attempts >= 3 || (camErr.name !== 'NotReadableError' && camErr.name !== 'TrackStartError')) {
-              throw camErr;
+            if (camErr.name === 'OverconstrainedError' || camErr.message?.includes('constraint')) {
+              try {
+                // Fallback for devices that reject strict user constraints
+                stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                break;
+              } catch (fallbackErr) {
+                lastErr = fallbackErr;
+              }
             }
-            // Wait 450ms for previous camera session to fully release hardware
-            await new Promise(resolve => setTimeout(resolve, 450));
+            if (attempts >= 3 || (camErr.name !== 'NotReadableError' && camErr.name !== 'TrackStartError')) {
+              throw lastErr || camErr;
+            }
+            // Wait 500ms for previous camera session to fully release hardware on mobile
+            await new Promise(resolve => setTimeout(resolve, 500));
           }
         }
 
@@ -430,10 +440,10 @@ export default function ScanAttendance() {
       toast.success(res.data.message || 'QR valid! Now scanning your face...');
       setTempQrCode(qrCode);
       setScannerActive(false);
-      // Wait 200ms to allow mobile hardware to fully switch from rear to front camera
+      // Wait 350ms to allow mobile hardware to fully switch from rear to front camera
       setTimeout(() => {
         setIsCameraOpen(true);
-      }, 200);
+      }, 350);
     } catch (err) {
       const msg = err?.response?.data?.error || 'QR validation failed. Please try again.';
       setError(msg);
