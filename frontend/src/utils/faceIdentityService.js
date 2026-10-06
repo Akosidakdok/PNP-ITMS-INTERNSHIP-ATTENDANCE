@@ -580,3 +580,175 @@ export async function evaluateFaceQuality(element) {
     return { valid: false, faceCount: 0, code: 'DETECTION_ERROR', error: err?.message || 'Face analysis failed' };
   }
 }
+
+/**
+ * Compares live video frame against the CURRENT LOGGED-IN USER'S registered face package.
+ * Enforces:
+ * - Exactly 1 face in view (rejects 0 faces or multiple faces)
+ * - Good positioning and head orientation
+ * - Similarity check against ONLY the current user's enrolled descriptor
+ * - Rejects any other face (FACE_MISMATCH)
+ */
+export async function compareLiveFaceToRegistered(liveInput, registeredPackage) {
+  if (!registeredPackage || !Array.isArray(registeredPackage.samples) || registeredPackage.samples.length === 0) {
+    return {
+      valid: false,
+      isMatch: false,
+      code: 'FACE_NOT_REGISTERED',
+      error: 'Face ID is not registered for this account. Contact your administrator.',
+      faceCount: 0,
+    };
+  }
+
+  await initializeFaceIdentity();
+  if (!identityEngine) {
+    return {
+      valid: false,
+      isMatch: false,
+      code: 'ENGINE_NOT_READY',
+      error: 'Face ID engine initializing...',
+      faceCount: 0,
+    };
+  }
+
+  const canvas = getFrameCanvas(liveInput);
+  if (!canvas) {
+    return {
+      valid: false,
+      isMatch: false,
+      code: 'FRAME_UNAVAILABLE',
+      error: 'Camera frame unavailable.',
+      faceCount: 0,
+    };
+  }
+
+  try {
+    const result = await identityEngine.detect(canvas, FULL_EXTRACTION_CONFIG);
+    const faces = result?.face || [];
+
+    if (faces.length === 0) {
+      return {
+        valid: false,
+        isMatch: false,
+        code: 'NO_FACE_DETECTED',
+        error: 'No face detected. Position your face clearly inside the camera frame.',
+        faceCount: 0,
+      };
+    }
+
+    if (faces.length > 1) {
+      return {
+        valid: false,
+        isMatch: false,
+        code: 'MULTIPLE_FACES_DETECTED',
+        error: 'Multiple faces detected. Only the account owner should be visible during verification.',
+        faceCount: faces.length,
+      };
+    }
+
+    const face = faces[0];
+    const confidence = Math.max(Number(face.score || 0), Number(face.boxScore || 0));
+    if (confidence < 0.40) {
+      return {
+        valid: false,
+        isMatch: false,
+        code: 'LOW_CONFIDENCE',
+        error: 'Face not clearly visible. Improve lighting and face the camera directly.',
+        faceCount: 1,
+      };
+    }
+
+    const box = face.boxRaw || [
+      face.box[0] / canvas.width,
+      face.box[1] / canvas.height,
+      face.box[2] / canvas.width,
+      face.box[3] / canvas.height,
+    ];
+    const faceWidth = box[2];
+    const faceHeight = box[3];
+    const centerX = box[0] + faceWidth / 2;
+    const centerY = box[1] + faceHeight / 2;
+
+    if (faceWidth < 0.12 || faceHeight < 0.12) {
+      return { valid: false, isMatch: false, code: 'FACE_TOO_FAR', error: 'Move closer to the camera', faceCount: 1 };
+    }
+    if (faceWidth > 0.88 || faceHeight > 0.88) {
+      return { valid: false, isMatch: false, code: 'FACE_TOO_CLOSE', error: 'Move slightly back', faceCount: 1 };
+    }
+    if (centerX < 0.15 || centerX > 0.85 || centerY < 0.12 || centerY > 0.88) {
+      return { valid: false, isMatch: false, code: 'FACE_OFF_CENTER', error: 'Center your face inside the frame', faceCount: 1 };
+    }
+
+    const angles = face.rotation?.angle;
+    if (angles) {
+      const rollDeg = Math.abs(angles.roll || 0) * (180 / Math.PI);
+      const yawDeg = Math.abs(angles.yaw || 0) * (180 / Math.PI);
+      if (rollDeg > 28) {
+        return { valid: false, isMatch: false, code: 'HEAD_TILTED', error: 'Keep your head upright and level', faceCount: 1 };
+      }
+      if (yawDeg > 28) {
+        return { valid: false, isMatch: false, code: 'HEAD_TURNED', error: 'Look directly at the camera', faceCount: 1 };
+      }
+    }
+
+    if (!isValidDescriptor(face.embedding)) {
+      return {
+        valid: false,
+        isMatch: false,
+        code: 'DESCRIPTOR_FAILED',
+        error: 'Analyzing facial features...',
+        faceCount: 1,
+      };
+    }
+
+    const liveDescriptor = face.embedding.map(Number);
+    const registeredSamples = registeredPackage.samples.map(s => s.map(Number));
+
+    // Compare strictly against current user's registered samples
+    const similarities = registeredSamples.map(sample => faceDescriptorSimilarity(liveDescriptor, sample));
+    const maxSimilarity = Math.max(...similarities);
+    const avgSimilarity = similarities.reduce((sum, s) => sum + s, 0) / similarities.length;
+
+    const MATCH_THRESHOLD = 0.50;
+    const isMatch = maxSimilarity >= MATCH_THRESHOLD || avgSimilarity >= 0.48;
+
+    if (import.meta.env.DEV) {
+      console.log('[ATTENDANCE VERIFY]', {
+        stage: 'FACE_SCANNING',
+        facesDetected: 1,
+        maxSimilarity: Number(maxSimilarity.toFixed(4)),
+        avgSimilarity: Number(avgSimilarity.toFixed(4)),
+        threshold: MATCH_THRESHOLD,
+        faceResult: isMatch ? 'MATCH' : 'MISMATCH'
+      });
+    }
+
+    if (!isMatch) {
+      return {
+        valid: false,
+        isMatch: false,
+        code: 'FACE_MISMATCH',
+        error: 'Face does not match the registered face for this account.',
+        similarity: avgSimilarity,
+        faceCount: 1,
+      };
+    }
+
+    return {
+      valid: true,
+      isMatch: true,
+      code: 'FACE_MATCH',
+      similarity: avgSimilarity,
+      faceCount: 1,
+      detection: { faceWidth, faceHeight, centerX, centerY, confidence }
+    };
+  } catch (err) {
+    return {
+      valid: false,
+      isMatch: false,
+      code: 'DETECTION_ERROR',
+      error: err?.message || 'Face analysis failed',
+      faceCount: 0,
+    };
+  }
+}

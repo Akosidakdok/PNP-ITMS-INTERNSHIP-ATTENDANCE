@@ -1,18 +1,41 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { QrCode, CheckCircle, AlertCircle, Clock, Shield, Camera, RotateCcw, UserCheck, Sparkles } from 'lucide-react';
+import {
+  QrCode,
+  CheckCircle,
+  AlertCircle,
+  Clock,
+  Shield,
+  Camera,
+  CameraOff,
+  RotateCcw,
+  UserCheck,
+  Sparkles,
+  Loader2,
+} from 'lucide-react';
 import QRScanner from '../../components/qr/QRScanner.jsx';
 import backendApi from '../../utils/backendApi.js';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { format } from 'date-fns';
-import { analyzeFaceQuality, initializeFaceModels } from '../../utils/mediapipeService.js';
 import {
   captureVideoFrames,
   extractSecureFacePackage,
   initializeFaceIdentity,
+  compareLiveFaceToRegistered,
 } from '../../utils/faceIdentityService.js';
 
 const COOLDOWN_SECONDS = 10;
+
+export const STAGES = {
+  CAMERA_OFF: 'CAMERA_OFF',
+  QR_SCANNING: 'QR_SCANNING',
+  QR_VERIFYING: 'QR_VERIFYING',
+  QR_INVALID: 'QR_INVALID',
+  FACE_SCANNING: 'FACE_SCANNING',
+  FACE_VERIFYING: 'FACE_VERIFYING',
+  VERIFICATION_SUCCESS: 'VERIFICATION_SUCCESS',
+  VERIFICATION_FAILED: 'VERIFICATION_FAILED',
+};
 
 const safeFormatDate = (dateVal, fmtStr) => {
   try {
@@ -26,21 +49,30 @@ const safeFormatDate = (dateVal, fmtStr) => {
 
 export default function ScanAttendance() {
   const { user } = useAuth();
+
+  // Verification stage machine
+  const [stage, setStage] = useState(STAGES.CAMERA_OFF);
+  const [isCameraStarted, setIsCameraStarted] = useState(false);
+  const [isStartingCamera, setIsStartingCamera] = useState(false);
+
+  // Scan & Result data
   const [scanResult, setScanResult] = useState(null);
-  const [scanning, setScanning] = useState(false);
-  const [scannerActive, setScannerActive] = useState(true);
   const [error, setError] = useState('');
   const [errorCode, setErrorCode] = useState('');
   const [cooldown, setCooldown] = useState(0);
   const [faceCooldown, setFaceCooldown] = useState(0);
   const [nextScanHint, setNextScanHint] = useState('Loading next scan...');
 
-  // Face capture state
+  // QR and Face state
   const [tempQrCode, setTempQrCode] = useState(null);
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [videoReady, setVideoReady] = useState(false);
   const [faceStatus, setFaceStatus] = useState({ type: 'info', message: 'Initializing camera...' });
   const [isProcessing, setIsProcessing] = useState(false);
+
+  // Registered face package for currently authenticated account ONLY
+  const [userRegisteredFacePackage, setUserRegisteredFacePackage] = useState(null);
+  const userRegisteredFacePackageRef = useRef(null);
 
   const videoRef = useRef(null);
   const streamRef = useRef(null);
@@ -50,6 +82,52 @@ export default function ScanAttendance() {
   const intervalRef = useRef(null);
   const retryTimeoutRef = useRef(null);
   const detectionBusyRef = useRef(false);
+  const initializeCameraRef = useRef(null);
+
+  // Keep ref synchronized with state
+  useEffect(() => {
+    userRegisteredFacePackageRef.current = userRegisteredFacePackage;
+  }, [userRegisteredFacePackage]);
+
+  // ─── Preload Face ID models on page mount ──────────────────────────────────
+  useEffect(() => {
+    initializeFaceIdentity().catch(err => {
+      console.warn('Face ID background preload notice:', err?.message || err);
+    });
+  }, []);
+
+  // ─── Fetch Current User's Registered Face Package ──────────────────────────
+  useEffect(() => {
+    let isMounted = true;
+    if (user?.id) {
+      backendApi.get('/attendance/my-face-descriptor')
+        .then(res => {
+          if (isMounted && res.data?.face_embedding) {
+            setUserRegisteredFacePackage(res.data.face_embedding);
+            userRegisteredFacePackageRef.current = res.data.face_embedding;
+            if (import.meta.env.DEV) {
+              console.log('[ATTENDANCE VERIFY]', {
+                action: 'LOAD_REGISTERED_FACE',
+                authenticatedUserId: user.id,
+                faceRegistered: true,
+              });
+            }
+          }
+        })
+        .catch(() => {
+          if (isMounted) {
+            setUserRegisteredFacePackage(null);
+            userRegisteredFacePackageRef.current = null;
+          }
+        });
+    } else {
+      setUserRegisteredFacePackage(null);
+      userRegisteredFacePackageRef.current = null;
+    }
+    return () => {
+      isMounted = false;
+    };
+  }, [user?.id]);
 
   // ─── Load next scan hint ──────────────────────────────────────────────────
   useEffect(() => {
@@ -58,7 +136,7 @@ export default function ScanAttendance() {
       .catch(() => setNextScanHint('Unable to load next scan'));
   }, []);
 
-  // ─── Cooldown ticker ──────────────────────────────────────────────────────
+  // ─── Cooldown tickers ─────────────────────────────────────────────────────
   useEffect(() => {
     if (cooldown <= 0) return;
     const t = setTimeout(() => setCooldown(c => c - 1), 1000);
@@ -80,20 +158,50 @@ export default function ScanAttendance() {
       && ['FACE_COOLDOWN', 'FACE_TEMPORARILY_LOCKED'].includes(errorCode)
     ) {
       captureLockRef.current = false;
-      setScannerActive(true);
+      setStage(STAGES.QR_SCANNING);
     }
   }, [faceCooldown, errorCode]);
 
-  // ─── Preload Face ID models as soon as user opens Scan page ─────────────────
-  useEffect(() => {
-    initializeFaceIdentity().catch(err => {
-      console.warn('Face ID background preload notice:', err?.message || err);
-    });
+  // ─── Camera cleanup helper ────────────────────────────────────────────────
+  const stopStream = useCallback(() => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => {
+        try {
+          track.stop();
+          track.enabled = false;
+        } catch {}
+      });
+      streamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
   }, []);
 
-  // ─── Camera open / close ──────────────────────────────────────────────────
-  const initializeCameraRef = useRef(null);
+  // ─── Component unmount & user change cleanup ──────────────────────────────
+  useEffect(() => {
+    return () => {
+      stopStream();
+      if (intervalRef.current) clearInterval(intervalRef.current);
+      if (retryTimeoutRef.current) clearTimeout(retryTimeoutRef.current);
+    };
+  }, [stopStream]);
 
+  useEffect(() => {
+    // When user account changes or logs out, purge all camera, state, and descriptors
+    stopStream();
+    setStage(STAGES.CAMERA_OFF);
+    setIsCameraStarted(false);
+    setIsCameraOpen(false);
+    setUserRegisteredFacePackage(null);
+    userRegisteredFacePackageRef.current = null;
+    setTempQrCode(null);
+    setScanResult(null);
+    setError('');
+    setErrorCode('');
+  }, [user?.id, stopStream]);
+
+  // ─── Face Camera initialization & stream binding ──────────────────────────
   useEffect(() => {
     if (!isCameraOpen) {
       stopStream();
@@ -108,7 +216,6 @@ export default function ScanAttendance() {
     let active = true;
     const initializeCamera = async () => {
       try {
-        // Kick off Face ID model preparation in parallel with camera stream request
         const modelInitPromise = initializeFaceIdentity();
 
         let stream = null;
@@ -117,7 +224,6 @@ export default function ScanAttendance() {
 
         while (attempts < 3 && !stream && active) {
           try {
-            // Attempt standard front camera with ideal constraints
             stream = await navigator.mediaDevices.getUserMedia({
               video: {
                 facingMode: attempts === 0 ? 'user' : { ideal: 'user' },
@@ -130,7 +236,6 @@ export default function ScanAttendance() {
             attempts += 1;
             if (camErr.name === 'OverconstrainedError' || camErr.message?.includes('constraint')) {
               try {
-                // Fallback for devices that reject strict user constraints
                 stream = await navigator.mediaDevices.getUserMedia({ video: true });
                 break;
               } catch (fallbackErr) {
@@ -140,7 +245,6 @@ export default function ScanAttendance() {
             if (attempts >= 3 || (camErr.name !== 'NotReadableError' && camErr.name !== 'TrackStartError')) {
               throw lastErr || camErr;
             }
-            // Wait 500ms for previous camera session to fully release hardware on mobile
             await new Promise(resolve => setTimeout(resolve, 500));
           }
         }
@@ -148,10 +252,7 @@ export default function ScanAttendance() {
         if (!active) {
           if (stream) {
             stream.getTracks().forEach(track => {
-              try {
-                track.stop();
-                track.enabled = false;
-              } catch {}
+              try { track.stop(); track.enabled = false; } catch {}
             });
           }
           return;
@@ -179,12 +280,8 @@ export default function ScanAttendance() {
           const playPromise = vid.play();
           if (playPromise !== undefined) {
             playPromise
-              .then(() => {
-                if (active) markReady();
-              })
-              .catch(() => {
-                if (active) markReady();
-              });
+              .then(() => { if (active) markReady(); })
+              .catch(() => { if (active) markReady(); });
           } else {
             markReady();
           }
@@ -200,7 +297,6 @@ export default function ScanAttendance() {
           }
         }
 
-        // Ensure Face ID model is fully loaded before allowing detection passes
         await modelInitPromise;
       } catch (cameraError) {
         console.error('Face camera initialization failed:', cameraError);
@@ -219,12 +315,12 @@ export default function ScanAttendance() {
         toast.error(message);
         setIsCameraOpen(false);
         setTempQrCode(null);
-        setScannerActive(true);
+        setStage(STAGES.CAMERA_OFF);
+        setIsCameraStarted(false);
       }
     };
 
     initializeCameraRef.current = initializeCamera;
-    // Delay to ensure rear camera tracks have fully released hardware on mobile
     const timer = setTimeout(initializeCamera, 350);
 
     return () => {
@@ -232,77 +328,27 @@ export default function ScanAttendance() {
       clearTimeout(timer);
       stopStream();
     };
-  }, [isCameraOpen]);
+  }, [isCameraOpen, stopStream]);
 
-  // ─── Auto face-detection polling loop ────────────────────────────────────
-  useEffect(() => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
+  // ─── Start Camera Action (User-Triggered Only) ────────────────────────────
+  const handleStartCamera = async () => {
+    if (isStartingCamera || stage !== STAGES.CAMERA_OFF || cooldown > 0 || faceCooldown > 0) return;
+    setIsStartingCamera(true);
+    setError('');
+    setErrorCode('');
+
+    if (import.meta.env.DEV) {
+      console.log('[ATTENDANCE VERIFY]', {
+        stage: 'QR_SCANNING',
+        cameraActive: true,
+        authenticatedUserId: user?.id,
+        action: 'START_CAMERA'
+      });
     }
 
-    if (!isCameraOpen || !videoReady || isProcessing) return;
-
-    validFramesRef.current = 0;
-
-    intervalRef.current = setInterval(async () => {
-      if (captureLockRef.current || detectionBusyRef.current || !videoRef.current) return;
-
-      const vid = videoRef.current;
-      // Skip frame if video not fully ready (prevents MediaPipe zero-size error)
-      if (!vid.videoWidth || !vid.videoHeight || vid.readyState < 2) return;
-
-      try {
-        detectionBusyRef.current = true;
-        const quality = await analyzeFaceQuality(videoRef.current);
-
-        if (quality.valid) {
-          validFramesRef.current = Math.min(3, validFramesRef.current + 1);
-          setFaceStatus({
-            type: 'success',
-            message: `Face detected! Hold still... (${validFramesRef.current}/3)`
-          });
-
-          if (validFramesRef.current >= 3) {
-            captureLockRef.current = true;
-            clearInterval(intervalRef.current);
-            intervalRef.current = null;
-            runCaptureAndSubmit();
-          }
-        } else {
-          // Soft decay rather than violent reset to 0 to tolerate slight phone shake
-          validFramesRef.current = Math.max(0, validFramesRef.current - 1);
-          setFaceStatus({
-            type: 'warning',
-            message: quality.error || 'Position your face inside the circle'
-          });
-        }
-      } catch (detectionError) {
-        validFramesRef.current = Math.max(0, validFramesRef.current - 1);
-        setFaceStatus({
-          type: 'warning',
-          message: detectionError?.message || 'Face analysis failed. Hold still and try again.'
-        });
-      } finally {
-        detectionBusyRef.current = false;
-      }
-    }, 450);
-
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-      detectionBusyRef.current = false;
-    };
-  }, [isCameraOpen, videoReady, isProcessing]);
-
-  // ─── Helpers ──────────────────────────────────────────────────────────────
-  const stopStream = () => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(t => t.stop());
-      streamRef.current = null;
-    }
+    setStage(STAGES.QR_SCANNING);
+    setIsCameraStarted(true);
+    setIsStartingCamera(false);
   };
 
   // ─── Core capture + submit ────────────────────────────────────────────────
@@ -313,7 +359,16 @@ export default function ScanAttendance() {
     }
 
     setIsProcessing(true);
-    setFaceStatus({ type: 'success', message: 'Capturing & verifying...' });
+    setStage(STAGES.FACE_VERIFYING);
+    setFaceStatus({ type: 'success', message: 'Verifying Face...' });
+
+    if (import.meta.env.DEV) {
+      console.log('[ATTENDANCE VERIFY]', {
+        stage: 'FACE_VERIFYING',
+        authenticatedUserId: user?.id,
+        qrCode: tempQrCode?.slice(0, 8) + '...',
+      });
+    }
 
     try {
       const video = videoRef.current;
@@ -335,7 +390,6 @@ export default function ScanAttendance() {
       const parts = formatter.formatToParts(new Date());
       const getP = type => parts.find(p => p.type === type)?.value || '';
 
-      // Check if official scheduled profile time should be watermarked
       const profile = user?.assigned_profile;
       const isTimeIn = !nextScanHint || nextScanHint.toLowerCase().includes('in') || nextScanHint.toLowerCase().includes('first');
       const isTimeOut = Boolean(nextScanHint && nextScanHint.toLowerCase().includes('out'));
@@ -369,34 +423,54 @@ export default function ScanAttendance() {
 
       const photoDataUrl = canvas.toDataURL('image/jpeg', 0.7);
 
-      // Submit attendance
+      // Submit attendance to backend (backend authoritatively checks user.id & embedding)
       const res = await backendApi.post('/attendance/scan', {
         qr_code: tempQrCode,
         photo: photoDataUrl,
         face_embedding: embedding
       });
 
+      if (import.meta.env.DEV) {
+        console.log('[ATTENDANCE VERIFY]', {
+          stage: 'VERIFICATION_SUCCESS',
+          authenticatedUserId: user?.id,
+          attendanceResult: 'SUCCESS',
+          similarity: res.data?.similarity,
+        });
+      }
+
       stopStream();
       setScanResult(res.data);
       setIsCameraOpen(false);
+      setIsCameraStarted(false);
       setTempQrCode(null);
-      setScannerActive(false);
+      setStage(STAGES.VERIFICATION_SUCCESS);
       setNextScanHint(res.data.next_scan_label || 'Ready to scan');
       setCooldown(COOLDOWN_SECONDS);
-      toast.success(res.data.message || 'Attendance recorded!');
+      toast.success(res.data.message || 'Verification Successful! Attendance recorded.');
     } catch (err) {
       console.error('Capture/submit error:', err);
       const msg = err?.response?.data?.error || err?.message || 'Face verification failed. Please try again.';
-      const code = err?.response?.data?.code || '';
+      const code = err?.response?.data?.code || 'FACE_MISMATCH';
       const retryAfter = Math.max(
         0,
         Math.ceil(Number(err?.response?.data?.retry_after_seconds || 0))
       );
       setError(msg);
       setErrorCode(code);
+      setStage(STAGES.VERIFICATION_FAILED);
 
-      // ── 2-second rejection flash (like phone face unlock) ──
-      setFaceStatus({ type: 'rejected', message: msg || 'Face not recognized' });
+      if (import.meta.env.DEV) {
+        console.log('[ATTENDANCE VERIFY]', {
+          stage: 'VERIFICATION_FAILED',
+          authenticatedUserId: user?.id,
+          attendanceResult: 'DENIED',
+          error: msg,
+          code
+        });
+      }
+
+      setFaceStatus({ type: 'rejected', message: msg });
       captureLockRef.current = true;
 
       if (retryTimeoutRef.current) clearTimeout(retryTimeoutRef.current);
@@ -405,27 +479,27 @@ export default function ScanAttendance() {
         stopStream();
         setFaceCooldown(retryAfter);
         setIsCameraOpen(false);
+        setIsCameraStarted(false);
         setTempQrCode(null);
-        setScannerActive(false);
         toast.error(msg);
       } else if (code === 'FACE_NOT_REGISTERED') {
-        // Registration issue — show error, don't auto-retry
         stopStream();
         toast.error(msg);
         captureLockRef.current = false;
         setFaceStatus({ type: 'rejected', message: 'Face not registered' });
       } else if (
         code === 'FACE_MISMATCH'
+        || code === 'FACE_IDENTITY_CONFLICT'
         || code === 'INVALID_FACE_CAPTURE'
         || !err?.response
       ) {
-        // Wrong face or lighting issue — 2 second cooldown then retry automatically without stopping camera
         toast.error(`${msg} Retrying in 2 seconds...`);
         retryTimeoutRef.current = setTimeout(() => {
           setError('');
           setErrorCode('');
           validFramesRef.current = 0;
           captureLockRef.current = false;
+          setStage(STAGES.FACE_SCANNING);
           if (streamRef.current && streamRef.current.active) {
             setVideoReady(true);
             setFaceStatus({ type: 'info', message: 'Position your face inside the circle' });
@@ -442,87 +516,236 @@ export default function ScanAttendance() {
     } finally {
       setIsProcessing(false);
     }
-  }, [tempQrCode, nextScanHint, user]);
+  }, [tempQrCode, nextScanHint, user, stopStream]);
+
+  // ─── Live Account-Specific Face Matching Loop ─────────────────────────────
+  useEffect(() => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+
+    if (stage !== STAGES.FACE_SCANNING || !isCameraOpen || !videoReady || isProcessing) return;
+
+    validFramesRef.current = 0;
+
+    intervalRef.current = setInterval(async () => {
+      if (captureLockRef.current || detectionBusyRef.current || !videoRef.current) return;
+
+      const vid = videoRef.current;
+      if (!vid.videoWidth || !vid.videoHeight || vid.readyState < 2) return;
+
+      try {
+        detectionBusyRef.current = true;
+
+        // Ensure user's registered face descriptor is loaded
+        if (!userRegisteredFacePackageRef.current) {
+          try {
+            const descriptorRes = await backendApi.get('/attendance/my-face-descriptor');
+            if (descriptorRes.data?.face_embedding) {
+              setUserRegisteredFacePackage(descriptorRes.data.face_embedding);
+              userRegisteredFacePackageRef.current = descriptorRes.data.face_embedding;
+            }
+          } catch (fetchErr) {
+            const fetchMsg = fetchErr?.response?.data?.error || 'Face ID is not registered for your account.';
+            setError(fetchMsg);
+            setErrorCode('FACE_NOT_REGISTERED');
+            setFaceStatus({ type: 'rejected', message: 'Face not registered' });
+            return;
+          }
+        }
+
+        // Compare live face strictly against the current logged-in user's registered face
+        const check = await compareLiveFaceToRegistered(vid, userRegisteredFacePackageRef.current);
+
+        if (check.isMatch) {
+          validFramesRef.current = Math.min(3, validFramesRef.current + 1);
+          setFaceStatus({
+            type: 'success',
+            message: `Face verified! Hold still... (${validFramesRef.current}/3)`
+          });
+
+          if (validFramesRef.current >= 3) {
+            captureLockRef.current = true;
+            clearInterval(intervalRef.current);
+            intervalRef.current = null;
+            runCaptureAndSubmit();
+          }
+        } else {
+          // If mismatch or multiple faces or no face, decay frames and display accurate account rejection
+          validFramesRef.current = Math.max(0, validFramesRef.current - 1);
+          const isHardReject = check.code === 'FACE_MISMATCH' || check.code === 'MULTIPLE_FACES_DETECTED';
+          setFaceStatus({
+            type: isHardReject ? 'rejected' : 'warning',
+            message: check.error || 'Position your face inside the circle'
+          });
+        }
+      } catch (detectionError) {
+        validFramesRef.current = Math.max(0, validFramesRef.current - 1);
+        setFaceStatus({
+          type: 'warning',
+          message: detectionError?.message || 'Face analysis failed. Hold still and try again.'
+        });
+      } finally {
+        detectionBusyRef.current = false;
+      }
+    }, 450);
+
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+      detectionBusyRef.current = false;
+    };
+  }, [stage, isCameraOpen, videoReady, isProcessing, runCaptureAndSubmit]);
 
   // ─── QR scan handler ──────────────────────────────────────────────────────
   const handleScan = async (qrCode) => {
-    if (scanLockRef.current || scanning || cooldown > 0 || faceCooldown > 0 || scanResult) return;
+    if (scanLockRef.current || stage !== STAGES.QR_SCANNING || cooldown > 0 || faceCooldown > 0 || scanResult) return;
     scanLockRef.current = true;
-    setScanning(true);
+    setStage(STAGES.QR_VERIFYING);
     setError('');
     setErrorCode('');
 
+    if (import.meta.env.DEV) {
+      console.log('[ATTENDANCE VERIFY]', {
+        stage: 'QR_VERIFYING',
+        authenticatedUserId: user?.id,
+        qrDetected: true,
+      });
+    }
+
     try {
       const res = await backendApi.post('/attendance/validate-qr', { qr_code: qrCode });
+
+      if (import.meta.env.DEV) {
+        console.log('[ATTENDANCE VERIFY]', {
+          stage: 'QR_VERIFYING',
+          authenticatedUserId: user?.id,
+          qrVerification: 'VALID'
+        });
+      }
+
       toast.success(res.data.message || 'QR valid! Now scanning your face...');
       setTempQrCode(qrCode);
-      setScannerActive(false);
+
+      // Save user's registered face embedding from response if returned
+      if (res.data?.face_embedding) {
+        setUserRegisteredFacePackage(res.data.face_embedding);
+        userRegisteredFacePackageRef.current = res.data.face_embedding;
+      }
+
+      // Automatically transition from QR scanning to Face Verification
+      setStage(STAGES.FACE_SCANNING);
       // Wait 350ms to allow mobile hardware to fully switch from rear to front camera
       setTimeout(() => {
         setIsCameraOpen(true);
       }, 350);
     } catch (err) {
-      const msg = err?.response?.data?.error || 'QR validation failed. Please try again.';
+      const msg = err?.response?.data?.error || 'QR Verification Failed: Please scan a valid attendance QR code.';
+      const code = err?.response?.data?.code || 'QR_INVALID';
+
+      if (import.meta.env.DEV) {
+        console.log('[ATTENDANCE VERIFY]', {
+          stage: 'QR_INVALID',
+          authenticatedUserId: user?.id,
+          qrVerification: 'INVALID',
+          error: msg
+        });
+      }
+
       setError(msg);
+      setErrorCode(code);
+      setStage(STAGES.QR_INVALID);
       toast.error(msg);
-      setScannerActive(true);
-      throw err;
-    } finally {
-      setScanning(false);
       scanLockRef.current = false;
     }
   };
 
-  // ─── Reset / scan again ───────────────────────────────────────────────────
+  // ─── Reset / Scan Again ───────────────────────────────────────────────────
   const handleReset = () => {
     if (cooldown > 0 || faceCooldown > 0) return;
+    stopStream();
     setScanResult(null);
     setError('');
     setErrorCode('');
     setTempQrCode(null);
     setIsCameraOpen(false);
-    setScannerActive(true);
+    setIsCameraStarted(false);
+    setStage(STAGES.CAMERA_OFF);
     setNextScanHint('Loading...');
     backendApi.get('/attendance/next-scan')
       .then(res => setNextScanHint(res.data.next_scan_label || 'Ready to scan'))
       .catch(() => setNextScanHint('Unable to load next scan'));
   };
 
-  const activeStage = scanResult ? 3 : isCameraOpen ? 2 : 1;
+  // ─── Cancel and return to initial state ───────────────────────────────────
+  const handleCancel = () => {
+    stopStream();
+    setIsCameraOpen(false);
+    setIsCameraStarted(false);
+    setTempQrCode(null);
+    setStage(STAGES.CAMERA_OFF);
+    setError('');
+    setErrorCode('');
+    scanLockRef.current = false;
+  };
+
+  // ─── Cancel face scan and rescan QR ───────────────────────────────────────
+  const handleRescanQr = () => {
+    stopStream();
+    setIsCameraOpen(false);
+    setTempQrCode(null);
+    setError('');
+    setErrorCode('');
+    scanLockRef.current = false;
+    setStage(STAGES.QR_SCANNING);
+  };
+
+  // Progress step mapping
+  const getProgressStageNumber = () => {
+    if (stage === STAGES.VERIFICATION_SUCCESS) return 3;
+    if (
+      stage === STAGES.FACE_SCANNING ||
+      stage === STAGES.FACE_VERIFYING ||
+      stage === STAGES.VERIFICATION_FAILED
+    ) {
+      return 2;
+    }
+    return 1;
+  };
+  const activeStepNumber = getProgressStageNumber();
 
   // ─── Render ───────────────────────────────────────────────────────────────
   return (
     <div className="intern-scan-page animate-fade-in">
       <div className="scan-page-heading text-center">
         <h1 className="text-xl sm:text-2xl font-bold text-gray-800 mb-1" style={{ fontFamily: 'Outfit, sans-serif' }}>
-          QR Attendance Scanner
+          Attendance Verification
         </h1>
-        <p className="text-gray-500 text-sm">Scan the office QR code to record your attendance</p>
+        <p className="text-gray-500 text-sm">Scan the office QR code and verify your face to record attendance</p>
       </div>
 
-      <div className="scan-progress" aria-label={`Attendance scanning step ${activeStage} of 3`}>
+      <div className="scan-progress" aria-label={`Attendance scanning step ${activeStepNumber} of 3`}>
         {[
           { number: 1, label: 'Scan QR' },
           { number: 2, label: 'Verify face' },
           { number: 3, label: 'Recorded' },
-        ].map((stage, index) => (
-          <div key={stage.number} className={`scan-progress__item ${activeStage >= stage.number ? 'is-active' : ''} ${activeStage === stage.number ? 'is-current' : ''}`}>
-            <span>{activeStage > stage.number ? <CheckCircle /> : stage.number}</span>
-            <small>{stage.label}</small>
+        ].map((item, index) => (
+          <div
+            key={item.number}
+            className={`scan-progress__item ${activeStepNumber >= item.number ? 'is-active' : ''} ${activeStepNumber === item.number ? 'is-current' : ''}`}
+          >
+            <span>{activeStepNumber > item.number ? <CheckCircle /> : item.number}</span>
+            <small>{item.label}</small>
             {index < 2 && <i />}
           </div>
         ))}
       </div>
 
-      {activeStage === 1 && (
-        <div className="scan-help-note">
-          <Shield />
-          <p><strong>Secure attendance:</strong> scan the office QR, then look at the front camera for automatic Face ID verification.</p>
-        </div>
-      )}
-
-      {/* Main Content */}
-      {scanResult ? (
+      {/* Main Content Area */}
+      {stage === STAGES.VERIFICATION_SUCCESS && scanResult ? (
         /* ── Success Screen ── */
         <div className="card scan-stage-card scan-result-card text-center animate-scale-in">
           <div
@@ -535,7 +758,7 @@ export default function ScanAttendance() {
           <h2 className="text-2xl font-bold text-gray-800 mb-1" style={{ fontFamily: 'Outfit, sans-serif' }}>
             {scanResult.scan_type === 'time_in' ? '✅ Time In Recorded!' : '🎉 Time Out Recorded!'}
           </h2>
-          <p className="text-gray-500 mb-6">{scanResult.message}</p>
+          <p className="text-gray-500 mb-6">{scanResult.message || 'Attendance recorded successfully.'}</p>
 
           <div className="scan-result-details">
             <div>
@@ -570,7 +793,7 @@ export default function ScanAttendance() {
           </div>
 
           <p className="text-xs text-gray-400 mb-4">
-            Your attendance has been recorded with biometric face verification.
+            Your attendance has been recorded with account-specific biometric face verification.
           </p>
 
           <button
@@ -582,12 +805,67 @@ export default function ScanAttendance() {
             {cooldown > 0 ? `Scan Again (${cooldown}s)` : 'Scan Again'}
           </button>
         </div>
-      ) : isCameraOpen ? (
-        /* ── Face Camera Screen ── */
+      ) : stage === STAGES.CAMERA_OFF ? (
+        /* ── Screen 1: Camera Off (Manual Start Camera Only) ── */
+        <div className="card scan-stage-card text-center p-8 space-y-4">
+          <div className="w-16 h-16 rounded-2xl bg-blue-50 text-blue-600 mx-auto flex items-center justify-center">
+            <CameraOff className="w-8 h-8 text-blue-600" />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold text-gray-800" style={{ fontFamily: 'Outfit, sans-serif' }}>
+              Attendance Verification
+            </h2>
+            <p className="text-sm text-gray-500 mt-1">Camera is currently off.</p>
+          </div>
+
+          <div className="next-scan-indicator mx-auto max-w-xs">
+            <Clock />
+            <span><small>Next scan</small><strong>{nextScanHint}</strong></span>
+          </div>
+
+          {error && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-xl flex items-center gap-2 text-sm text-red-700 max-w-sm mx-auto">
+              <AlertCircle className="w-4 h-4 flex-shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
+
+          <div className="pt-2">
+            <button
+              id="start-camera-btn"
+              type="button"
+              onClick={handleStartCamera}
+              disabled={isStartingCamera || cooldown > 0 || faceCooldown > 0}
+              className="btn btn-primary w-full max-w-sm mx-auto flex items-center justify-center gap-2 py-3 text-base font-semibold shadow-md hover:shadow-lg transition-all"
+            >
+              {isStartingCamera ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  Starting Camera...
+                </>
+              ) : (
+                <>
+                  <Camera className="w-5 h-5" />
+                  Start Camera
+                </>
+              )}
+            </button>
+          </div>
+
+          <div className="scan-help-note max-w-sm mx-auto mt-4 text-left">
+            <Shield />
+            <p><strong>Account Security:</strong> Your face must match the registered face for this account.</p>
+          </div>
+        </div>
+      ) : stage === STAGES.FACE_SCANNING || stage === STAGES.FACE_VERIFYING || stage === STAGES.VERIFICATION_FAILED ? (
+        /* ── Screen 3: Face Verification Screen ── */
         <div className="card scan-stage-card scan-stage-card--face">
           <div className="scan-stage-heading">
             <Camera className="w-5 h-5 text-blue-600" />
-            <div><h2 className="font-bold text-gray-800">Face Verification</h2><p>Center your face and hold still</p></div>
+            <div>
+              <h2 className="font-bold text-gray-800">Face Verification</h2>
+              <p>Now position your face inside the frame</p>
+            </div>
           </div>
 
           {/* Error banner */}
@@ -632,7 +910,7 @@ export default function ScanAttendance() {
             {/* Badge */}
             <div className="absolute top-3 left-3 bg-black/70 backdrop-blur-sm text-white text-[10px] px-2.5 py-1 rounded-full font-bold uppercase tracking-wider flex items-center gap-1">
               <Sparkles className="w-3 h-3 text-blue-400" />
-              {isProcessing ? 'Processing...' : 'Auto Recognition'}
+              {isProcessing || stage === STAGES.FACE_VERIFYING ? 'Verifying Face...' : 'Face Recognition'}
             </div>
           </div>
 
@@ -643,7 +921,7 @@ export default function ScanAttendance() {
             faceStatus.type === 'warning' ? 'bg-amber-50 text-amber-800 border border-amber-200' :
             'bg-blue-50 text-blue-700 border border-blue-200'
           }`}>
-            {isProcessing ? (
+            {isProcessing || stage === STAGES.FACE_VERIFYING ? (
               <Clock className="w-4 h-4 animate-spin flex-shrink-0" />
             ) : faceStatus.type === 'success' ? (
               <UserCheck className="w-4 h-4 animate-bounce flex-shrink-0" />
@@ -652,7 +930,7 @@ export default function ScanAttendance() {
             ) : (
               <Camera className="w-4 h-4 flex-shrink-0" />
             )}
-            <span>{isProcessing ? 'Verifying your identity...' : faceStatus.message}</span>
+            <span>{isProcessing || stage === STAGES.FACE_VERIFYING ? 'Verifying Face...' : faceStatus.message}</span>
           </div>
 
           <p className="scan-camera-hint">
@@ -662,13 +940,7 @@ export default function ScanAttendance() {
           {/* Cancel button */}
           <button
             className="btn btn-secondary w-full flex items-center justify-center gap-2 text-sm"
-            onClick={() => {
-              setIsCameraOpen(false);
-              setTempQrCode(null);
-              setScannerActive(true);
-              setError('');
-              setErrorCode('');
-            }}
+            onClick={handleRescanQr}
             disabled={isProcessing}
           >
             <RotateCcw className="w-4 h-4" />
@@ -676,17 +948,20 @@ export default function ScanAttendance() {
           </button>
         </div>
       ) : (
-        /* ── QR Scanner Screen ── */
+        /* ── Screen 2: QR Scanner Screen (Active only after Start Camera) ── */
         <div className="card scan-stage-card scan-stage-card--qr">
           <div className="scan-stage-heading">
             <QrCode className="w-5 h-5 text-blue-600" />
-            <div><h2 className="font-bold text-gray-800">Scan Office QR</h2><p>Place the code inside the camera frame</p></div>
+            <div>
+              <h2 className="font-bold text-gray-800">Scan QR Code</h2>
+              <p>Position the attendance QR code inside the frame</p>
+            </div>
           </div>
           <div>
-            {scanning && (
+            {stage === STAGES.QR_VERIFYING && (
               <div className="mb-3 p-3 bg-yellow-50 border border-yellow-200 rounded-xl flex items-center gap-2 text-sm text-yellow-700">
                 <Clock className="w-4 h-4 animate-spin" />
-                Processing QR scan...
+                Validating QR code...
               </div>
             )}
             <div className="next-scan-indicator">
@@ -702,11 +977,22 @@ export default function ScanAttendance() {
                 </span>
               </div>
             )}
-            <QRScanner onScan={handleScan} isActive={scannerActive} />
+
+            <QRScanner onScan={handleScan} isActive={isCameraStarted && stage === STAGES.QR_SCANNING} />
+
+            <div className="mt-4">
+              <button
+                type="button"
+                className="btn btn-secondary w-full flex items-center justify-center gap-2 text-sm"
+                onClick={handleCancel}
+              >
+                <CameraOff className="w-4 h-4 text-gray-600" />
+                Cancel & Turn Off Camera
+              </button>
+            </div>
           </div>
         </div>
       )}
-
     </div>
   );
 }

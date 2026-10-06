@@ -1295,7 +1295,69 @@ app.post('/attendance/validate-qr', authMiddleware, async (req, res) => {
       return res.status(400).json({ error: 'You have already completed 2 attendance scans (Time In - Time Out) today. Please try again tomorrow.' });
     }
 
-    return res.json({ success: true, message: 'QR scan is good! Proceed to take your selfie.' });
+    const { data: userAccount } = await supabase
+      .from('accounts')
+      .select('id, face_registered, face_embedding')
+      .eq('id', req.user.id)
+      .single();
+
+    let userFaceEmbedding = null;
+    if (userAccount?.face_embedding) {
+      try {
+        userFaceEmbedding = typeof userAccount.face_embedding === 'string'
+          ? JSON.parse(userAccount.face_embedding)
+          : userAccount.face_embedding;
+      } catch {}
+    }
+
+    return res.json({
+      success: true,
+      message: 'QR scan is good! Position your face inside the frame.',
+      face_registered: Boolean(userAccount?.face_registered),
+      face_embedding: userFaceEmbedding,
+    });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/attendance/my-face-descriptor', authMiddleware, async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+
+  try {
+    const { data: account, error } = await supabase
+      .from('accounts')
+      .select('id, face_registered, face_embedding')
+      .eq('id', req.user.id)
+      .single();
+
+    if (error || !account) {
+      return res.status(404).json({ error: 'User account not found' });
+    }
+
+    if (!account.face_registered || !account.face_embedding) {
+      return res.status(400).json({
+        error: 'Face ID is not registered for your account. Please complete biometric enrollment first.',
+        code: 'FACE_NOT_REGISTERED',
+        face_registered: false,
+      });
+    }
+
+    let parsedPackage = null;
+    try {
+      parsedPackage = typeof account.face_embedding === 'string'
+        ? JSON.parse(account.face_embedding)
+        : account.face_embedding;
+    } catch {}
+
+    return res.json({
+      success: true,
+      user_id: account.id,
+      face_registered: true,
+      face_embedding: parsedPackage,
+    });
   } catch (error) {
     return res.status(500).json({ error: error.message });
   }

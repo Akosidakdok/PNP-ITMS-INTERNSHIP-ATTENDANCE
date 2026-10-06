@@ -76,10 +76,16 @@ export async function getTodayScanStatus(internId) {
 import { validateFacePhoto, verifyUserFace } from './services/faceVerificationService.js';
 
 export async function scanAttendance({ qr_code, user, photo, face_embedding } = {}) {
+  if (!user || !user.id) {
+    const unauthErr = new Error('Authentication required for attendance scan');
+    unauthErr.statusCode = 401;
+    unauthErr.code = 'UNAUTHENTICATED';
+    throw unauthErr;
+  }
+
   if (!qr_code) {
     throw new Error('QR code is required');
   }
-  const validatedPhoto = validateFacePhoto(photo);
 
   const now = new Date().toISOString();
   const { data: qrData, error: qrError } = await supabase
@@ -94,32 +100,32 @@ export async function scanAttendance({ qr_code, user, photo, face_embedding } = 
     throw new Error('Invalid or expired QR code');
   }
 
-  let internId = null;
-  let internName = 'Unknown Intern';
-  if (user?.id) {
-    internId = user.id;
-    internName = user.full_name || user.username || internName;
+  const validatedPhoto = validateFacePhoto(photo);
+
+  if (!face_embedding) {
+    const faceErr = new Error('Face verification embedding is required');
+    faceErr.statusCode = 400;
+    faceErr.code = 'FACE_EMBEDDING_REQUIRED';
+    throw faceErr;
   }
 
-  // Perform Face Verification if internId is present
-  let verificationScore = null;
-  let verificationStatus = 'Unverified';
+  const internId = user.id;
+  const internName = user.full_name || user.username || 'Intern';
 
-  if (internId) {
-    const faceCheck = await verifyUserFace(internId, face_embedding);
-    if (!faceCheck.verified) {
-      const err = new Error(faceCheck.message || 'Face verification failed. Please try again.');
-      err.code = faceCheck.code || 'FACE_VERIFICATION_FAILED';
-      err.statusCode = faceCheck.statusCode || 400;
-      err.retryAfterSeconds = faceCheck.retry_after_seconds;
-      err.similarity = faceCheck.similarity;
-      err.verified = false;
-      throw err;
-    }
-
-    verificationScore = faceCheck.similarity;
-    verificationStatus = 'Verified';
+  // Perform Face Verification strictly for the authenticated intern
+  const faceCheck = await verifyUserFace(internId, face_embedding);
+  if (!faceCheck.verified) {
+    const err = new Error(faceCheck.message || 'Face does not match the registered face for this account.');
+    err.code = faceCheck.code || 'FACE_MISMATCH';
+    err.statusCode = faceCheck.statusCode || 400;
+    err.retryAfterSeconds = faceCheck.retry_after_seconds;
+    err.similarity = faceCheck.similarity;
+    err.verified = false;
+    throw err;
   }
+
+  const verificationScore = faceCheck.similarity;
+  const verificationStatus = 'Verified';
 
   let scanType = 'time_in';
   let scanLabel = 'Time In';

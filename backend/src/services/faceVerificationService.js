@@ -221,7 +221,7 @@ export async function verifyUserFace(userId, livePackage) {
       similarity: claimedResult.similarity,
       distance: claimedResult.distance,
       code: 'FACE_MISMATCH',
-      message: 'This face does not match the signed-in user. Attendance was not recorded.',
+      message: 'Face does not match the registered face for this account.',
     };
     return lockoutResult(await recordFaceFailure(userId), failure);
   }
@@ -239,7 +239,7 @@ export async function verifyUserFace(userId, livePackage) {
       similarity: claimedResult.similarity,
       distance: claimedResult.distance,
       code: 'FACE_IDENTITY_CONFLICT',
-      message: 'Face identity is ambiguous or belongs to another account. Attendance was not recorded.',
+      message: 'Face does not match the registered face for this account.',
     };
     return lockoutResult(await recordFaceFailure(userId), failure);
   }
