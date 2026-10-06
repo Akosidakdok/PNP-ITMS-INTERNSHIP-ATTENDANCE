@@ -1081,11 +1081,13 @@ export async function getAttendanceLogs({ status, date, page = 1, limit = 15, di
 
   const mappedData = (data || []).map(log => {
     const accObj = accountsMap[log.intern_id];
-    const photo = log.attendance_photos?.[0]?.photo || null;
+    const originalPhoto = log.attendance_photos?.[0]?.photo || null;
     const attachment = attachmentsMap[log.id] || null;
+    const photo = attachment?.image_url || originalPhoto;
     return {
       ...log,
       photo,
+      original_photo: originalPhoto,
       attachment,
       has_attachment: Boolean(attachment),
       full_name: accObj?.full_name || log.intern_name,

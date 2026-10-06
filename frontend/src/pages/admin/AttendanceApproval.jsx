@@ -526,7 +526,9 @@ export default function AttendanceApproval() {
       const res = await api.get(`/attendance/${row.id}/image`);
       if (res.data?.has_image && res.data.attachment) {
         setCurrentAttachment(res.data.attachment);
-        setLogs(prev => prev.map(l => l.id === row.id ? { ...l, attachment: res.data.attachment, has_attachment: true } : l));
+        const imgUrl = res.data.attachment.image_url;
+        setLogs(prev => prev.map(l => l.id === row.id ? { ...l, photo: imgUrl || l.photo, attachment: res.data.attachment, has_attachment: true } : l));
+        setSelected(prev => prev && prev.id === row.id ? { ...prev, photo: imgUrl || prev.photo, attachment: res.data.attachment, has_attachment: true } : prev);
       } else {
         setCurrentAttachment(null);
         setLogs(prev => prev.map(l => l.id === row.id ? { ...l, attachment: null, has_attachment: false } : l));
@@ -605,9 +607,20 @@ export default function AttendanceApproval() {
       }
 
       const saved = res.data?.attachment || null;
+      const imgUrl = saved?.image_url;
       setCurrentAttachment(saved);
-      setLogs(prev => prev.map(l => l.id === selected.id ? { ...l, attachment: saved, has_attachment: Boolean(saved) } : l));
-      setSelected(prev => prev ? { ...prev, attachment: saved, has_attachment: Boolean(saved) } : prev);
+      setLogs(prev => prev.map(l => l.id === selected.id ? {
+        ...l,
+        photo: imgUrl || l.photo,
+        attachment: saved,
+        has_attachment: Boolean(saved),
+      } : l));
+      setSelected(prev => prev ? {
+        ...prev,
+        photo: imgUrl || prev.photo,
+        attachment: saved,
+        has_attachment: Boolean(saved),
+      } : prev);
 
       handleCancelPendingFile();
     } catch (error) {
@@ -625,8 +638,18 @@ export default function AttendanceApproval() {
       await api.delete(`/attendance/${selected.id}/image`);
       toast.success('Attendance image removed.');
       setCurrentAttachment(null);
-      setLogs(prev => prev.map(l => l.id === selected.id ? { ...l, attachment: null, has_attachment: false } : l));
-      setSelected(prev => prev ? { ...prev, attachment: null, has_attachment: false } : prev);
+      setLogs(prev => prev.map(l => l.id === selected.id ? {
+        ...l,
+        photo: l.original_photo || null,
+        attachment: null,
+        has_attachment: false,
+      } : l));
+      setSelected(prev => prev ? {
+        ...prev,
+        photo: prev.original_photo || null,
+        attachment: null,
+        has_attachment: false,
+      } : prev);
       setRemoveConfirmOpen(false);
     } catch (error) {
       toast.error(error?.response?.data?.error || 'Failed to remove attendance image');
@@ -681,59 +704,41 @@ export default function AttendanceApproval() {
     {
       key: 'photo', label: 'Selfie Preview',
       render: (v, row) => {
-        if (!v) return <span className="text-xs text-gray-400">—</span>;
+        const photoUrl = v || row.attachment?.image_url;
+        if (!photoUrl) {
+          if (isSuperadmin) {
+            return (
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm text-blue-600 font-semibold flex items-center gap-1 hover:bg-blue-50 dark:hover:bg-blue-900/30 px-2 py-1 rounded border border-dashed border-blue-300 dark:border-blue-700 text-xs"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openDetails(row);
+                }}
+                title="Bypass and attach photo"
+              >
+                <Camera className="w-3.5 h-3.5" />
+                <span>+ Add Photo</span>
+              </button>
+            );
+          }
+          return <span className="text-xs text-gray-400">—</span>;
+        }
         return (
           <button 
             type="button"
-            className="btn btn-ghost btn-sm text-blue-600 font-semibold flex items-center gap-1 hover:bg-blue-50 px-2 py-1 rounded"
+            className="btn btn-ghost btn-sm text-blue-600 font-semibold flex items-center gap-1 hover:bg-blue-50 dark:hover:bg-blue-900/30 px-2 py-1 rounded"
             onClick={(e) => {
               e.stopPropagation();
-              setPreviewRecord(row);
+              setPreviewRecord({
+                ...row,
+                photo: photoUrl,
+              });
             }}
           >
             <Camera className="w-3.5 h-3.5" strokeWidth={2} /> Preview
           </button>
         );
-      }
-    },
-    {
-      key: 'attachment',
-      label: 'Attendance Image',
-      render: (_, row) => {
-        const hasImg = Boolean(row.attachment || row.has_attachment);
-        if (hasImg) {
-          return (
-            <button
-              type="button"
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 transition-colors"
-              onClick={(e) => {
-                e.stopPropagation();
-                openFullImageModal(row, row.attachment);
-              }}
-              title="View uploaded attendance image"
-            >
-              <ImageIcon className="w-3.5 h-3.5 text-indigo-600" />
-              <span>Image Attached</span>
-            </button>
-          );
-        }
-        if (isSuperadmin) {
-          return (
-            <button
-              type="button"
-              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium text-slate-500 hover:text-indigo-600 hover:bg-slate-100 border border-transparent hover:border-slate-200 transition-colors"
-              onClick={(e) => {
-                e.stopPropagation();
-                openDetails(row);
-              }}
-              title="Upload attendance image"
-            >
-              <span className="text-indigo-600 font-bold leading-none">+</span>
-              <span>Add Image</span>
-            </button>
-          );
-        }
-        return <span className="text-xs text-gray-400">—</span>;
       }
     },
     {
@@ -753,6 +758,7 @@ export default function AttendanceApproval() {
     },
   ];
 
+  const effectivePhoto = selected?.photo || currentAttachment?.image_url || null;
 
   return (
     <div className="space-y-6 animate-fade-in attendance-approval-page">
@@ -863,353 +869,373 @@ export default function AttendanceApproval() {
 
             {modal === 'menu' ? (
               <>
-                {/* Face Verification Selfie Section */}
-                <div className="p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/80 flex items-center justify-between gap-2 shadow-xs">
-                  <div>
-                    <h4 className="text-xs font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
-                      <Camera className="w-3.5 h-3.5 text-blue-600" />
-                      Face Verification Selfie
-                    </h4>
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                      Biometric selfie captured during scan
-                    </p>
-                  </div>
-                  {selected.photo ? (
-                    <button
-                      type="button"
-                      className="btn btn-ghost btn-sm text-blue-600 font-semibold hover:bg-blue-50 dark:hover:bg-blue-900/30 text-xs flex items-center gap-1 px-2.5 py-1 rounded-lg border border-blue-200 dark:border-blue-800"
-                      onClick={() => setPreviewRecord(selected)}
-                    >
-                      <Eye className="w-3.5 h-3.5" /> Preview
-                    </button>
-                  ) : (
-                    <span className="text-xs text-slate-400 italic">No selfie</span>
-                  )}
-                </div>
+                    {!isSuperadmin ? (
+                      /* Regular Admin View: Only Selfie Preview */
+                      <div className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/80 space-y-2.5 shadow-xs">
+                        <div className="flex items-center justify-between gap-2">
+                          <div>
+                            <h4 className="text-xs font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
+                              <Camera className="w-4 h-4 text-blue-600" />
+                              Selfie Preview
+                            </h4>
+                            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                              {effectivePhoto
+                                ? (currentAttachment ? 'Verified attendance photo (Bypassed by Super Admin)' : 'Biometric selfie captured during scan')
+                                : 'No selfie recorded for this attendance scan.'}
+                            </p>
+                          </div>
 
-                {/* Attendance Image Section */}
-                <div className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/80 space-y-3 shadow-xs">
-                  <div className="flex items-center justify-between flex-wrap gap-2">
-                    <div>
-                      <h4 className="text-xs font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
-                        <ImageIcon className="w-4 h-4 text-indigo-600" />
-                        Attendance Image
-                      </h4>
-                      <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                        {currentAttachment
-                          ? 'Uploaded manually by Super Admin'
-                          : (isSuperadmin
-                            ? 'Upload an image or take a live photo related to this attendance record.'
-                            : 'No additional attendance image was provided.')}
-                      </p>
-                    </div>
+                          {effectivePhoto ? (
+                            <button
+                              type="button"
+                              className="btn btn-ghost btn-sm text-blue-600 font-semibold hover:bg-blue-50 dark:hover:bg-blue-900/30 text-xs flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-blue-200 dark:border-blue-800"
+                              onClick={() => setPreviewRecord({ ...selected, photo: effectivePhoto })}
+                            >
+                              <Eye className="w-3.5 h-3.5" /> Preview
+                            </button>
+                          ) : (
+                            <span className="text-xs text-slate-400 italic">No selfie</span>
+                          )}
+                        </div>
 
-                    {!currentAttachment && !pendingFile && !isCameraActive && isSuperadmin && (
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <button
-                          type="button"
-                          className="btn btn-secondary btn-sm text-xs inline-flex items-center gap-1.5 text-blue-700 hover:bg-blue-50 border-blue-200 dark:border-blue-800 dark:text-blue-300 shadow-xs"
-                          onClick={() => startCamera('environment', false)}
-                        >
-                          <Camera className="w-3.5 h-3.5" />
-                          Open Camera
-                        </button>
-                        <label className="btn btn-primary btn-sm text-xs cursor-pointer inline-flex items-center gap-1.5 shadow-xs">
-                          <Upload className="w-3.5 h-3.5" />
-                          Choose Image
-                          <input
-                            type="file"
-                            className="hidden"
-                            accept="image/jpeg,image/png,image/webp"
-                            onChange={(e) => handleFileSelect(e, false)}
-                          />
-                        </label>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Live Camera Viewfinder */}
-                  {isCameraActive && (
-                    <div className="border border-blue-300 dark:border-blue-700 bg-slate-950 rounded-xl p-3 space-y-3 animate-fade-in text-white shadow-md">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="font-semibold flex items-center gap-2 text-blue-400">
-                          <span className="relative flex h-2 w-2">
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                            <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
-                          </span>
-                          {isReplacing ? 'Capture Replacement Photo' : 'Live Camera Viewfinder'}
-                        </span>
-                        <button
-                          type="button"
-                          className="text-slate-400 hover:text-white p-1 rounded-md transition-colors"
-                          onClick={stopCamera}
-                          title="Close camera"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
-                      </div>
-
-                      {/* Video element */}
-                      <div className="relative rounded-lg overflow-hidden bg-black flex justify-center items-center aspect-video max-h-56">
-                        <video
-                          ref={videoRef}
-                          autoPlay
-                          playsInline
-                          muted
-                          className={`w-full h-full object-cover ${cameraFacingMode === 'user' ? 'scale-x-[-1]' : ''}`}
-                        />
-                        {cameraLoading && (
-                          <div className="absolute inset-0 bg-black/75 flex flex-col items-center justify-center gap-2 text-xs text-white">
-                            <RefreshCw className="w-5 h-5 animate-spin text-blue-400" />
-                            <span>Starting camera...</span>
+                        {effectivePhoto && (
+                          <div
+                            className="relative rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 bg-black flex justify-center max-h-40 cursor-pointer group"
+                            onClick={() => setPreviewRecord({ ...selected, photo: effectivePhoto })}
+                            title="Click to view full preview"
+                          >
+                            <img
+                              src={effectivePhoto}
+                              alt="Selfie Preview"
+                              className="max-h-40 w-auto object-contain rounded group-hover:scale-105 transition-transform"
+                            />
+                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-medium gap-1">
+                              <ZoomIn className="w-4 h-4" />
+                              <span>Click to view full preview</span>
+                            </div>
                           </div>
                         )}
-                        {/* Overlay dashed frame */}
-                        <div className="absolute inset-4 pointer-events-none border border-white/30 rounded-lg border-dashed"></div>
                       </div>
+                    ) : (
+                      /* Super Admin View: Unified Selfie Preview & Bypass Module */
+                      <div className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/80 space-y-3 shadow-xs">
+                        <div className="flex items-center justify-between flex-wrap gap-2">
+                          <div>
+                            <h4 className="text-xs font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
+                              <Camera className="w-4 h-4 text-blue-600" />
+                              Selfie Preview &amp; Bypass
+                            </h4>
+                            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                              {effectivePhoto
+                                ? (currentAttachment ? 'Verified attendance photo (Bypassed by Super Admin)' : 'Biometric selfie captured during scan')
+                                : 'No selfie recorded. You can bypass and attach an official photo.'}
+                            </p>
+                          </div>
 
-                      {/* Viewfinder Controls */}
-                      <div className="flex items-center justify-between gap-2 pt-1">
-                        <button
-                          type="button"
-                          className="btn btn-secondary btn-sm text-xs text-slate-300 bg-slate-800 hover:bg-slate-700 border-slate-700"
-                          onClick={stopCamera}
-                        >
-                          Cancel
-                        </button>
-
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            className="btn btn-secondary btn-sm text-xs text-slate-300 bg-slate-800 hover:bg-slate-700 border-slate-700 flex items-center gap-1.5"
-                            onClick={toggleCameraFacing}
-                            title="Flip Camera"
-                          >
-                            <SwitchCamera className="w-3.5 h-3.5" />
-                            Flip
-                          </button>
-
-                          <button
-                            type="button"
-                            className="btn btn-primary btn-sm text-xs flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white font-medium px-3.5"
-                            onClick={capturePhoto}
-                            disabled={cameraLoading}
-                          >
-                            <Camera className="w-3.5 h-3.5" />
-                            Capture Photo
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Upload selection / captured preview */}
-                  {pendingFile && (
-                    <div className="border border-indigo-200 dark:border-indigo-800 bg-indigo-50/50 dark:bg-indigo-950/40 rounded-xl p-3 space-y-2.5 animate-fade-in">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="font-semibold text-indigo-900 dark:text-indigo-200 flex items-center gap-1.5">
-                          {capturedFromCamera ? (
-                            <Camera className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-                          ) : (
-                            <Upload className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-                          )}
-                          {capturedFromCamera
-                            ? (isReplacing ? 'Captured Replacement Photo' : 'Captured Photo Preview')
-                            : (isReplacing ? 'Replace Attendance Image' : 'New Image Preview')}
-                        </span>
-                        <span className="text-slate-500 dark:text-slate-400 font-mono text-[11px]">
-                          {formatFileSize(pendingFile.size)}
-                        </span>
-                      </div>
-
-                      {isReplacing && (
-                        <div className="p-2 rounded-lg bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-200 flex items-start gap-1.5">
-                          <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5 text-amber-600" />
-                          <span>The current attendance image will be replaced upon saving.</span>
-                        </div>
-                      )}
-
-                      <div className="relative rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 bg-black flex justify-center max-h-48">
-                        <img
-                          src={pendingPreview}
-                          alt="Attachment preview"
-                          className="max-h-48 w-auto object-contain rounded"
-                        />
-                      </div>
-
-                      <div className="flex items-center justify-between gap-2 pt-1 flex-wrap">
-                        <p className="text-xs text-slate-700 dark:text-slate-300 truncate max-w-xs font-medium">
-                          {capturedFromCamera ? '📷 ' : '📄 '} {pendingFile.name}
-                        </p>
-                        <div className="flex items-center gap-2">
-                          {capturedFromCamera && (
-                            <button
-                              type="button"
-                              className="btn btn-secondary btn-sm text-xs flex items-center gap-1.5 text-slate-700 dark:text-slate-300"
-                              onClick={() => startCamera(cameraFacingMode, isReplacing)}
-                              disabled={savingImage}
-                            >
-                              <RotateCcw className="w-3.5 h-3.5" />
-                              Retake
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            className="btn btn-secondary btn-sm text-xs"
-                            onClick={handleCancelPendingFile}
-                            disabled={savingImage}
-                          >
-                            Cancel
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn-primary btn-sm text-xs flex items-center gap-1.5"
-                            onClick={handleSaveImage}
-                            disabled={savingImage}
-                          >
-                            {savingImage ? (
-                              <>
-                                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                                Saving...
-                              </>
-                            ) : (
-                              <>
+                          {!effectivePhoto && !pendingFile && !isCameraActive && (
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <button
+                                type="button"
+                                className="btn btn-secondary btn-sm text-xs inline-flex items-center gap-1.5 text-blue-700 hover:bg-blue-50 border-blue-200 dark:border-blue-800 dark:text-blue-300 shadow-xs"
+                                onClick={() => startCamera('environment', false)}
+                              >
+                                <Camera className="w-3.5 h-3.5" />
+                                Open Camera
+                              </button>
+                              <label className="btn btn-primary btn-sm text-xs cursor-pointer inline-flex items-center gap-1.5 shadow-xs">
                                 <Upload className="w-3.5 h-3.5" />
-                                Save Image
-                              </>
-                            )}
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Existing Attachment View */}
-                  {!pendingFile && !isCameraActive && currentAttachment && (
-                    <div className="border border-slate-200 dark:border-slate-700 rounded-xl p-3 bg-slate-50/70 dark:bg-slate-900/40 space-y-3">
-                      <div className="flex flex-col sm:flex-row items-center gap-3">
-                        <div
-                          className="relative w-full sm:w-28 h-28 rounded-lg overflow-hidden bg-black border border-slate-200 dark:border-slate-700 shrink-0 cursor-pointer group flex items-center justify-center"
-                          onClick={() => openFullImageModal(selected, currentAttachment)}
-                          title="Click to view full image"
-                        >
-                          <img
-                            src={currentAttachment.image_url}
-                            alt="Attendance Proof"
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                          />
-                          <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-medium gap-1">
-                            <ZoomIn className="w-4 h-4" />
-                            <span>Preview</span>
-                          </div>
+                                Choose Image
+                                <input
+                                  type="file"
+                                  className="hidden"
+                                  accept="image/jpeg,image/png,image/webp"
+                                  onChange={(e) => handleFileSelect(e, false)}
+                                />
+                              </label>
+                            </div>
+                          )}
                         </div>
 
-                        <div className="flex-1 space-y-1.5 text-xs w-full">
-                          <div className="flex items-center justify-between">
-                            <p className="font-semibold text-slate-800 dark:text-slate-100 text-sm truncate max-w-[200px]" title={currentAttachment.file_name}>
-                              {currentAttachment.file_name}
-                            </p>
-                            <span className="text-[11px] text-slate-400 font-mono">
-                              {formatFileSize(currentAttachment.file_size)}
-                            </span>
-                          </div>
-
-                          <div className="text-slate-600 dark:text-slate-400 space-y-0.5">
-                            <p>
-                              <span className="text-slate-400">Uploaded by: </span>
-                              <span className="font-semibold text-slate-700 dark:text-slate-200">
-                                {currentAttachment.uploaded_by_name || 'Super Admin'}
+                        {/* Live Camera Viewfinder */}
+                        {isCameraActive && (
+                          <div className="border border-blue-300 dark:border-blue-700 bg-slate-950 rounded-xl p-3 space-y-3 animate-fade-in text-white shadow-md">
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="font-semibold flex items-center gap-2 text-blue-400">
+                                <span className="relative flex h-2 w-2">
+                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                                  <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                                </span>
+                                {isReplacing ? 'Capture Replacement Selfie' : 'Live Camera Viewfinder'}
                               </span>
-                            </p>
-                            <p>
-                              <span className="text-slate-400">Uploaded: </span>
-                              <span className="text-slate-700 dark:text-slate-200 font-medium">
-                                {formatPhtDateTime(currentAttachment.uploaded_at)}
-                              </span>
-                            </p>
-                          </div>
+                              <button
+                                type="button"
+                                className="text-slate-400 hover:text-white p-1 rounded-md transition-colors"
+                                onClick={stopCamera}
+                                title="Close camera"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            </div>
 
-                          <div className="pt-2 flex items-center gap-2 flex-wrap">
-                            <button
-                              type="button"
-                              className="btn btn-secondary btn-sm text-xs flex items-center gap-1.5"
-                              onClick={() => openFullImageModal(selected, currentAttachment)}
-                            >
-                              <Eye className="w-3.5 h-3.5 text-blue-600" />
-                              View Full Image
-                            </button>
+                            {/* Video element */}
+                            <div className="relative rounded-lg overflow-hidden bg-black flex justify-center items-center aspect-video max-h-56">
+                              <video
+                                ref={videoRef}
+                                autoPlay
+                                playsInline
+                                muted
+                                className={`w-full h-full object-cover ${cameraFacingMode === 'user' ? 'scale-x-[-1]' : ''}`}
+                              />
+                              {cameraLoading && (
+                                <div className="absolute inset-0 bg-black/75 flex flex-col items-center justify-center gap-2 text-xs text-white">
+                                  <RefreshCw className="w-5 h-5 animate-spin text-blue-400" />
+                                  <span>Starting camera...</span>
+                                </div>
+                              )}
+                              <div className="absolute inset-4 pointer-events-none border border-white/30 rounded-lg border-dashed"></div>
+                            </div>
 
-                            {isSuperadmin && (
-                              <>
+                            {/* Viewfinder Controls */}
+                            <div className="flex items-center justify-between gap-2 pt-1">
+                              <button
+                                type="button"
+                                className="btn btn-secondary btn-sm text-xs text-slate-300 bg-slate-800 hover:bg-slate-700 border-slate-700"
+                                onClick={stopCamera}
+                              >
+                                Cancel
+                              </button>
+
+                              <div className="flex items-center gap-2">
                                 <button
                                   type="button"
-                                  className="btn btn-secondary btn-sm text-xs flex items-center gap-1.5 text-blue-700 hover:bg-blue-50 border-blue-200 dark:border-blue-800 dark:text-blue-300"
-                                  onClick={() => startCamera('environment', true)}
+                                  className="btn btn-secondary btn-sm text-xs text-slate-300 bg-slate-800 hover:bg-slate-700 border-slate-700 flex items-center gap-1.5"
+                                  onClick={toggleCameraFacing}
+                                  title="Flip Camera"
                                 >
-                                  <Camera className="w-3.5 h-3.5" />
-                                  Capture New Photo
+                                  <SwitchCamera className="w-3.5 h-3.5" />
+                                  Flip
                                 </button>
 
-                                <label className="btn btn-secondary btn-sm text-xs cursor-pointer inline-flex items-center gap-1.5 text-indigo-700 hover:bg-indigo-50 border-indigo-200 dark:border-indigo-800 dark:text-indigo-300">
-                                  <RefreshCw className="w-3.5 h-3.5" />
-                                  Replace from File
+                                <button
+                                  type="button"
+                                  className="btn btn-primary btn-sm text-xs flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white font-medium px-3.5"
+                                  onClick={capturePhoto}
+                                  disabled={cameraLoading}
+                                >
+                                  <Camera className="w-3.5 h-3.5" />
+                                  Capture Photo
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Pending captured / selected image preview */}
+                        {pendingFile && (
+                          <div className="border border-indigo-200 dark:border-indigo-800 bg-indigo-50/50 dark:bg-indigo-950/40 rounded-xl p-3 space-y-2.5 animate-fade-in">
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="font-semibold text-indigo-900 dark:text-indigo-200 flex items-center gap-1.5">
+                                {capturedFromCamera ? (
+                                  <Camera className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                                ) : (
+                                  <Upload className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                                )}
+                                {capturedFromCamera
+                                  ? (isReplacing ? 'Captured Replacement Selfie' : 'Captured Selfie Preview')
+                                  : (isReplacing ? 'Replace Attendance Selfie' : 'New Selfie Preview')}
+                              </span>
+                              <span className="text-slate-500 dark:text-slate-400 font-mono text-[11px]">
+                                {formatFileSize(pendingFile.size)}
+                              </span>
+                            </div>
+
+                            {isReplacing && (
+                              <div className="p-2 rounded-lg bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-200 flex items-start gap-1.5">
+                                <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5 text-amber-600" />
+                                <span>The attendance selfie will be replaced with this image upon saving.</span>
+                              </div>
+                            )}
+
+                            <div className="relative rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 bg-black flex justify-center max-h-48">
+                              <img
+                                src={pendingPreview}
+                                alt="Attachment preview"
+                                className="max-h-48 w-auto object-contain rounded"
+                              />
+                            </div>
+
+                            <div className="flex items-center justify-between gap-2 pt-1 flex-wrap">
+                              <p className="text-xs text-slate-700 dark:text-slate-300 truncate max-w-xs font-medium">
+                                {capturedFromCamera ? '📷 ' : '📄 '} {pendingFile.name}
+                              </p>
+                              <div className="flex items-center gap-2">
+                                {capturedFromCamera && (
+                                  <button
+                                    type="button"
+                                    className="btn btn-secondary btn-sm text-xs flex items-center gap-1.5 text-slate-700 dark:text-slate-300"
+                                    onClick={() => startCamera(cameraFacingMode, isReplacing)}
+                                    disabled={savingImage}
+                                  >
+                                    <RotateCcw className="w-3.5 h-3.5" />
+                                    Retake
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  className="btn btn-secondary btn-sm text-xs"
+                                  onClick={handleCancelPendingFile}
+                                  disabled={savingImage}
+                                >
+                                  Cancel
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn btn-primary btn-sm text-xs flex items-center gap-1.5"
+                                  onClick={handleSaveImage}
+                                  disabled={savingImage}
+                                >
+                                  {savingImage ? (
+                                    <>
+                                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                      Saving...
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Upload className="w-3.5 h-3.5" />
+                                      Save Photo
+                                    </>
+                                  )}
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Existing Photo View with Superadmin Bypass Controls */}
+                        {!pendingFile && !isCameraActive && effectivePhoto && (
+                          <div className="border border-slate-200 dark:border-slate-700 rounded-xl p-3 bg-slate-50/70 dark:bg-slate-900/40 space-y-3">
+                            <div className="flex flex-col sm:flex-row items-center gap-3">
+                              <div
+                                className="relative w-full sm:w-28 h-28 rounded-lg overflow-hidden bg-black border border-slate-200 dark:border-slate-700 shrink-0 cursor-pointer group flex items-center justify-center"
+                                onClick={() => setPreviewRecord({ ...selected, photo: effectivePhoto })}
+                                title="Click to view full preview"
+                              >
+                                <img
+                                  src={effectivePhoto}
+                                  alt="Attendance Selfie"
+                                  className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                                />
+                                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-medium gap-1">
+                                  <ZoomIn className="w-4 h-4" />
+                                  <span>Preview</span>
+                                </div>
+                              </div>
+
+                              <div className="flex-1 space-y-1.5 text-xs w-full">
+                                <div className="flex items-center justify-between">
+                                  <p className="font-semibold text-slate-800 dark:text-slate-100 text-sm truncate max-w-[200px]">
+                                    {currentAttachment?.file_name || 'Biometric Selfie'}
+                                  </p>
+                                  {currentAttachment?.file_size > 0 && (
+                                    <span className="text-[11px] text-slate-400 font-mono">
+                                      {formatFileSize(currentAttachment.file_size)}
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div className="text-slate-600 dark:text-slate-400 space-y-0.5">
+                                  <p>
+                                    <span className="text-slate-400">Source: </span>
+                                    <span className="font-semibold text-slate-700 dark:text-slate-200">
+                                      {currentAttachment ? `Bypassed by ${currentAttachment.uploaded_by_name || 'Super Admin'}` : 'Biometric Face Scan'}
+                                    </span>
+                                  </p>
+                                  {currentAttachment?.uploaded_at && (
+                                    <p>
+                                      <span className="text-slate-400">Attached: </span>
+                                      <span className="text-slate-700 dark:text-slate-200 font-medium">
+                                        {formatPhtDateTime(currentAttachment.uploaded_at)}
+                                      </span>
+                                    </p>
+                                  )}
+                                </div>
+
+                                <div className="pt-2 flex items-center gap-2 flex-wrap">
+                                  <button
+                                    type="button"
+                                    className="btn btn-secondary btn-sm text-xs flex items-center gap-1.5"
+                                    onClick={() => setPreviewRecord({ ...selected, photo: effectivePhoto })}
+                                  >
+                                    <Eye className="w-3.5 h-3.5 text-blue-600" />
+                                    View Full Preview
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    className="btn btn-secondary btn-sm text-xs flex items-center gap-1.5 text-blue-700 hover:bg-blue-50 border-blue-200 dark:border-blue-800 dark:text-blue-300"
+                                    onClick={() => startCamera('environment', true)}
+                                  >
+                                    <Camera className="w-3.5 h-3.5" />
+                                    Capture New Photo
+                                  </button>
+
+                                  <label className="btn btn-secondary btn-sm text-xs cursor-pointer inline-flex items-center gap-1.5 text-indigo-700 hover:bg-indigo-50 border-indigo-200 dark:border-indigo-800 dark:text-indigo-300">
+                                    <RefreshCw className="w-3.5 h-3.5" />
+                                    Replace from File
+                                    <input
+                                      type="file"
+                                      className="hidden"
+                                      accept="image/jpeg,image/png,image/webp"
+                                      onChange={(e) => handleFileSelect(e, true)}
+                                    />
+                                  </label>
+
+                                  {currentAttachment && (
+                                    <button
+                                      type="button"
+                                      className="btn btn-secondary btn-sm text-xs text-rose-600 hover:bg-rose-50 border-rose-200 dark:border-rose-800 dark:text-rose-400 flex items-center gap-1.5"
+                                      onClick={() => setRemoveConfirmOpen(true)}
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
+                                      Remove Image
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Empty state: No photo exists, Super Admin can bypass */}
+                        {!pendingFile && !isCameraActive && !effectivePhoto && (
+                          <div className="border border-dashed border-slate-200 dark:border-slate-700 rounded-xl p-4 text-center text-xs text-slate-500 dark:text-slate-400 bg-slate-50/50 dark:bg-slate-900/30">
+                            <div className="space-y-3">
+                              <p>No selfie recorded for this attendance scan. As Super Admin, you can bypass and attach an official photo.</p>
+                              <div className="flex items-center justify-center gap-2 flex-wrap">
+                                <button
+                                  type="button"
+                                  className="btn btn-primary btn-sm text-xs inline-flex items-center gap-1.5 shadow-xs"
+                                  onClick={() => startCamera('environment', false)}
+                                >
+                                  <Camera className="w-3.5 h-3.5" />
+                                  Open Camera
+                                </button>
+                                <label className="btn btn-secondary btn-sm text-xs cursor-pointer inline-flex items-center gap-1.5 text-blue-700 hover:bg-blue-50 border-blue-200 dark:border-blue-800 dark:text-blue-300">
+                                  <Upload className="w-3.5 h-3.5" />
+                                  + Upload Image
                                   <input
                                     type="file"
                                     className="hidden"
                                     accept="image/jpeg,image/png,image/webp"
-                                    onChange={(e) => handleFileSelect(e, true)}
+                                    onChange={(e) => handleFileSelect(e, false)}
                                   />
                                 </label>
-
-                                <button
-                                  type="button"
-                                  className="btn btn-secondary btn-sm text-xs text-rose-600 hover:bg-rose-50 border-rose-200 dark:border-rose-800 dark:text-rose-400 flex items-center gap-1.5"
-                                  onClick={() => setRemoveConfirmOpen(true)}
-                                >
-                                  <Trash2 className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
-                                  Remove Image
-                                </button>
-                              </>
-                            )}
+                              </div>
+                            </div>
                           </div>
-                        </div>
+                        )}
                       </div>
-                    </div>
-                  )}
-
-                  {/* Empty state */}
-                  {!pendingFile && !isCameraActive && !currentAttachment && (
-                    <div className="border border-dashed border-slate-200 dark:border-slate-700 rounded-xl p-4 text-center text-xs text-slate-500 dark:text-slate-400 bg-slate-50/50 dark:bg-slate-900/30">
-                      {isSuperadmin ? (
-                        <div className="space-y-3">
-                          <p>No attendance image has been attached.</p>
-                          <div className="flex items-center justify-center gap-2 flex-wrap">
-                            <button
-                              type="button"
-                              className="btn btn-primary btn-sm text-xs inline-flex items-center gap-1.5 shadow-xs"
-                              onClick={() => startCamera('environment', false)}
-                            >
-                              <Camera className="w-3.5 h-3.5" />
-                              Open Camera
-                            </button>
-                            <label className="btn btn-secondary btn-sm text-xs cursor-pointer inline-flex items-center gap-1.5 text-blue-700 hover:bg-blue-50 border-blue-200 dark:border-blue-800 dark:text-blue-300">
-                              <Upload className="w-3.5 h-3.5" />
-                              + Upload Image
-                              <input
-                                type="file"
-                                className="hidden"
-                                accept="image/jpeg,image/png,image/webp"
-                                onChange={(e) => handleFileSelect(e, false)}
-                              />
-                            </label>
-                          </div>
-                        </div>
-                      ) : (
-                        <p className="italic text-slate-400">No additional attendance image was provided.</p>
-                      )}
-                    </div>
-                  )}
-                </div>
+                    )}
 
                 {/* Verification Actions List */}
                 <div className="attendance-action-list pt-2">

@@ -296,6 +296,27 @@ export async function saveAttendanceAttachment({ attendanceId, file, user, isRep
     console.warn('Upsert to attendance_attachments failed:', err.message);
   }
 
+  // Sync image to attendance_photos so that the selfie preview directly reflects the uploaded/bypassed image
+  try {
+    const { data: existingPhotos } = await supabase
+      .from('attendance_photos')
+      .select('id')
+      .eq('attendance_log_id', aid);
+
+    if (existingPhotos && existingPhotos.length > 0) {
+      await supabase
+        .from('attendance_photos')
+        .update({ photo: imageUrl })
+        .eq('attendance_log_id', aid);
+    } else {
+      await supabase
+        .from('attendance_photos')
+        .insert([{ attendance_log_id: aid, photo: imageUrl }]);
+    }
+  } catch (syncPhotoErr) {
+    console.warn('Syncing image to attendance_photos notice:', syncPhotoErr.message);
+  }
+
   // Fallback to documents table if needed
   if (!savedRecord) {
     try {
@@ -414,7 +435,20 @@ export async function deleteAttendanceAttachment({ attendanceId, user, skipAudit
     console.warn('Failed to delete from fallback documents table:', docErr.message);
   }
 
-  // 4. Audit trail logging
+  // 4. Also clean up attendance_photos if it matches this attachment
+  if (existing.image_url) {
+    try {
+      await supabase
+        .from('attendance_photos')
+        .delete()
+        .eq('attendance_log_id', aid)
+        .eq('photo', existing.image_url);
+    } catch (photoDelErr) {
+      console.warn('Cleaning attendance_photos notice:', photoDelErr.message);
+    }
+  }
+
+  // 5. Audit trail logging
   if (!skipAudit) {
     let log = null;
     try {
