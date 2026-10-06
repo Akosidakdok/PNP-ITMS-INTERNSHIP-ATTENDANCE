@@ -11,6 +11,9 @@ import {
   UserCheck,
   Sparkles,
   Loader2,
+  RefreshCw,
+  SunMedium,
+  Check,
 } from 'lucide-react';
 import QRScanner from '../../components/qr/QRScanner.jsx';
 import backendApi from '../../utils/backendApi.js';
@@ -34,12 +37,15 @@ export const STAGES = {
   QR_SCANNING: 'QR_SCANNING',
   QR_VERIFYING: 'QR_VERIFYING',
   QR_INVALID: 'QR_INVALID',
+  ACCOUNT_VERIFIED: 'ACCOUNT_VERIFIED',
   FACE_SCANNING: 'FACE_SCANNING',
   FACE_VERIFYING: 'FACE_VERIFYING',
+  ATTENDANCE_RECORDING: 'ATTENDANCE_RECORDING',
   VERIFICATION_SUCCESS: 'VERIFICATION_SUCCESS',
   VERIFICATION_FAILED: 'VERIFICATION_FAILED',
 };
 
+// Format date safely
 const safeFormatDate = (dateVal, fmtStr) => {
   try {
     const d = dateVal ? new Date(dateVal) : new Date();
@@ -50,6 +56,243 @@ const safeFormatDate = (dateVal, fmtStr) => {
   }
 };
 
+// Convert 24-hour or 12-hour time string into readable 12-hour AM/PM format
+const formatScheduleTime = (timeStr) => {
+  if (!timeStr) return null;
+  const parts = String(timeStr).split(':');
+  let h = parseInt(parts[0], 10);
+  if (isNaN(h)) return null;
+  const m = parts[1] ? parts[1].slice(0, 2) : '00';
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  h = h % 12 || 12;
+  return `${h}:${m} ${ampm}`;
+};
+
+// ─── 3-Step Verification Progress Indicator ──────────────────────────────────
+function StepProgressIndicator({ stage }) {
+  // Step 1: QR Verification
+  const getStep1Status = () => {
+    if (stage === STAGES.QR_INVALID) return 'error';
+    if ([
+      STAGES.ACCOUNT_VERIFIED,
+      STAGES.FACE_SCANNING,
+      STAGES.FACE_VERIFYING,
+      STAGES.ATTENDANCE_RECORDING,
+      STAGES.VERIFICATION_SUCCESS,
+      STAGES.VERIFICATION_FAILED,
+    ].includes(stage)) {
+      return 'completed';
+    }
+    return 'active'; // CAMERA_OFF, QR_SCANNING, QR_VERIFYING
+  };
+
+  // Step 2: Face Verification
+  const getStep2Status = () => {
+    if (stage === STAGES.VERIFICATION_FAILED) return 'error';
+    if ([
+      STAGES.ACCOUNT_VERIFIED,
+      STAGES.FACE_SCANNING,
+      STAGES.FACE_VERIFYING,
+    ].includes(stage)) {
+      return 'active';
+    }
+    if ([STAGES.ATTENDANCE_RECORDING, STAGES.VERIFICATION_SUCCESS].includes(stage)) {
+      return 'completed';
+    }
+    return 'upcoming';
+  };
+
+  // Step 3: Attendance
+  const getStep3Status = () => {
+    if (stage === STAGES.VERIFICATION_SUCCESS) return 'completed';
+    if (stage === STAGES.ATTENDANCE_RECORDING) return 'active';
+    return 'upcoming';
+  };
+
+  const steps = [
+    { num: 1, label: 'QR Verification', status: getStep1Status() },
+    { num: 2, label: 'Face Verification', status: getStep2Status() },
+    { num: 3, label: 'Attendance', status: getStep3Status() },
+  ];
+
+  return (
+    <nav
+      aria-label="Attendance verification progress"
+      className="w-full max-w-[480px] mx-auto px-2 py-1"
+    >
+      <div className="flex items-center justify-between relative">
+        {/* Subtle connector track behind items */}
+        <div className="absolute left-8 right-8 top-4 -translate-y-1/2 h-0.5 bg-gray-200 z-0" />
+
+        {steps.map((step) => {
+          const isCompleted = step.status === 'completed';
+          const isActive = step.status === 'active';
+          const isError = step.status === 'error';
+
+          return (
+            <div key={step.num} className="flex flex-col items-center relative z-10">
+              <div
+                className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs transition-all duration-300 shadow-xs ${
+                  isCompleted
+                    ? 'bg-emerald-600 text-white ring-4 ring-emerald-50'
+                    : isError
+                    ? 'bg-rose-600 text-white ring-4 ring-rose-50'
+                    : isActive
+                    ? 'bg-blue-600 text-white ring-4 ring-blue-100 scale-105'
+                    : 'bg-white border-2 border-gray-300 text-gray-400'
+                }`}
+              >
+                {isCompleted ? (
+                  <Check className="w-4 h-4 stroke-[3]" />
+                ) : isError ? (
+                  <AlertCircle className="w-4 h-4 text-white" />
+                ) : isActive ? (
+                  <span className="w-2.5 h-2.5 rounded-full bg-white animate-pulse" />
+                ) : (
+                  <span className="w-2 h-2 rounded-full bg-gray-300" />
+                )}
+              </div>
+              <span
+                className={`mt-1.5 text-[11px] sm:text-xs font-semibold whitespace-nowrap transition-colors ${
+                  isCompleted
+                    ? 'text-emerald-700'
+                    : isError
+                    ? 'text-rose-700'
+                    : isActive
+                    ? 'text-blue-700 font-bold'
+                    : 'text-gray-400'
+                }`}
+              >
+                {step.num}. {step.label}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </nav>
+  );
+}
+
+// ─── Inline Error Card (NO Browser Alert Popups) ─────────────────────────────
+function InlineErrorCard({
+  errorCode,
+  errorMsg,
+  userName,
+  onRetry,
+  onCancel,
+  registrationRetryState,
+  onRetryRegistration,
+}) {
+  const isMismatch = errorCode === 'FACE_MISMATCH' || errorCode === 'FACE_IDENTITY_CONFLICT' || errorCode === 'MAX_VERIFICATION_ATTEMPTS_EXCEEDED';
+  const isNoFace = errorCode === 'FACE_NOT_REGISTERED';
+  const isLighting = errorCode === 'LIGHTING_LOW';
+  const isCameraPermission = errorCode === 'CAMERA_ACCESS_DENIED' || errorCode === 'NotAllowedError';
+  const isInvalidAccountQr = errorCode === 'INVALID_ACCOUNT_QR';
+
+  let title = 'Verification Notice';
+  let message = errorMsg || 'Please try again.';
+  let icon = <AlertCircle className="w-8 h-8 text-rose-600" />;
+
+  if (isMismatch) {
+    title = "Face Doesn't Match";
+    message = 'The detected face does not match the face registered to this account.';
+  } else if (isNoFace) {
+    title = 'Face Registration Required';
+    message = 'No registered face was found for this account. Please contact the administrator or complete face registration first.';
+    icon = <UserCheck className="w-8 h-8 text-amber-600" />;
+  } else if (isLighting) {
+    title = 'Lighting is too low';
+    message = 'Move to a brighter area and make sure your face is clearly visible.';
+    icon = <SunMedium className="w-8 h-8 text-amber-600" />;
+  } else if (isCameraPermission) {
+    title = 'Camera Access Required';
+    message = 'P-IDTMS needs camera access to scan your QR code and verify your face.';
+    icon = <CameraOff className="w-8 h-8 text-rose-600" />;
+  } else if (isInvalidAccountQr) {
+    title = 'Invalid Attendance QR';
+    message = 'This QR code is not associated with an active P-IDTMS account.';
+  } else {
+    title = 'QR Could Not Be Verified';
+    message = 'Move the QR closer to the camera and make sure it is clearly visible.';
+  }
+
+  return (
+    <div className="w-full max-w-[480px] mx-auto bg-white border border-rose-100 rounded-2xl p-5 shadow-sm text-center space-y-4 animate-scale-in">
+      <div className="w-14 h-14 rounded-full bg-rose-50 border border-rose-100 flex items-center justify-center mx-auto">
+        {icon}
+      </div>
+
+      <div className="space-y-1">
+        <h3 className="text-base font-bold text-gray-900" style={{ fontFamily: 'Outfit, sans-serif' }}>
+          {title}
+        </h3>
+        <p className="text-xs text-gray-600 leading-relaxed max-w-sm mx-auto">
+          {message}
+        </p>
+
+        {isMismatch && userName && (
+          <div className="pt-2">
+            <span className="inline-block text-xs font-semibold text-rose-800 bg-rose-50 border border-rose-200/60 px-3 py-1 rounded-full">
+              Account: {userName}
+            </span>
+          </div>
+        )}
+      </div>
+
+      {isCameraPermission && (
+        <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-left text-[11px] text-gray-700 space-y-1.5">
+          <p className="font-semibold text-gray-900">How to allow camera on your device:</p>
+          <ul className="list-disc list-inside space-y-0.5 text-gray-600 pl-1">
+            <li><strong>iOS Safari:</strong> Tap the <code className="bg-gray-200 px-1 py-0.5 rounded text-[10px]">aA</code> icon &gt; Website Settings &gt; Camera: <strong>Allow</strong>.</li>
+            <li><strong>Android Chrome:</strong> Tap Lock/Tune icon in URL bar &gt; Permissions &gt; Camera: <strong>Allow</strong>.</li>
+          </ul>
+        </div>
+      )}
+
+      {isNoFace && (
+        <div className="pt-1">
+          <button
+            type="button"
+            onClick={onRetryRegistration}
+            disabled={registrationRetryState?.isRetrying}
+            className="btn btn-primary w-full h-11 text-xs font-semibold rounded-xl flex items-center justify-center gap-2 shadow-sm"
+          >
+            <RotateCcw className={`w-4 h-4 ${registrationRetryState?.isRetrying ? 'animate-spin' : ''}`} />
+            {registrationRetryState?.isRetrying
+              ? `Checking Face ID (${registrationRetryState.currentAttempt}/${registrationRetryState.maxAttempts})...`
+              : 'Retry Face ID Check (5 Attempts)'}
+          </button>
+        </div>
+      )}
+
+      <div className="pt-1 flex flex-col gap-2">
+        {!isNoFace && (
+          <button
+            type="button"
+            onClick={onRetry}
+            className="btn btn-primary w-full h-11 text-xs font-semibold rounded-xl flex items-center justify-center gap-2 shadow-sm"
+          >
+            <RefreshCw className="w-4 h-4" />
+            {isInvalidAccountQr ? 'Scan Again' : 'Try Again'}
+          </button>
+        )}
+
+        {onCancel && (
+          <button
+            type="button"
+            onClick={onCancel}
+            className="btn btn-secondary w-full py-2.5 text-xs font-medium rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50 flex items-center justify-center gap-1.5"
+          >
+            <CameraOff className="w-3.5 h-3.5 text-gray-500" />
+            Cancel Verification
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Main ScanAttendance Component ──────────────────────────────────────────
 export default function ScanAttendance() {
   const { user } = useAuth();
 
@@ -101,19 +344,49 @@ export default function ScanAttendance() {
   const detectionBusyRef = useRef(false);
   const initializeCameraRef = useRef(null);
 
+  // Derive authenticated user identity for account verification display
+  const userName =
+    user?.full_name ||
+    `${user?.first_name || ''} ${user?.last_name || ''}`.trim() ||
+    'Authenticated Intern';
+  const userDivision = user?.assigned_profile?.division_name || user?.division_name || 'PNP-ITMS';
+  const userRole = user?.role === 'intern' ? `${userDivision} Intern` : (user?.role || 'Intern');
+
+  // Compute Next Attendance label and target time
+  const getNextScanInfo = () => {
+    const hintLower = (nextScanHint || '').toLowerCase();
+    const isOut = hintLower.includes('out');
+    const label = isOut ? 'Time Out' : 'Time In';
+
+    const profile = user?.assigned_profile;
+    let scheduledTime = null;
+    if (isOut && profile?.time_out) {
+      scheduledTime = formatScheduleTime(profile.time_out);
+    } else if (!isOut && profile?.time_in) {
+      scheduledTime = formatScheduleTime(profile.time_in);
+    }
+
+    if (!scheduledTime) {
+      scheduledTime = isOut ? '5:00 PM' : '8:00 AM';
+    }
+
+    return { label, time: scheduledTime };
+  };
+  const nextScanInfo = getNextScanInfo();
+
   // Keep ref synchronized with state
   useEffect(() => {
     userRegisteredFacePackageRef.current = userRegisteredFacePackage;
   }, [userRegisteredFacePackage]);
 
-  // ─── Preload Face ID models on page mount ──────────────────────────────────
+  // Preload Face ID models on component mount
   useEffect(() => {
     initializeFaceIdentity().catch(err => {
       console.warn('Face ID background preload notice:', err?.message || err);
     });
   }, []);
 
-  // ─── Fetch Current User's Registered Face Package with 5 Retries + Buffer ───
+  // Fetch Current User's Registered Face Package with 5 Retries + Buffer
   const loadRegisteredFaceWithRetry = useCallback(async (
     maxAttempts = MAX_FACE_REGISTRATION_RETRIES,
     bufferSeconds = RETRY_BUFFER_SECONDS
@@ -143,7 +416,7 @@ export default function ScanAttendance() {
         type: 'info',
         message: attempt === 1
           ? 'Verifying Face ID registration...'
-          : `Verifying Face ID registration (Attempt ${attempt} of ${maxAttempts})...`
+          : `Verifying Face ID registration (Attempt ${attempt} of ${maxAttempts})...`,
       });
 
       try {
@@ -155,7 +428,7 @@ export default function ScanAttendance() {
           setErrorCode('');
           setFaceStatus({
             type: 'info',
-            message: 'Position your face inside the circle'
+            message: 'Position your face inside the guide',
           });
           registrationRetryRef.current.isRetrying = false;
           registrationRetryRef.current.attempts = 0;
@@ -179,7 +452,6 @@ export default function ScanAttendance() {
         console.warn(`Face ID check attempt ${attempt}/${maxAttempts} failed:`, err?.response?.data || err?.message);
 
         if (attempt < maxAttempts && registrationRetryRef.current.active) {
-          // Buffer time countdown before next retry
           for (let s = bufferSeconds; s > 0; s--) {
             if (!registrationRetryRef.current.active) break;
             setRegistrationRetryState(prev => ({
@@ -189,19 +461,18 @@ export default function ScanAttendance() {
             }));
             setFaceStatus({
               type: 'warning',
-              message: `Retrying Face ID registration check (${attempt}/${maxAttempts}) in ${s}s...`
+              message: `Retrying Face ID registration check (${attempt}/${maxAttempts}) in ${s}s...`,
             });
             await new Promise(resolve => setTimeout(resolve, 1000));
           }
         } else {
-          // All 5 attempts exhausted!
           const fetchMsg = err?.response?.data?.error || 'Face ID is not registered for your account. Please complete biometric enrollment first.';
           const code = err?.response?.data?.code || 'FACE_NOT_REGISTERED';
           setError(fetchMsg);
           setErrorCode(code);
           setFaceStatus({
             type: 'rejected',
-            message: `Face ID not registered after ${maxAttempts} attempts.`
+            message: `Face ID not registered after ${maxAttempts} attempts.`,
           });
           toast.error(`Face ID check failed after ${maxAttempts} attempts.`);
           registrationRetryRef.current.isRetrying = false;
@@ -220,7 +491,6 @@ export default function ScanAttendance() {
   }, [user?.id]);
 
   useEffect(() => {
-    let isMounted = true;
     if (user?.id) {
       loadRegisteredFaceWithRetry();
     } else {
@@ -228,19 +498,18 @@ export default function ScanAttendance() {
       userRegisteredFacePackageRef.current = null;
     }
     return () => {
-      isMounted = false;
       registrationRetryRef.current.active = false;
     };
   }, [user?.id, loadRegisteredFaceWithRetry]);
 
-  // ─── Load next scan hint ──────────────────────────────────────────────────
+  // Load next scan hint
   useEffect(() => {
     backendApi.get('/attendance/next-scan')
       .then(res => setNextScanHint(res.data.next_scan_label || 'Ready to scan'))
       .catch(() => setNextScanHint('Unable to load next scan'));
   }, []);
 
-  // ─── Cooldown tickers ─────────────────────────────────────────────────────
+  // Cooldown tickers
   useEffect(() => {
     if (cooldown <= 0) return;
     const t = setTimeout(() => setCooldown(c => c - 1), 1000);
@@ -258,15 +527,15 @@ export default function ScanAttendance() {
 
   useEffect(() => {
     if (
-      faceCooldown === 0
-      && ['FACE_COOLDOWN', 'FACE_TEMPORARILY_LOCKED'].includes(errorCode)
+      faceCooldown === 0 &&
+      ['FACE_COOLDOWN', 'FACE_TEMPORARILY_LOCKED'].includes(errorCode)
     ) {
       captureLockRef.current = false;
       setStage(STAGES.QR_SCANNING);
     }
   }, [faceCooldown, errorCode]);
 
-  // ─── Camera cleanup helper ────────────────────────────────────────────────
+  // Camera cleanup helper
   const stopStream = useCallback(() => {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => {
@@ -282,7 +551,6 @@ export default function ScanAttendance() {
     }
   }, []);
 
-  // ─── Component unmount & user change cleanup ──────────────────────────────
   useEffect(() => {
     return () => {
       stopStream();
@@ -292,7 +560,6 @@ export default function ScanAttendance() {
   }, [stopStream]);
 
   useEffect(() => {
-    // When user account changes or logs out, purge all camera, state, and descriptors
     stopStream();
     setStage(STAGES.CAMERA_OFF);
     setIsCameraStarted(false);
@@ -305,7 +572,7 @@ export default function ScanAttendance() {
     setErrorCode('');
   }, [user?.id, stopStream]);
 
-  // ─── Face Camera initialization & stream binding ──────────────────────────
+  // Face Camera initialization & stream binding
   useEffect(() => {
     if (!isCameraOpen) {
       stopStream();
@@ -332,8 +599,8 @@ export default function ScanAttendance() {
               video: {
                 facingMode: attempts === 0 ? 'user' : { ideal: 'user' },
                 width: { ideal: 640 },
-                height: { ideal: 480 }
-              }
+                height: { ideal: 480 },
+              },
             });
           } catch (camErr) {
             lastErr = camErr;
@@ -378,7 +645,7 @@ export default function ScanAttendance() {
           const markReady = () => {
             if (!active) return;
             setVideoReady(true);
-            setFaceStatus({ type: 'info', message: 'Position your face inside the circle' });
+            setFaceStatus({ type: 'info', message: 'Position your face inside the guide' });
           };
 
           const playPromise = vid.play();
@@ -404,28 +671,31 @@ export default function ScanAttendance() {
         await modelInitPromise;
       } catch (cameraError) {
         console.error('Face camera initialization failed:', cameraError);
-        let message = 'Face ID engine could not start.';
+        let message = 'Face ID camera could not start.';
+        let code = 'CAMERA_ERROR';
         if (cameraError?.name === 'NotAllowedError' || cameraError?.name === 'PermissionDeniedError') {
           message = 'Camera access denied. Please allow camera permissions in your browser or device settings.';
+          code = 'CAMERA_ACCESS_DENIED';
         } else if (cameraError?.name === 'NotFoundError') {
           message = 'No front camera found on this device.';
+          code = 'CAMERA_NOT_FOUND';
         } else if (cameraError?.name === 'NotReadableError' || cameraError?.name === 'TrackStartError') {
           message = 'Camera is currently in use by another app. Please close other camera tabs and try again.';
-        } else if (cameraError?.message) {
-          message = cameraError.message;
+          code = 'CAMERA_BUSY';
         }
 
+        setError(message);
+        setErrorCode(code);
         setFaceStatus({ type: 'rejected', message });
-        toast.error(message);
         setIsCameraOpen(false);
         setTempQrCode(null);
-        setStage(STAGES.CAMERA_OFF);
+        setStage(STAGES.VERIFICATION_FAILED);
         setIsCameraStarted(false);
       }
     };
 
     initializeCameraRef.current = initializeCamera;
-    const timer = setTimeout(initializeCamera, 350);
+    const timer = setTimeout(initializeCamera, 300);
 
     return () => {
       active = false;
@@ -434,7 +704,7 @@ export default function ScanAttendance() {
     };
   }, [isCameraOpen, stopStream]);
 
-  // ─── Start Camera Action (User-Triggered Only) ────────────────────────────
+  // ─── Start Camera Action (Single User-Triggered Entrypoint) ────────────────
   const handleStartCamera = async () => {
     if (isStartingCamera || stage !== STAGES.CAMERA_OFF || cooldown > 0 || faceCooldown > 0) return;
     setIsStartingCamera(true);
@@ -446,7 +716,7 @@ export default function ScanAttendance() {
         stage: 'QR_SCANNING',
         cameraActive: true,
         authenticatedUserId: user?.id,
-        action: 'START_CAMERA'
+        action: 'START_CAMERA',
       });
     }
 
@@ -463,12 +733,12 @@ export default function ScanAttendance() {
     }
 
     setIsProcessing(true);
-    setStage(STAGES.FACE_VERIFYING);
-    setFaceStatus({ type: 'success', message: 'Verifying Face...' });
+    setStage(STAGES.ATTENDANCE_RECORDING);
+    setFaceStatus({ type: 'success', message: '✓ Face Verified — Recording attendance...' });
 
     if (import.meta.env.DEV) {
       console.log('[ATTENDANCE VERIFY]', {
-        stage: 'FACE_VERIFYING',
+        stage: 'ATTENDANCE_RECORDING',
         authenticatedUserId: user?.id,
         qrCode: tempQrCode?.slice(0, 8) + '...',
       });
@@ -476,7 +746,7 @@ export default function ScanAttendance() {
 
     try {
       const video = videoRef.current;
-      setFaceStatus({ type: 'success', message: 'Capturing a short live sequence—blink once...' });
+      setFaceStatus({ type: 'success', message: 'Capturing verification frame...' });
       const canvases = await captureVideoFrames(video);
       setFaceStatus({ type: 'success', message: 'Checking identity and liveness...' });
       const embedding = await extractSecureFacePackage(canvases);
@@ -487,9 +757,13 @@ export default function ScanAttendance() {
       // Timestamp overlay
       const formatter = new Intl.DateTimeFormat('en-US', {
         timeZone: 'Asia/Manila',
-        year: 'numeric', month: '2-digit', day: '2-digit',
-        hour: '2-digit', minute: '2-digit', second: '2-digit',
-        hour12: true
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true,
       });
       const parts = formatter.formatToParts(new Date());
       const getP = type => parts.find(p => p.type === type)?.value || '';
@@ -531,7 +805,7 @@ export default function ScanAttendance() {
       const res = await backendApi.post('/attendance/scan', {
         qr_code: tempQrCode,
         photo: photoDataUrl,
-        face_embedding: embedding
+        face_embedding: embedding,
       });
 
       if (import.meta.env.DEV) {
@@ -570,7 +844,7 @@ export default function ScanAttendance() {
           authenticatedUserId: user?.id,
           attendanceResult: 'DENIED',
           error: msg,
-          code
+          code,
         });
       }
 
@@ -590,10 +864,10 @@ export default function ScanAttendance() {
         captureLockRef.current = false;
         loadRegisteredFaceWithRetry(MAX_FACE_REGISTRATION_RETRIES, RETRY_BUFFER_SECONDS);
       } else if (
-        code === 'FACE_MISMATCH'
-        || code === 'FACE_IDENTITY_CONFLICT'
-        || code === 'INVALID_FACE_CAPTURE'
-        || !err?.response
+        code === 'FACE_MISMATCH' ||
+        code === 'FACE_IDENTITY_CONFLICT' ||
+        code === 'INVALID_FACE_CAPTURE' ||
+        !err?.response
       ) {
         verificationAttemptsRef.current += 1;
         const currentAttempt = verificationAttemptsRef.current;
@@ -608,7 +882,7 @@ export default function ScanAttendance() {
             setStage(STAGES.FACE_SCANNING);
             if (streamRef.current && streamRef.current.active) {
               setVideoReady(true);
-              setFaceStatus({ type: 'info', message: 'Position your face inside the circle' });
+              setFaceStatus({ type: 'info', message: 'Position your face inside the guide' });
             } else if (initializeCameraRef.current) {
               initializeCameraRef.current();
             }
@@ -651,7 +925,7 @@ export default function ScanAttendance() {
       try {
         detectionBusyRef.current = true;
 
-        // Ensure user's registered face descriptor is loaded (retry 5 times with buffer)
+        // Ensure user's registered face descriptor is loaded
         if (!userRegisteredFacePackageRef.current) {
           if (!registrationRetryRef.current.isRetrying && errorCode !== 'FACE_NOT_REGISTERED') {
             await loadRegisteredFaceWithRetry(MAX_FACE_REGISTRATION_RETRIES, RETRY_BUFFER_SECONDS);
@@ -659,14 +933,14 @@ export default function ScanAttendance() {
           return;
         }
 
-        // Compare live face strictly against the current logged-in user's registered face
+        // Strictly compare live face against the currently logged-in user's registered face
         const check = await compareLiveFaceToRegistered(vid, userRegisteredFacePackageRef.current);
 
         if (check.isMatch) {
           validFramesRef.current = Math.min(3, validFramesRef.current + 1);
           setFaceStatus({
             type: 'success',
-            message: `Face verified! Hold still... (${validFramesRef.current}/3)`
+            message: `Face verified! Hold still... (${validFramesRef.current}/3)`,
           });
 
           if (validFramesRef.current >= 3) {
@@ -676,19 +950,18 @@ export default function ScanAttendance() {
             runCaptureAndSubmit();
           }
         } else {
-          // If mismatch or multiple faces or no face, decay frames and display accurate account rejection
           validFramesRef.current = Math.max(0, validFramesRef.current - 1);
           const isHardReject = check.code === 'FACE_MISMATCH' || check.code === 'MULTIPLE_FACES_DETECTED';
           setFaceStatus({
             type: isHardReject ? 'rejected' : 'warning',
-            message: check.error || 'Position your face inside the circle'
+            message: check.error || 'Position your face inside the guide',
           });
         }
       } catch (detectionError) {
         validFramesRef.current = Math.max(0, validFramesRef.current - 1);
         setFaceStatus({
           type: 'warning',
-          message: detectionError?.message || 'Face analysis failed. Hold still and try again.'
+          message: detectionError?.message || 'Face analysis failed. Hold still and try again.',
         });
       } finally {
         detectionBusyRef.current = false;
@@ -702,9 +975,9 @@ export default function ScanAttendance() {
       }
       detectionBusyRef.current = false;
     };
-  }, [stage, isCameraOpen, videoReady, isProcessing, runCaptureAndSubmit]);
+  }, [stage, isCameraOpen, videoReady, isProcessing, runCaptureAndSubmit, errorCode, loadRegisteredFaceWithRetry]);
 
-  // ─── QR scan handler ──────────────────────────────────────────────────────
+  // ─── QR Scan Handler ──────────────────────────────────────────────────────
   const handleScan = async (qrCode) => {
     if (scanLockRef.current || stage !== STAGES.QR_SCANNING || cooldown > 0 || faceCooldown > 0 || scanResult) return;
     scanLockRef.current = true;
@@ -727,28 +1000,27 @@ export default function ScanAttendance() {
         console.log('[ATTENDANCE VERIFY]', {
           stage: 'QR_VERIFYING',
           authenticatedUserId: user?.id,
-          qrVerification: 'VALID'
+          qrVerification: 'VALID',
         });
       }
 
-      toast.success(res.data.message || 'QR valid! Now scanning your face...');
       setTempQrCode(qrCode);
 
-      // Save user's registered face embedding from response if returned
       if (res.data?.face_embedding) {
         setUserRegisteredFacePackage(res.data.face_embedding);
         userRegisteredFacePackageRef.current = res.data.face_embedding;
       } else {
-        // Start background verification check with 5 retries and buffer time
         loadRegisteredFaceWithRetry(MAX_FACE_REGISTRATION_RETRIES, RETRY_BUFFER_SECONDS);
       }
 
-      // Automatically transition from QR scanning to Face Verification
-      setStage(STAGES.FACE_SCANNING);
-      // Wait 350ms to allow mobile hardware to fully switch from rear to front camera
+      // Step 2 Transition: Show Account Verified Card
+      setStage(STAGES.ACCOUNT_VERIFIED);
+
+      // Seamless auto-transition to Face Verification
       setTimeout(() => {
+        setStage(STAGES.FACE_SCANNING);
         setIsCameraOpen(true);
-      }, 350);
+      }, 900);
     } catch (err) {
       const msg = err?.response?.data?.error || 'QR Verification Failed: Please scan a valid attendance QR code.';
       const code = err?.response?.data?.code || 'QR_INVALID';
@@ -758,15 +1030,37 @@ export default function ScanAttendance() {
           stage: 'QR_INVALID',
           authenticatedUserId: user?.id,
           qrVerification: 'INVALID',
-          error: msg
+          error: msg,
         });
       }
 
       setError(msg);
       setErrorCode(code);
       setStage(STAGES.QR_INVALID);
-      toast.error(msg);
       scanLockRef.current = false;
+    }
+  };
+
+  // ─── Retry QR Scanning ────────────────────────────────────────────────────
+  const handleRetryQrScan = () => {
+    setError('');
+    setErrorCode('');
+    scanLockRef.current = false;
+    setStage(STAGES.QR_SCANNING);
+  };
+
+  // ─── Retry Face Verification ──────────────────────────────────────────────
+  const handleRetryFace = () => {
+    setError('');
+    setErrorCode('');
+    validFramesRef.current = 0;
+    captureLockRef.current = false;
+    setStage(STAGES.FACE_SCANNING);
+    if (streamRef.current && streamRef.current.active) {
+      setVideoReady(true);
+      setFaceStatus({ type: 'info', message: 'Position your face inside the guide' });
+    } else if (initializeCameraRef.current) {
+      initializeCameraRef.current();
     }
   };
 
@@ -779,7 +1073,7 @@ export default function ScanAttendance() {
     loadRegisteredFaceWithRetry(MAX_FACE_REGISTRATION_RETRIES, RETRY_BUFFER_SECONDS);
   };
 
-  // ─── Reset / Scan Again ───────────────────────────────────────────────────
+  // ─── Reset to Camera Off Initial Screen ───────────────────────────────────
   const handleReset = () => {
     if (cooldown > 0 || faceCooldown > 0) return;
     stopStream();
@@ -805,7 +1099,7 @@ export default function ScanAttendance() {
       .catch(() => setNextScanHint('Unable to load next scan'));
   };
 
-  // ─── Cancel and return to initial state ───────────────────────────────────
+  // ─── Cancel and turn off camera ───────────────────────────────────────────
   const handleCancel = () => {
     stopStream();
     setIsCameraOpen(false);
@@ -826,7 +1120,7 @@ export default function ScanAttendance() {
     });
   };
 
-  // ─── Cancel face scan and rescan QR ───────────────────────────────────────
+  // ─── Cancel Face Scan and Rescan QR ───────────────────────────────────────
   const handleRescanQr = () => {
     stopStream();
     setIsCameraOpen(false);
@@ -846,397 +1140,372 @@ export default function ScanAttendance() {
     setStage(STAGES.QR_SCANNING);
   };
 
-  // Progress step mapping
-  const getProgressStageNumber = () => {
-    if (stage === STAGES.VERIFICATION_SUCCESS) return 3;
-    if (
-      stage === STAGES.FACE_SCANNING ||
-      stage === STAGES.FACE_VERIFYING ||
-      stage === STAGES.VERIFICATION_FAILED
-    ) {
-      return 2;
-    }
-    return 1;
-  };
-  const activeStepNumber = getProgressStageNumber();
-
-  // ─── Render ───────────────────────────────────────────────────────────────
+  // ─── Render View ──────────────────────────────────────────────────────────
   return (
-    <div className="intern-scan-page animate-fade-in">
-      <div className="scan-page-heading text-center">
-        <h1 className="text-xl sm:text-2xl font-bold text-gray-800 mb-1" style={{ fontFamily: 'Outfit, sans-serif' }}>
+    <div className="w-full max-w-xl mx-auto px-4 py-3 sm:py-6 space-y-4 animate-fade-in">
+      {/* 1. Page Header */}
+      <div className="text-center space-y-1">
+        <h1
+          className="text-2xl sm:text-3xl font-extrabold text-gray-900 tracking-tight"
+          style={{ fontFamily: 'Outfit, sans-serif' }}
+        >
           Attendance Verification
         </h1>
-        <p className="text-gray-500 text-sm">Scan the office QR code and verify your face to record attendance</p>
+        <p className="text-xs sm:text-sm text-gray-500 font-medium">
+          Secure attendance authentication
+        </p>
       </div>
 
-      <div className="scan-progress" aria-label={`Attendance scanning step ${activeStepNumber} of 3`}>
-        {[
-          { number: 1, label: 'Scan QR' },
-          { number: 2, label: 'Verify face' },
-          { number: 3, label: 'Recorded' },
-        ].map((item, index) => (
-          <div
-            key={item.number}
-            className={`scan-progress__item ${activeStepNumber >= item.number ? 'is-active' : ''} ${activeStepNumber === item.number ? 'is-current' : ''}`}
-          >
-            <span>{activeStepNumber > item.number ? <CheckCircle /> : item.number}</span>
-            <small>{item.label}</small>
-            {index < 2 && <i />}
-          </div>
-        ))}
-      </div>
+      {/* 2. 3-Step Verification Progress Indicator */}
+      <StepProgressIndicator stage={stage} />
 
-      {/* Main Content Area */}
-      {stage === STAGES.VERIFICATION_SUCCESS && scanResult ? (
-        /* ── Success Screen ── */
-        <div className="card scan-stage-card scan-result-card text-center animate-scale-in">
-          <div
-            className="w-20 h-20 rounded-full mx-auto mb-4 flex items-center justify-center"
-            style={{ background: scanResult.scan_type === 'time_in' ? 'linear-gradient(135deg,#15803d,#22c55e)' : 'linear-gradient(135deg,#7c3aed,#a855f7)' }}
-          >
-            <CheckCircle className="w-10 h-10 text-white" />
-          </div>
+      {/* 3. Main Attendance Card Container */}
+      <div className="bg-white rounded-2xl sm:rounded-3xl shadow-sm border border-gray-100 p-4 sm:p-6 space-y-4">
+        {/* Error Card Overlay (if in error state) */}
+        {(stage === STAGES.QR_INVALID || stage === STAGES.VERIFICATION_FAILED) && (
+          <InlineErrorCard
+            errorCode={errorCode}
+            errorMsg={error}
+            userName={userName}
+            onRetry={stage === STAGES.QR_INVALID ? handleRetryQrScan : handleRetryFace}
+            onCancel={handleCancel}
+            registrationRetryState={registrationRetryState}
+            onRetryRegistration={handleManualRetryFaceRegistration}
+          />
+        )}
 
-          <h2 className="text-2xl font-bold text-gray-800 mb-1" style={{ fontFamily: 'Outfit, sans-serif' }}>
-            {scanResult.scan_type === 'time_in' ? '✅ Time In Recorded!' : '🎉 Time Out Recorded!'}
-          </h2>
-          <p className="text-gray-500 mb-6">{scanResult.message || 'Attendance recorded successfully.'}</p>
-
-          <div className="scan-result-details">
-            <div>
-              <span className="text-gray-500">Intern:</span>
-              <span className="font-semibold text-gray-800">{scanResult.intern_name}</span>
-            </div>
-            <div>
-              <span className="text-gray-500">Verification:</span>
-              <span className="badge badge-time-in flex items-center gap-1">
-                <UserCheck className="w-3 h-3" />
-                Verified ({Math.round((scanResult.similarity || 0.95) * 100)}%)
-              </span>
-            </div>
-            <div>
-              <span className="text-gray-500">Scan:</span>
-              <span className={`badge ${scanResult.scan_type === 'time_in' ? 'badge-time-in' : 'badge-time-out'}`}>
-                {scanResult.scan_label || (scanResult.scan_type === 'time_in' ? 'Time In' : 'Time Out')}
-              </span>
-            </div>
-            <div>
-              <span className="text-gray-500">Date:</span>
-              <span className="font-medium">{safeFormatDate(scanResult.scan_time, 'MMMM dd, yyyy')}</span>
-            </div>
-            <div>
-              <span className="text-gray-500">Time:</span>
-              <span className="font-medium">{safeFormatDate(scanResult.scan_time, 'hh:mm:ss a')}</span>
-            </div>
-            <div>
-              <span className="text-gray-500">Status:</span>
-              <span className="badge badge-pending">Pending Approval</span>
-            </div>
-          </div>
-
-          <p className="text-xs text-gray-400 mb-4">
-            Your attendance has been recorded with account-specific biometric face verification.
-          </p>
-
-          <button
-            id="scan-again-btn"
-            className="btn btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
-            onClick={handleReset}
-            disabled={cooldown > 0}
-          >
-            {cooldown > 0 ? `Scan Again (${cooldown}s)` : 'Scan Again'}
-          </button>
-        </div>
-      ) : stage === STAGES.CAMERA_OFF ? (
-        /* ── Screen 1: Camera Off (Manual Start Camera Only) ── */
-        <div className="card scan-stage-card text-center p-8 space-y-4">
-          <div className="w-16 h-16 rounded-2xl bg-blue-50 text-blue-600 mx-auto flex items-center justify-center">
-            <CameraOff className="w-8 h-8 text-blue-600" />
-          </div>
-          <div>
-            <h2 className="text-xl font-bold text-gray-800" style={{ fontFamily: 'Outfit, sans-serif' }}>
-              Attendance Verification
-            </h2>
-            <p className="text-sm text-gray-500 mt-1">Camera is currently off.</p>
-          </div>
-
-          <div className="next-scan-indicator mx-auto max-w-xs">
-            <Clock />
-            <span><small>Next scan</small><strong>{nextScanHint}</strong></span>
-          </div>
-
-          {registrationRetryState.isRetrying && (
-            <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl space-y-1 text-sm text-blue-700 max-w-sm mx-auto">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Loader2 className="w-4 h-4 animate-spin text-blue-600 flex-shrink-0" />
-                  <span className="font-semibold text-xs">Checking Face ID registration...</span>
-                </div>
-                <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">
-                  {registrationRetryState.currentAttempt}/{registrationRetryState.maxAttempts}
-                </span>
+        {/* State A: Initial Screen — Camera is completely OFF */}
+        {stage === STAGES.CAMERA_OFF && (
+          <div className="space-y-4">
+            {/* Camera-off Placeholder Viewport */}
+            <div className="w-full aspect-[4/3] max-w-[480px] mx-auto rounded-2xl bg-slate-900 border border-slate-800 flex flex-col items-center justify-center p-6 text-center text-white space-y-3 relative overflow-hidden shadow-inner">
+              <div className="w-16 h-16 rounded-full bg-blue-500/10 border border-blue-400/20 flex items-center justify-center text-blue-400">
+                <CameraOff className="w-8 h-8" />
               </div>
-              {registrationRetryState.bufferSecondsRemaining > 0 && (
-                <p className="text-xs text-blue-600">
-                  Buffering next attempt in {registrationRetryState.bufferSecondsRemaining}s...
+              <div className="space-y-1">
+                <p className="font-bold text-base text-gray-100">
+                  Camera is currently off.
                 </p>
-              )}
-            </div>
-          )}
-
-          {error && !registrationRetryState.isRetrying && (
-            <div className="p-3 bg-red-50 border border-red-200 rounded-xl space-y-2 text-sm text-red-700 max-w-sm mx-auto text-left">
-              <div className="flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                <span>{error}</span>
+                <p className="text-xs text-gray-400 max-w-xs leading-relaxed">
+                  Start the camera when you're ready to verify your attendance.
+                </p>
               </div>
-              {errorCode === 'FACE_NOT_REGISTERED' && (
-                <>
-                  <div className="w-full flex items-center justify-center gap-2 p-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs font-semibold">
-                    <UserCheck className="w-4 h-4 flex-shrink-0" />
-                    <span>Contact administrator for biometric enrollment</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleManualRetryFaceRegistration}
-                    className="btn btn-sm btn-outline w-full flex items-center justify-center gap-1.5 text-xs font-semibold py-1.5 rounded-lg border-red-300 text-red-700 hover:bg-red-100"
-                  >
-                    <RotateCcw className="w-3.5 h-3.5" />
-                    Retry Face ID Check (5 Attempts)
-                  </button>
-                </>
-              )}
             </div>
-          )}
 
-          <div className="pt-2">
-            <button
-              id="start-camera-btn"
-              type="button"
-              onClick={handleStartCamera}
-              disabled={isStartingCamera || cooldown > 0 || faceCooldown > 0}
-              className="btn btn-primary w-full max-w-sm mx-auto flex items-center justify-center gap-2 py-3 text-base font-semibold shadow-md hover:shadow-lg transition-all"
-            >
-              {isStartingCamera ? (
-                <>
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                  Starting Camera...
-                </>
+            {/* Next Attendance Card */}
+            <div className="w-full max-w-[480px] mx-auto bg-blue-50/70 border border-blue-100/80 rounded-xl p-3.5 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-lg bg-blue-600/10 text-blue-600 flex items-center justify-center flex-shrink-0">
+                  <Clock className="w-5 h-5" />
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold text-blue-600 uppercase tracking-wider block">
+                    Next Attendance
+                  </span>
+                  <span className="text-sm font-semibold text-gray-900">
+                    {nextScanInfo.label}
+                  </span>
+                </div>
+              </div>
+              <span className="text-sm font-bold text-blue-700 bg-white/90 border border-blue-200/60 px-3 py-1 rounded-md shadow-xs">
+                {nextScanInfo.time}
+              </span>
+            </div>
+
+            {/* The ONLY Start Camera button */}
+            <div className="max-w-[480px] mx-auto">
+              <button
+                id="start-camera-btn"
+                type="button"
+                onClick={handleStartCamera}
+                disabled={isStartingCamera || cooldown > 0 || faceCooldown > 0}
+                className="btn btn-primary w-full h-12 text-sm sm:text-base font-semibold rounded-xl flex items-center justify-center gap-2 shadow-sm transition-all disabled:opacity-50"
+              >
+                {isStartingCamera ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    Starting Camera...
+                  </>
+                ) : (
+                  <>
+                    <Camera className="w-5 h-5" />
+                    Start Camera
+                  </>
+                )}
+              </button>
+            </div>
+
+            {/* Account security helper */}
+            <div className="max-w-[480px] mx-auto flex items-center gap-2 text-[11px] text-gray-500 justify-center">
+              <Shield className="w-3.5 h-3.5 text-blue-600 flex-shrink-0" />
+              <span><strong>Account Security:</strong> Face verification matches only this account.</span>
+            </div>
+          </div>
+        )}
+
+        {/* State B: Active QR Scanning */}
+        {(stage === STAGES.QR_SCANNING || stage === STAGES.QR_VERIFYING) && (
+          <div className="space-y-3">
+            {/* Secondary Next Attendance indicator */}
+            <div className="max-w-[480px] mx-auto flex items-center justify-between text-xs text-gray-500 px-1">
+              <span className="font-medium flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5 text-blue-600" />
+                Next: <strong className="text-gray-800">{nextScanInfo.label}</strong>
+              </span>
+              <span className="font-semibold text-blue-700">{nextScanInfo.time}</span>
+            </div>
+
+            {/* QR Scanner Container */}
+            <div className="max-w-[480px] mx-auto">
+              <QRScanner onScan={handleScan} isActive={isCameraStarted && stage === STAGES.QR_SCANNING} />
+            </div>
+
+            {/* Guidance status */}
+            <div className="max-w-[480px] mx-auto text-center space-y-1">
+              {stage === STAGES.QR_VERIFYING ? (
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl flex items-center justify-center gap-2 text-xs font-semibold text-blue-800 animate-pulse">
+                  <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
+                  <span>✓ QR Code Detected — Verifying account...</span>
+                </div>
               ) : (
-                <>
-                  <Camera className="w-5 h-5" />
-                  Start Camera
-                </>
-              )}
-            </button>
-          </div>
-
-          <div className="scan-help-note max-w-sm mx-auto mt-4 text-left">
-            <Shield />
-            <p><strong>Account Security:</strong> Your face must match the registered face for this account.</p>
-          </div>
-        </div>
-      ) : stage === STAGES.FACE_SCANNING || stage === STAGES.FACE_VERIFYING || stage === STAGES.VERIFICATION_FAILED ? (
-        /* ── Screen 3: Face Verification Screen ── */
-        <div className="card scan-stage-card scan-stage-card--face">
-          <div className="scan-stage-heading">
-            <Camera className="w-5 h-5 text-blue-600" />
-            <div>
-              <h2 className="font-bold text-gray-800">Face Verification</h2>
-              <p>Now position your face inside the frame</p>
-            </div>
-          </div>
-
-          {/* Active Retry Banner */}
-          {registrationRetryState.isRetrying && (
-            <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl space-y-1.5 text-sm text-blue-700">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Loader2 className="w-4 h-4 animate-spin text-blue-600 flex-shrink-0" />
-                  <span className="font-semibold">Checking Face ID enrollment...</span>
-                </div>
-                <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">
-                  Attempt {registrationRetryState.currentAttempt} of {registrationRetryState.maxAttempts}
-                </span>
-              </div>
-              {registrationRetryState.bufferSecondsRemaining > 0 && (
-                <div className="flex items-center gap-1.5 text-xs text-blue-600 pl-6">
-                  <Clock className="w-3.5 h-3.5" />
-                  <span>Buffer delay: retrying in {registrationRetryState.bufferSecondsRemaining}s...</span>
+                <div className="space-y-1">
+                  <div className="inline-flex items-center gap-2 text-xs font-semibold text-blue-600 bg-blue-50 px-3 py-1 rounded-full">
+                    <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse" />
+                    Scanning QR Code...
+                  </div>
+                  <p className="text-xs text-gray-500">
+                    Place your attendance QR code inside the frame.
+                  </p>
                 </div>
               )}
             </div>
-          )}
 
-          {/* Error banner */}
-          {error && !registrationRetryState.isRetrying && (
-            <div className="p-3 bg-red-50 border border-red-200 rounded-xl space-y-2 text-sm text-red-700">
-              <div className="flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                <span className="font-semibold">{error}</span>
-              </div>
-              {errorCode === 'FACE_NOT_REGISTERED' && (
-                <>
-                  <div className="w-full flex items-center justify-center gap-2 mt-2 p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs font-semibold">
-                    <UserCheck className="w-4 h-4 flex-shrink-0" />
-                    <span>Contact your administrator or supervisor for in-person biometric enrollment</span>
-                  </div>
-                  <div className="pt-1 flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={handleManualRetryFaceRegistration}
-                      className="btn btn-sm btn-outline flex-1 flex items-center justify-center gap-2 text-xs font-semibold py-2 rounded-lg border-red-300 text-red-700 hover:bg-red-100 transition-colors"
-                    >
-                      <RotateCcw className="w-3.5 h-3.5" />
-                      Retry Face ID Check (5 Attempts)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleRescanQr}
-                      className="btn btn-sm btn-secondary text-xs py-2 px-3 rounded-lg"
-                    >
-                      Rescan QR
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-          )}
-
-          {/* Video feed */}
-          <div className="face-camera-viewport">
-            <video
-              ref={videoRef}
-              autoPlay
-              playsInline
-              muted
-              className="w-full h-full object-cover scale-x-[-1]"
-            />
-
-            {/* Dynamic oval */}
-            <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-              <div className={`face-camera-guide transition-all duration-300 ${
-                faceStatus.type === 'success'
-                  ? 'border-emerald-500 bg-emerald-500/10 shadow-[0_0_30px_rgba(16,185,129,0.6)] animate-pulse'
-                  : faceStatus.type === 'rejected'
-                  ? 'border-red-500 bg-red-500/15 shadow-[0_0_30px_rgba(239,68,68,0.6)] animate-pulse'
-                  : faceStatus.type === 'warning'
-                  ? 'border-amber-400 bg-amber-400/10 shadow-[0_0_15px_rgba(251,191,36,0.4)]'
-                  : 'border-blue-400 bg-blue-500/5 shadow-[0_0_15px_rgba(59,130,246,0.3)]'
-              }`} />
-            </div>
-
-            {/* Badge */}
-            <div className="absolute top-3 left-3 bg-black/70 backdrop-blur-sm text-white text-[10px] px-2.5 py-1 rounded-full font-bold uppercase tracking-wider flex items-center gap-1">
-              <Sparkles className="w-3 h-3 text-blue-400" />
-              {isProcessing || stage === STAGES.FACE_VERIFYING ? 'Verifying Face...' : 'Face Recognition'}
-            </div>
-          </div>
-
-          {/* Status bar */}
-          <div className={`p-3 rounded-xl flex items-center justify-center gap-2 text-xs font-semibold text-center transition-all ${
-            faceStatus.type === 'success' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
-            faceStatus.type === 'rejected' ? 'bg-red-50 text-red-700 border border-red-200' :
-            faceStatus.type === 'warning' ? 'bg-amber-50 text-amber-800 border border-amber-200' :
-            'bg-blue-50 text-blue-700 border border-blue-200'
-          }`}>
-            {isProcessing || stage === STAGES.FACE_VERIFYING ? (
-              <Clock className="w-4 h-4 animate-spin flex-shrink-0" />
-            ) : faceStatus.type === 'success' ? (
-              <UserCheck className="w-4 h-4 animate-bounce flex-shrink-0" />
-            ) : faceStatus.type === 'rejected' ? (
-              <AlertCircle className="w-4 h-4 flex-shrink-0" />
-            ) : (
-              <Camera className="w-4 h-4 flex-shrink-0" />
-            )}
-            <span>{isProcessing || stage === STAGES.FACE_VERIFYING ? 'Verifying Face...' : faceStatus.message}</span>
-          </div>
-
-          <p className="scan-camera-hint">
-            Look directly at the camera — attendance is recorded automatically when your face is recognized.
-          </p>
-
-          {/* Action buttons */}
-          {errorCode === 'FACE_NOT_REGISTERED' ? (
-            <div className="space-y-2">
+            {/* Cancel Camera button */}
+            <div className="max-w-[480px] mx-auto pt-1">
               <button
                 type="button"
-                className="btn btn-primary w-full flex items-center justify-center gap-2 text-sm"
-                onClick={handleManualRetryFaceRegistration}
-                disabled={registrationRetryState.isRetrying}
-              >
-                <RotateCcw className={`w-4 h-4 ${registrationRetryState.isRetrying ? 'animate-spin' : ''}`} />
-                {registrationRetryState.isRetrying
-                  ? `Checking Face ID (${registrationRetryState.currentAttempt}/${registrationRetryState.maxAttempts})...`
-                  : 'Retry Face ID Check (5 Attempts)'}
-              </button>
-              <button
-                type="button"
-                className="btn btn-secondary w-full flex items-center justify-center gap-2 text-sm"
-                onClick={handleRescanQr}
-              >
-                <RotateCcw className="w-4 h-4" />
-                Cancel & Rescan QR
-              </button>
-            </div>
-          ) : (
-            <button
-              className="btn btn-secondary w-full flex items-center justify-center gap-2 text-sm"
-              onClick={handleRescanQr}
-              disabled={isProcessing}
-            >
-              <RotateCcw className="w-4 h-4" />
-              Cancel & Rescan QR
-            </button>
-          )}
-        </div>
-      ) : (
-        /* ── Screen 2: QR Scanner Screen (Active only after Start Camera) ── */
-        <div className="card scan-stage-card scan-stage-card--qr">
-          <div className="scan-stage-heading">
-            <QrCode className="w-5 h-5 text-blue-600" />
-            <div>
-              <h2 className="font-bold text-gray-800">Scan QR Code</h2>
-              <p>Position the attendance QR code inside the frame</p>
-            </div>
-          </div>
-          <div>
-            {stage === STAGES.QR_VERIFYING && (
-              <div className="mb-3 p-3 bg-yellow-50 border border-yellow-200 rounded-xl flex items-center gap-2 text-sm text-yellow-700">
-                <Clock className="w-4 h-4 animate-spin" />
-                Validating QR code...
-              </div>
-            )}
-            <div className="next-scan-indicator">
-              <Clock />
-              <span><small>Next scan</small><strong>{nextScanHint}</strong></span>
-            </div>
-            {error && (
-              <div className="mb-3 p-3 bg-red-50 border border-red-200 rounded-xl flex items-center gap-2 text-sm text-red-700">
-                <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                <span>
-                  {error}
-                  {faceCooldown > 0 ? ` (${faceCooldown}s remaining)` : ''}
-                </span>
-              </div>
-            )}
-
-            <QRScanner onScan={handleScan} isActive={isCameraStarted && stage === STAGES.QR_SCANNING} />
-
-            <div className="mt-4">
-              <button
-                type="button"
-                className="btn btn-secondary w-full flex items-center justify-center gap-2 text-sm"
                 onClick={handleCancel}
+                className="btn btn-secondary w-full py-2.5 text-xs font-medium rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50 flex items-center justify-center gap-1.5"
               >
-                <CameraOff className="w-4 h-4 text-gray-600" />
+                <CameraOff className="w-4 h-4 text-gray-500" />
                 Cancel & Turn Off Camera
               </button>
             </div>
           </div>
-        </div>
-      )}
+        )}
+
+        {/* State C: Account Verified Card */}
+        {stage === STAGES.ACCOUNT_VERIFIED && (
+          <div className="w-full aspect-[4/3] max-w-[480px] mx-auto rounded-2xl bg-white border border-blue-100 shadow-inner flex flex-col items-center justify-center p-6 text-center space-y-3 animate-fade-in">
+            <div className="w-14 h-14 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center shadow-xs">
+              <Check className="w-8 h-8 stroke-[3]" />
+            </div>
+
+            <div className="space-y-1">
+              <span className="text-[11px] font-bold text-emerald-700 uppercase tracking-wider bg-emerald-50 px-3 py-0.5 rounded-full border border-emerald-200 inline-block mb-1">
+                ✓ Account Verified
+              </span>
+              <h3 className="text-lg sm:text-xl font-bold text-gray-900" style={{ fontFamily: 'Outfit, sans-serif' }}>
+                {userName}
+              </h3>
+              <p className="text-xs font-semibold text-blue-600">
+                {userRole}
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 text-xs font-medium text-gray-500 pt-2">
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-600" />
+              <span>Preparing Face Verification...</span>
+            </div>
+          </div>
+        )}
+
+        {/* State D: Face Verification Interface */}
+        {(stage === STAGES.FACE_SCANNING || stage === STAGES.FACE_VERIFYING || stage === STAGES.ATTENDANCE_RECORDING) && (
+          <div className="space-y-3 max-w-[480px] mx-auto">
+            {/* Front Camera Video Box with Oval Face Guide */}
+            <div className="relative w-full aspect-[4/3] rounded-2xl overflow-hidden bg-black shadow-inner border border-gray-800 flex items-center justify-center">
+              <video
+                ref={videoRef}
+                playsInline
+                muted
+                autoPlay
+                className="w-full h-full object-cover transform -scale-x-100"
+              />
+
+              {/* Face Guide Overlay */}
+              <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-between p-3.5 z-10">
+                {/* Top Badge */}
+                <div className="bg-black/70 backdrop-blur-md text-white text-[11px] font-medium px-3 py-1 rounded-full border border-white/10 flex items-center gap-1.5 shadow-sm">
+                  <Sparkles className="w-3.5 h-3.5 text-blue-400" />
+                  {stage === STAGES.ATTENDANCE_RECORDING
+                    ? '✓ Face Verified — Recording...'
+                    : isProcessing
+                    ? '● Verifying Face...'
+                    : 'Verifying Face'}
+                </div>
+
+                {/* Oval Face Guide Frame */}
+                <div
+                  className={`relative w-44 sm:w-48 h-56 sm:h-60 rounded-[50%] border-2 transition-all duration-300 flex items-center justify-center ${
+                    stage === STAGES.ATTENDANCE_RECORDING || faceStatus.type === 'success'
+                      ? 'border-emerald-400 shadow-[0_0_24px_rgba(16,185,129,0.5)] bg-emerald-500/10 animate-pulse'
+                      : faceStatus.type === 'rejected'
+                      ? 'border-rose-400 shadow-[0_0_24px_rgba(244,63,94,0.5)] bg-rose-500/10 animate-pulse'
+                      : 'border-blue-400/80 shadow-[0_0_20px_rgba(59,130,246,0.35)] bg-blue-500/5'
+                  }`}
+                >
+                  <div className="absolute w-5 h-0.5 bg-blue-400/60 top-1/2 -left-2.5" />
+                  <div className="absolute w-5 h-0.5 bg-blue-400/60 top-1/2 -right-2.5" />
+                </div>
+
+                {/* Bottom guide instruction */}
+                <div className="bg-black/60 backdrop-blur-sm text-gray-200 text-[11px] px-3 py-1 rounded-full">
+                  Look directly at the camera and keep your face inside the guide
+                </div>
+              </div>
+            </div>
+
+            {/* Account Specific Identity Context Card */}
+            <div className="bg-slate-50 border border-slate-200/90 rounded-xl p-3 text-center space-y-0.5">
+              <p className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold">
+                Verifying the registered face of:
+              </p>
+              <p className="text-sm font-bold text-gray-900">
+                {userName}
+              </p>
+              <p className="text-xs text-blue-700 font-medium">
+                {userRole}
+              </p>
+            </div>
+
+            {/* Live Verification Status Bar */}
+            <div
+              className={`p-3 rounded-xl flex items-center justify-center gap-2 text-xs font-semibold text-center transition-all ${
+                stage === STAGES.ATTENDANCE_RECORDING || faceStatus.type === 'success'
+                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                  : faceStatus.type === 'rejected'
+                  ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                  : 'bg-blue-50 text-blue-700 border border-blue-200'
+              }`}
+            >
+              {stage === STAGES.ATTENDANCE_RECORDING ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin text-emerald-600" />
+                  <span>✓ Face Verified — Recording attendance...</span>
+                </>
+              ) : isProcessing ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
+                  <span>● Verifying Face... Please hold still</span>
+                </>
+              ) : faceStatus.type === 'success' ? (
+                <>
+                  <Check className="w-4 h-4 text-emerald-600 stroke-[3]" />
+                  <span>{faceStatus.message}</span>
+                </>
+              ) : (
+                <>
+                  <Camera className="w-4 h-4 text-blue-600" />
+                  <span>{faceStatus.message || 'Position your face inside the guide'}</span>
+                </>
+              )}
+            </div>
+
+            {/* Rescan QR Action Button */}
+            <button
+              type="button"
+              onClick={handleRescanQr}
+              disabled={isProcessing || stage === STAGES.ATTENDANCE_RECORDING}
+              className="btn btn-secondary w-full py-2.5 text-xs font-medium rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50 flex items-center justify-center gap-1.5 disabled:opacity-50"
+            >
+              <RotateCcw className="w-3.5 h-3.5 text-gray-500" />
+              Cancel & Rescan QR
+            </button>
+          </div>
+        )}
+
+        {/* State E: Successful Attendance Screen */}
+        {stage === STAGES.VERIFICATION_SUCCESS && scanResult && (
+          <div className="text-center p-2 sm:p-4 space-y-4 max-w-[480px] mx-auto animate-scale-in">
+            {/* Green Check Badge */}
+            <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 mx-auto flex items-center justify-center shadow-sm ring-8 ring-emerald-50">
+              <Check className="w-8 h-8 stroke-[3]" />
+            </div>
+
+            <div className="space-y-1">
+              <h2
+                className="text-2xl font-bold text-gray-900 tracking-tight"
+                style={{ fontFamily: 'Outfit, sans-serif' }}
+              >
+                Attendance Recorded
+              </h2>
+              <p className="text-xs text-gray-500">
+                {scanResult.message || 'Your attendance has been recorded successfully.'}
+              </p>
+            </div>
+
+            {/* Big Scan Badge (TIME IN / TIME OUT) */}
+            <div>
+              <span
+                className={`text-xs font-extrabold uppercase tracking-widest px-4 py-1.5 rounded-full shadow-xs ${
+                  scanResult.scan_type === 'time_in'
+                    ? 'bg-emerald-600 text-white'
+                    : 'bg-purple-600 text-white'
+                }`}
+              >
+                {scanResult.scan_label || (scanResult.scan_type === 'time_in' ? 'TIME IN' : 'TIME OUT')}
+              </span>
+            </div>
+
+            {/* Structured Attendance Details Grid */}
+            <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 text-left divide-y divide-gray-100 text-xs">
+              <div className="py-2 flex justify-between items-center">
+                <span className="text-gray-500 font-medium">Time</span>
+                <span className="font-bold text-gray-900 text-sm">
+                  {safeFormatDate(scanResult.scan_time, 'hh:mm:ss a')}
+                </span>
+              </div>
+              <div className="py-2 flex justify-between items-center">
+                <span className="text-gray-500 font-medium">Intern</span>
+                <span className="font-semibold text-gray-900">
+                  {scanResult.intern_name || userName}
+                </span>
+              </div>
+              <div className="py-2 flex justify-between items-center">
+                <span className="text-gray-500 font-medium">Date</span>
+                <span className="font-medium text-gray-800">
+                  {safeFormatDate(scanResult.scan_time, 'MMMM dd, yyyy')}
+                </span>
+              </div>
+              <div className="py-2 flex justify-between items-center">
+                <span className="text-gray-500 font-medium">Verification</span>
+                <span className="inline-flex items-center gap-1 font-semibold text-emerald-700 bg-emerald-100/70 px-2 py-0.5 rounded-full text-[11px]">
+                  <Check className="w-3 h-3 stroke-[3]" />
+                  Verified ({Math.round((scanResult.similarity || 0.95) * 100)}%)
+                </span>
+              </div>
+              <div className="py-2 flex justify-between items-center">
+                <span className="text-gray-500 font-medium">Status</span>
+                <span className="inline-flex items-center gap-1 font-semibold text-amber-700 bg-amber-100/70 px-2 py-0.5 rounded-full text-[11px]">
+                  <Clock className="w-3 h-3" />
+                  Pending Approval
+                </span>
+              </div>
+            </div>
+
+            {/* Done Action Button */}
+            <button
+              type="button"
+              onClick={handleReset}
+              disabled={cooldown > 0}
+              className="btn btn-primary w-full h-12 text-sm font-semibold rounded-xl flex items-center justify-center gap-2 shadow-sm transition-all disabled:opacity-50"
+            >
+              {cooldown > 0 ? `Done (Cooldown ${cooldown}s)` : 'Done'}
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
