@@ -1345,18 +1345,158 @@ export default function ScanAttendance() {
                     : 'Verifying Face'}
                 </div>
 
-                {/* Oval Face Guide Frame */}
+                {/* Biometric Face-Shaped Alignment Frame (Forehead, Temples, Cheeks, Jawline, Chin) */}
                 <div
-                  className={`relative w-44 sm:w-48 h-56 sm:h-60 rounded-[50%] border-2 transition-all duration-300 flex items-center justify-center ${
-                    stage === STAGES.ATTENDANCE_RECORDING || faceStatus.type === 'success'
-                      ? 'border-emerald-400 shadow-[0_0_24px_rgba(16,185,129,0.5)] bg-emerald-500/10 animate-pulse'
-                      : faceStatus.type === 'rejected'
-                      ? 'border-rose-400 shadow-[0_0_24px_rgba(244,63,94,0.5)] bg-rose-500/10 animate-pulse'
-                      : 'border-blue-400/80 shadow-[0_0_20px_rgba(59,130,246,0.35)] bg-blue-500/5'
+                  className={`relative w-48 sm:w-56 h-60 sm:h-68 max-h-[82%] flex items-center justify-center pointer-events-none transition-all duration-300 ${
+                    stage === STAGES.ATTENDANCE_RECORDING || faceStatus.type === 'success' || faceStatus.type === 'rejected'
+                      ? 'animate-pulse'
+                      : ''
                   }`}
                 >
-                  <div className="absolute w-5 h-0.5 bg-blue-400/60 top-1/2 -left-2.5" />
-                  <div className="absolute w-5 h-0.5 bg-blue-400/60 top-1/2 -right-2.5" />
+                  <svg
+                    viewBox="0 0 240 300"
+                    fill="none"
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="w-full h-full"
+                    style={{
+                      filter:
+                        stage === STAGES.ATTENDANCE_RECORDING || faceStatus.type === 'success'
+                          ? 'drop-shadow(0 0 16px rgba(16, 185, 129, 0.55))'
+                          : faceStatus.type === 'rejected'
+                          ? 'drop-shadow(0 0 16px rgba(244, 63, 94, 0.55))'
+                          : 'drop-shadow(0 0 12px rgba(59, 130, 246, 0.4))',
+                    }}
+                  >
+                    {/* Anatomical biometric face contour */}
+                    <path
+                      d="M 120 20
+                         C 165 20, 196 44, 198 78
+                         C 200 100, 204 122, 202 140
+                         C 199 170, 182 208, 166 230
+                         C 152 250, 136 266, 120 268
+                         C 104 266, 88 250, 74 230
+                         C 58 208, 41 170, 38 140
+                         C 36 122, 40 100, 42 78
+                         C 44 44, 75 20, 120 20 Z"
+                      fill={
+                        stage === STAGES.ATTENDANCE_RECORDING || faceStatus.type === 'success'
+                          ? 'rgba(16, 185, 129, 0.08)'
+                          : faceStatus.type === 'rejected'
+                          ? 'rgba(244, 63, 94, 0.08)'
+                          : 'rgba(59, 130, 246, 0.04)'
+                      }
+                      stroke={
+                        stage === STAGES.ATTENDANCE_RECORDING || faceStatus.type === 'success'
+                          ? '#34d399'
+                          : faceStatus.type === 'rejected'
+                          ? '#fb7185'
+                          : '#60a5fa'
+                      }
+                      strokeWidth="2.2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+
+                    {/* Side alignment markers (cheek level) */}
+                    <line
+                      x1="20"
+                      y1="140"
+                      x2="31"
+                      y2="140"
+                      stroke={
+                        stage === STAGES.ATTENDANCE_RECORDING || faceStatus.type === 'success'
+                          ? '#34d399'
+                          : faceStatus.type === 'rejected'
+                          ? '#fb7185'
+                          : '#60a5fa'
+                      }
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                    />
+                    <line
+                      x1="209"
+                      y1="140"
+                      x2="220"
+                      y2="140"
+                      stroke={
+                        stage === STAGES.ATTENDANCE_RECORDING || faceStatus.type === 'success'
+                          ? '#34d399'
+                          : faceStatus.type === 'rejected'
+                          ? '#fb7185'
+                          : '#60a5fa'
+                      }
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                    />
+
+                    {/* Temple alignment markers */}
+                    <line
+                      x1="26"
+                      y1="82"
+                      x2="35"
+                      y2="82"
+                      stroke={
+                        stage === STAGES.ATTENDANCE_RECORDING || faceStatus.type === 'success'
+                          ? '#34d399'
+                          : faceStatus.type === 'rejected'
+                          ? '#fb7185'
+                          : '#60a5fa'
+                      }
+                      strokeWidth="1.75"
+                      strokeLinecap="round"
+                      opacity="0.8"
+                    />
+                    <line
+                      x1="205"
+                      y1="82"
+                      x2="214"
+                      y2="82"
+                      stroke={
+                        stage === STAGES.ATTENDANCE_RECORDING || faceStatus.type === 'success'
+                          ? '#34d399'
+                          : faceStatus.type === 'rejected'
+                          ? '#fb7185'
+                          : '#60a5fa'
+                      }
+                      strokeWidth="1.75"
+                      strokeLinecap="round"
+                      opacity="0.8"
+                    />
+
+                    {/* Top & bottom center alignment markers */}
+                    <line
+                      x1="120"
+                      y1="8"
+                      x2="120"
+                      y2="14"
+                      stroke={
+                        stage === STAGES.ATTENDANCE_RECORDING || faceStatus.type === 'success'
+                          ? '#34d399'
+                          : faceStatus.type === 'rejected'
+                          ? '#fb7185'
+                          : '#60a5fa'
+                      }
+                      strokeWidth="1.75"
+                      strokeLinecap="round"
+                      opacity="0.75"
+                    />
+                    <line
+                      x1="120"
+                      y1="274"
+                      x2="120"
+                      y2="280"
+                      stroke={
+                        stage === STAGES.ATTENDANCE_RECORDING || faceStatus.type === 'success'
+                          ? '#34d399'
+                          : faceStatus.type === 'rejected'
+                          ? '#fb7185'
+                          : '#60a5fa'
+                      }
+                      strokeWidth="1.75"
+                      strokeLinecap="round"
+                      opacity="0.75"
+                    />
+                  </svg>
                 </div>
 
                 {/* Bottom guide instruction */}
