@@ -92,3 +92,17 @@ test('compareFacePackages rejects impostors with different facial features', () 
   assert.equal(res.isMatch, false, 'Different person must never match');
   assert.equal(res.matchedSamples, 0);
 });
+
+test('compareFacePackages rejects arbitrary distinct faces and random faces', () => {
+  const person1 = new Array(FACE_DESCRIPTOR_LENGTH).fill(0).map((_, i) => Math.sin(i * 0.1) * 0.5 + Math.cos(i * 0.05) * 0.3);
+  const person2 = new Array(FACE_DESCRIPTOR_LENGTH).fill(0).map((_, i) => Math.sin(i * 0.85) * 0.4 + Math.cos(i * 0.4) * 0.5);
+
+  const pkg1 = { version: FACE_ID_VERSION, samples: [person1, person1, person1] };
+  const pkg2 = { version: FACE_ID_VERSION, samples: [person2, person2, person2] };
+
+  const res = compareFacePackages(pkg1, pkg2);
+  assert.equal(res.isMatch, false, 'Arbitrary distinct face must never match');
+  assert.equal(res.matchedSamples, 0, 'No samples should match for distinct persons');
+  assert.ok(res.similarity < 0.40, `Similarity should be low (got ${res.similarity})`);
+});
+

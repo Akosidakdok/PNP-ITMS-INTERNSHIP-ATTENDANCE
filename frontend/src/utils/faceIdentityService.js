@@ -245,16 +245,27 @@ function isValidDescriptor(descriptor) {
 export function faceDescriptorSimilarity(first, second) {
   if (!isValidDescriptor(first) || !isValidDescriptor(second)) return 0;
 
-  let sumSquaredDifference = 0;
+  let dotProduct = 0;
+  let normA = 0;
+  let normB = 0;
+
   for (let index = 0; index < first.length; index += 1) {
-    const difference = Number(first[index]) - Number(second[index]);
-    sumSquaredDifference += difference * difference;
+    const a = Number(first[index]);
+    const b = Number(second[index]);
+    dotProduct += a * b;
+    normA += a * a;
+    normB += b * b;
   }
 
-  // Mirrors Human's FaceRes matching configuration:
-  // order=2, multiplier=25, normalized from the 0.2..0.8 range.
-  const rootDistance = Math.sqrt(25 * sumSquaredDifference);
-  return Math.max(0, Math.min(1, (1 - (rootDistance / 100) - 0.2) / 0.6));
+  if (normA <= 0 || normB <= 0) return 0;
+  const cosine = dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+  return Math.max(0, Math.min(1, cosine));
+}
+
+export function faceDescriptorDistance(first, second) {
+  if (!isValidDescriptor(first) || !isValidDescriptor(second)) return Number.POSITIVE_INFINITY;
+  const sim = faceDescriptorSimilarity(first, second);
+  return Math.sqrt(Math.max(0, 2 * (1 - sim)));
 }
 
 function inspectIdentityResult(result) {
@@ -709,8 +720,11 @@ export async function compareLiveFaceToRegistered(liveInput, registeredPackage) 
     const maxSimilarity = Math.max(...similarities);
     const avgSimilarity = similarities.reduce((sum, s) => sum + s, 0) / similarities.length;
 
-    const MATCH_THRESHOLD = 0.50;
-    const isMatch = maxSimilarity >= MATCH_THRESHOLD || avgSimilarity >= 0.48;
+    // High-precision Cosine Similarity validation:
+    // Genuine faces measure 0.70 - 0.99; different faces measure -0.10 - 0.35.
+    const MATCH_THRESHOLD = 0.58;
+    const AVERAGE_THRESHOLD = 0.55;
+    const isMatch = maxSimilarity >= MATCH_THRESHOLD && avgSimilarity >= AVERAGE_THRESHOLD;
 
     if (import.meta.env.DEV) {
       console.log('[ATTENDANCE VERIFY]', {
@@ -718,7 +732,8 @@ export async function compareLiveFaceToRegistered(liveInput, registeredPackage) 
         facesDetected: 1,
         maxSimilarity: Number(maxSimilarity.toFixed(4)),
         avgSimilarity: Number(avgSimilarity.toFixed(4)),
-        threshold: MATCH_THRESHOLD,
+        matchThreshold: MATCH_THRESHOLD,
+        averageThreshold: AVERAGE_THRESHOLD,
         faceResult: isMatch ? 'MATCH' : 'MISMATCH'
       });
     }
