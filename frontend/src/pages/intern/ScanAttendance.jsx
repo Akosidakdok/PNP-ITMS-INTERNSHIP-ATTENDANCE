@@ -449,6 +449,7 @@ export default function ScanAttendance() {
       setError(msg);
       toast.error(msg);
       setScannerActive(true);
+      throw err;
     } finally {
       setScanning(false);
       scanLockRef.current = false;

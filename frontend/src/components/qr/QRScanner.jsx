@@ -163,7 +163,7 @@ export default function QRScanner({ onScan, onError, isActive = true }) {
       const html5Qr = new Html5Qrcode(containerIdRef.current, {
         formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
         experimentalFeatures: {
-          useBarCodeDetectorIfSupported: true,
+          useBarCodeDetectorIfSupported: false,
         },
         verbose: false,
       });
@@ -171,7 +171,7 @@ export default function QRScanner({ onScan, onError, isActive = true }) {
 
       logDebug('Starting scanner with config:', cameraConfig);
 
-      const onScanSuccess = (decodedText) => {
+      const onScanSuccess = async (decodedText) => {
         // Success callback: prevent duplicates immediately
         if (scanLockedRef.current) return;
         scanLockedRef.current = true;
@@ -183,36 +183,39 @@ export default function QRScanner({ onScan, onError, isActive = true }) {
 
         videoObserver.disconnect();
 
-        // Immediately stop scanner to release camera hardware for face verification
-        stopScanner().then(() => {
-          if (onScan) onScan(decodedText);
-        });
+        try {
+          if (onScan) {
+            await onScan(decodedText);
+          }
+          await stopScanner();
+        } catch (scanErr) {
+          logDebug('onScan validation failed, resuming scanner:', scanErr);
+          scanLockedRef.current = false;
+          if (isMountedRef.current) {
+            setScanState('scanning');
+          }
+        }
       };
 
       const onScanFailure = () => {
         // Normal frame search tick — ignore
       };
 
-      // Step 3: Start scanning full-frame (omitting qrbox fixes iOS Safari aspect-ratio crop offset bug)
+      // Step 3: Start scanning full-frame
       try {
         await html5Qr.start(
           cameraConfig,
           {
             fps: 15,
             disableFlip: true,
-            videoConstraints: {
-              facingMode: cameraConfig.facingMode || 'environment',
-              width: { ideal: 1280 },
-              height: { ideal: 720 },
-            },
           },
           onScanSuccess,
           onScanFailure
         );
-      } catch (constraintErr) {
-        logDebug('Starting with 720p constraints failed, retrying with basic configuration:', constraintErr);
+      } catch (firstErr) {
+        logDebug('Starting with environment camera failed, trying user camera fallback:', firstErr);
         await html5Qr.start(
-          cameraConfig,
+          { facingMode: 'user' },
           {
             fps: 15,
             disableFlip: true,

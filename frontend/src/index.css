@@ -1800,7 +1800,7 @@ body {
   }
 }
 .qr-scanner { display: flex; flex-direction: column; gap: 0.75rem; }
-.qr-reader-surface video { display: block; max-width: 100%; object-fit: cover; }
+.qr-reader-surface video { display: block; width: 100% !important; height: auto !important; max-height: 100%; object-fit: contain !important; margin: 0 auto; }
 .scan-camera-hint {
   padding: 0 0.5rem;
   color: #94a3b8;
@@ -1831,8 +1831,8 @@ body {
 .qr-scanner-container {
   min-height: clamp(19rem, 34vw, 25rem);
 }
-.qr-reader-surface { min-height: inherit; }
-.qr-reader-surface video { object-fit: cover; }
+.qr-reader-surface { min-height: inherit; display: flex; align-items: center; justify-content: center; }
+.qr-reader-surface video { object-fit: contain !important; }
 .qr-reader-surface img { display: inline-block; }
 .qr-scanner-controls {
   display: flex;
@@ -1931,12 +1931,10 @@ body {
     width: 100%;
     max-width: 28rem;
     min-height: 12rem;
-    max-height: 42dvh;
     margin-inline: auto;
-    aspect-ratio: 4 / 3;
   }
-  .qr-reader-surface { height: 100%; min-height: 0; }
-  .qr-reader-surface video { width: 100% !important; height: 100% !important; object-fit: cover; }
+  .qr-reader-surface { min-height: 0; }
+  .qr-reader-surface video { width: 100% !important; height: auto !important; max-height: 100%; object-fit: contain !important; margin: 0 auto; }
   .qr-scanner-controls { gap: 0.5rem; }
   .qr-scanner-controls .btn { min-height: 2.75rem; }
   .scan-result-card { padding: 1.25rem 0.875rem; }
