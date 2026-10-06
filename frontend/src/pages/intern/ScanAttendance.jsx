@@ -25,6 +25,9 @@ import {
 } from '../../utils/faceIdentityService.js';
 
 const COOLDOWN_SECONDS = 10;
+const MAX_FACE_REGISTRATION_RETRIES = 5;
+const RETRY_BUFFER_SECONDS = 2;
+const MAX_VERIFICATION_ATTEMPTS = 5;
 
 export const STAGES = {
   CAMERA_OFF: 'CAMERA_OFF',
@@ -70,6 +73,20 @@ export default function ScanAttendance() {
   const [faceStatus, setFaceStatus] = useState({ type: 'info', message: 'Initializing camera...' });
   const [isProcessing, setIsProcessing] = useState(false);
 
+  // Registration Retry State (5 Retries with Buffer Time)
+  const [registrationRetryState, setRegistrationRetryState] = useState({
+    isRetrying: false,
+    currentAttempt: 0,
+    maxAttempts: MAX_FACE_REGISTRATION_RETRIES,
+    bufferSecondsRemaining: 0,
+  });
+  const registrationRetryRef = useRef({
+    isRetrying: false,
+    attempts: 0,
+    active: true,
+  });
+  const verificationAttemptsRef = useRef(0);
+
   // Registered face package for currently authenticated account ONLY
   const [userRegisteredFacePackage, setUserRegisteredFacePackage] = useState(null);
   const userRegisteredFacePackageRef = useRef(null);
@@ -96,38 +113,125 @@ export default function ScanAttendance() {
     });
   }, []);
 
-  // ─── Fetch Current User's Registered Face Package ──────────────────────────
+  // ─── Fetch Current User's Registered Face Package with 5 Retries + Buffer ───
+  const loadRegisteredFaceWithRetry = useCallback(async (
+    maxAttempts = MAX_FACE_REGISTRATION_RETRIES,
+    bufferSeconds = RETRY_BUFFER_SECONDS
+  ) => {
+    if (userRegisteredFacePackageRef.current) {
+      return userRegisteredFacePackageRef.current;
+    }
+    if (!user?.id) return null;
+    if (registrationRetryRef.current.isRetrying) return null;
+
+    registrationRetryRef.current.isRetrying = true;
+    registrationRetryRef.current.active = true;
+    setError('');
+    setErrorCode('');
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      if (!registrationRetryRef.current.active) break;
+      registrationRetryRef.current.attempts = attempt;
+      setRegistrationRetryState({
+        isRetrying: true,
+        currentAttempt: attempt,
+        maxAttempts,
+        bufferSecondsRemaining: 0,
+      });
+
+      setFaceStatus({
+        type: 'info',
+        message: attempt === 1
+          ? 'Verifying Face ID registration...'
+          : `Verifying Face ID registration (Attempt ${attempt} of ${maxAttempts})...`
+      });
+
+      try {
+        const res = await backendApi.get('/attendance/my-face-descriptor');
+        if (res.data?.face_embedding) {
+          setUserRegisteredFacePackage(res.data.face_embedding);
+          userRegisteredFacePackageRef.current = res.data.face_embedding;
+          setError('');
+          setErrorCode('');
+          setFaceStatus({
+            type: 'info',
+            message: 'Position your face inside the circle'
+          });
+          registrationRetryRef.current.isRetrying = false;
+          registrationRetryRef.current.attempts = 0;
+          setRegistrationRetryState({
+            isRetrying: false,
+            currentAttempt: attempt,
+            maxAttempts,
+            bufferSecondsRemaining: 0,
+          });
+
+          if (import.meta.env.DEV) {
+            console.log('[ATTENDANCE VERIFY]', {
+              action: 'LOAD_REGISTERED_FACE_SUCCESS',
+              authenticatedUserId: user.id,
+              attempt,
+            });
+          }
+          return res.data.face_embedding;
+        }
+      } catch (err) {
+        console.warn(`Face ID check attempt ${attempt}/${maxAttempts} failed:`, err?.response?.data || err?.message);
+
+        if (attempt < maxAttempts && registrationRetryRef.current.active) {
+          // Buffer time countdown before next retry
+          for (let s = bufferSeconds; s > 0; s--) {
+            if (!registrationRetryRef.current.active) break;
+            setRegistrationRetryState(prev => ({
+              ...prev,
+              currentAttempt: attempt,
+              bufferSecondsRemaining: s,
+            }));
+            setFaceStatus({
+              type: 'warning',
+              message: `Retrying Face ID registration check (${attempt}/${maxAttempts}) in ${s}s...`
+            });
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
+        } else {
+          // All 5 attempts exhausted!
+          const fetchMsg = err?.response?.data?.error || 'Face ID is not registered for your account. Please complete biometric enrollment first.';
+          const code = err?.response?.data?.code || 'FACE_NOT_REGISTERED';
+          setError(fetchMsg);
+          setErrorCode(code);
+          setFaceStatus({
+            type: 'rejected',
+            message: `Face ID not registered after ${maxAttempts} attempts.`
+          });
+          toast.error(`Face ID check failed after ${maxAttempts} attempts.`);
+          registrationRetryRef.current.isRetrying = false;
+          setRegistrationRetryState({
+            isRetrying: false,
+            currentAttempt: maxAttempts,
+            maxAttempts,
+            bufferSecondsRemaining: 0,
+          });
+        }
+      }
+    }
+
+    registrationRetryRef.current.isRetrying = false;
+    return null;
+  }, [user?.id]);
+
   useEffect(() => {
     let isMounted = true;
     if (user?.id) {
-      backendApi.get('/attendance/my-face-descriptor')
-        .then(res => {
-          if (isMounted && res.data?.face_embedding) {
-            setUserRegisteredFacePackage(res.data.face_embedding);
-            userRegisteredFacePackageRef.current = res.data.face_embedding;
-            if (import.meta.env.DEV) {
-              console.log('[ATTENDANCE VERIFY]', {
-                action: 'LOAD_REGISTERED_FACE',
-                authenticatedUserId: user.id,
-                faceRegistered: true,
-              });
-            }
-          }
-        })
-        .catch(() => {
-          if (isMounted) {
-            setUserRegisteredFacePackage(null);
-            userRegisteredFacePackageRef.current = null;
-          }
-        });
+      loadRegisteredFaceWithRetry();
     } else {
       setUserRegisteredFacePackage(null);
       userRegisteredFacePackageRef.current = null;
     }
     return () => {
       isMounted = false;
+      registrationRetryRef.current.active = false;
     };
-  }, [user?.id]);
+  }, [user?.id, loadRegisteredFaceWithRetry]);
 
   // ─── Load next scan hint ──────────────────────────────────────────────────
   useEffect(() => {
@@ -483,30 +587,39 @@ export default function ScanAttendance() {
         setTempQrCode(null);
         toast.error(msg);
       } else if (code === 'FACE_NOT_REGISTERED') {
-        stopStream();
-        toast.error(msg);
         captureLockRef.current = false;
-        setFaceStatus({ type: 'rejected', message: 'Face not registered' });
+        loadRegisteredFaceWithRetry(MAX_FACE_REGISTRATION_RETRIES, RETRY_BUFFER_SECONDS);
       } else if (
         code === 'FACE_MISMATCH'
         || code === 'FACE_IDENTITY_CONFLICT'
         || code === 'INVALID_FACE_CAPTURE'
         || !err?.response
       ) {
-        toast.error(`${msg} Retrying in 2 seconds...`);
-        retryTimeoutRef.current = setTimeout(() => {
-          setError('');
-          setErrorCode('');
-          validFramesRef.current = 0;
+        verificationAttemptsRef.current += 1;
+        const currentAttempt = verificationAttemptsRef.current;
+
+        if (currentAttempt < MAX_VERIFICATION_ATTEMPTS) {
+          toast.error(`${msg} Retrying (${currentAttempt}/${MAX_VERIFICATION_ATTEMPTS}) in 2 seconds...`);
+          retryTimeoutRef.current = setTimeout(() => {
+            setError('');
+            setErrorCode('');
+            validFramesRef.current = 0;
+            captureLockRef.current = false;
+            setStage(STAGES.FACE_SCANNING);
+            if (streamRef.current && streamRef.current.active) {
+              setVideoReady(true);
+              setFaceStatus({ type: 'info', message: 'Position your face inside the circle' });
+            } else if (initializeCameraRef.current) {
+              initializeCameraRef.current();
+            }
+          }, 2000);
+        } else {
+          setError(`Face verification failed after ${MAX_VERIFICATION_ATTEMPTS} attempts. Please ensure good lighting and look directly at the camera.`);
+          setErrorCode('MAX_VERIFICATION_ATTEMPTS_EXCEEDED');
+          setFaceStatus({ type: 'rejected', message: `Verification failed after ${MAX_VERIFICATION_ATTEMPTS} attempts.` });
+          toast.error(`Verification stopped after ${MAX_VERIFICATION_ATTEMPTS} attempts.`);
           captureLockRef.current = false;
-          setStage(STAGES.FACE_SCANNING);
-          if (streamRef.current && streamRef.current.active) {
-            setVideoReady(true);
-            setFaceStatus({ type: 'info', message: 'Position your face inside the circle' });
-          } else if (initializeCameraRef.current) {
-            initializeCameraRef.current();
-          }
-        }, 2000);
+        }
       } else {
         stopStream();
         toast.error(msg);
@@ -516,7 +629,7 @@ export default function ScanAttendance() {
     } finally {
       setIsProcessing(false);
     }
-  }, [tempQrCode, nextScanHint, user, stopStream]);
+  }, [tempQrCode, nextScanHint, user, stopStream, loadRegisteredFaceWithRetry]);
 
   // ─── Live Account-Specific Face Matching Loop ─────────────────────────────
   useEffect(() => {
@@ -538,21 +651,12 @@ export default function ScanAttendance() {
       try {
         detectionBusyRef.current = true;
 
-        // Ensure user's registered face descriptor is loaded
+        // Ensure user's registered face descriptor is loaded (retry 5 times with buffer)
         if (!userRegisteredFacePackageRef.current) {
-          try {
-            const descriptorRes = await backendApi.get('/attendance/my-face-descriptor');
-            if (descriptorRes.data?.face_embedding) {
-              setUserRegisteredFacePackage(descriptorRes.data.face_embedding);
-              userRegisteredFacePackageRef.current = descriptorRes.data.face_embedding;
-            }
-          } catch (fetchErr) {
-            const fetchMsg = fetchErr?.response?.data?.error || 'Face ID is not registered for your account.';
-            setError(fetchMsg);
-            setErrorCode('FACE_NOT_REGISTERED');
-            setFaceStatus({ type: 'rejected', message: 'Face not registered' });
-            return;
+          if (!registrationRetryRef.current.isRetrying && errorCode !== 'FACE_NOT_REGISTERED') {
+            await loadRegisteredFaceWithRetry(MAX_FACE_REGISTRATION_RETRIES, RETRY_BUFFER_SECONDS);
           }
+          return;
         }
 
         // Compare live face strictly against the current logged-in user's registered face
@@ -634,6 +738,9 @@ export default function ScanAttendance() {
       if (res.data?.face_embedding) {
         setUserRegisteredFacePackage(res.data.face_embedding);
         userRegisteredFacePackageRef.current = res.data.face_embedding;
+      } else {
+        // Start background verification check with 5 retries and buffer time
+        loadRegisteredFaceWithRetry(MAX_FACE_REGISTRATION_RETRIES, RETRY_BUFFER_SECONDS);
       }
 
       // Automatically transition from QR scanning to Face Verification
@@ -663,6 +770,15 @@ export default function ScanAttendance() {
     }
   };
 
+  // ─── Manual Retry Action for Face ID Registration Check ───────────────────
+  const handleManualRetryFaceRegistration = () => {
+    setError('');
+    setErrorCode('');
+    registrationRetryRef.current.active = true;
+    registrationRetryRef.current.isRetrying = false;
+    loadRegisteredFaceWithRetry(MAX_FACE_REGISTRATION_RETRIES, RETRY_BUFFER_SECONDS);
+  };
+
   // ─── Reset / Scan Again ───────────────────────────────────────────────────
   const handleReset = () => {
     if (cooldown > 0 || faceCooldown > 0) return;
@@ -674,6 +790,15 @@ export default function ScanAttendance() {
     setIsCameraOpen(false);
     setIsCameraStarted(false);
     setStage(STAGES.CAMERA_OFF);
+    verificationAttemptsRef.current = 0;
+    registrationRetryRef.current.active = false;
+    registrationRetryRef.current.isRetrying = false;
+    setRegistrationRetryState({
+      isRetrying: false,
+      currentAttempt: 0,
+      maxAttempts: MAX_FACE_REGISTRATION_RETRIES,
+      bufferSecondsRemaining: 0,
+    });
     setNextScanHint('Loading...');
     backendApi.get('/attendance/next-scan')
       .then(res => setNextScanHint(res.data.next_scan_label || 'Ready to scan'))
@@ -690,6 +815,15 @@ export default function ScanAttendance() {
     setError('');
     setErrorCode('');
     scanLockRef.current = false;
+    verificationAttemptsRef.current = 0;
+    registrationRetryRef.current.active = false;
+    registrationRetryRef.current.isRetrying = false;
+    setRegistrationRetryState({
+      isRetrying: false,
+      currentAttempt: 0,
+      maxAttempts: MAX_FACE_REGISTRATION_RETRIES,
+      bufferSecondsRemaining: 0,
+    });
   };
 
   // ─── Cancel face scan and rescan QR ───────────────────────────────────────
@@ -700,6 +834,15 @@ export default function ScanAttendance() {
     setError('');
     setErrorCode('');
     scanLockRef.current = false;
+    verificationAttemptsRef.current = 0;
+    registrationRetryRef.current.active = false;
+    registrationRetryRef.current.isRetrying = false;
+    setRegistrationRetryState({
+      isRetrying: false,
+      currentAttempt: 0,
+      maxAttempts: MAX_FACE_REGISTRATION_RETRIES,
+      bufferSecondsRemaining: 0,
+    });
     setStage(STAGES.QR_SCANNING);
   };
 
@@ -823,10 +966,47 @@ export default function ScanAttendance() {
             <span><small>Next scan</small><strong>{nextScanHint}</strong></span>
           </div>
 
-          {error && (
-            <div className="p-3 bg-red-50 border border-red-200 rounded-xl flex items-center gap-2 text-sm text-red-700 max-w-sm mx-auto">
-              <AlertCircle className="w-4 h-4 flex-shrink-0" />
-              <span>{error}</span>
+          {registrationRetryState.isRetrying && (
+            <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl space-y-1 text-sm text-blue-700 max-w-sm mx-auto">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin text-blue-600 flex-shrink-0" />
+                  <span className="font-semibold text-xs">Checking Face ID registration...</span>
+                </div>
+                <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">
+                  {registrationRetryState.currentAttempt}/{registrationRetryState.maxAttempts}
+                </span>
+              </div>
+              {registrationRetryState.bufferSecondsRemaining > 0 && (
+                <p className="text-xs text-blue-600">
+                  Buffering next attempt in {registrationRetryState.bufferSecondsRemaining}s...
+                </p>
+              )}
+            </div>
+          )}
+
+          {error && !registrationRetryState.isRetrying && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-xl space-y-2 text-sm text-red-700 max-w-sm mx-auto text-left">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                <span>{error}</span>
+              </div>
+              {errorCode === 'FACE_NOT_REGISTERED' && (
+                <>
+                  <div className="w-full flex items-center justify-center gap-2 p-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs font-semibold">
+                    <UserCheck className="w-4 h-4 flex-shrink-0" />
+                    <span>Contact administrator for biometric enrollment</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleManualRetryFaceRegistration}
+                    className="btn btn-sm btn-outline w-full flex items-center justify-center gap-1.5 text-xs font-semibold py-1.5 rounded-lg border-red-300 text-red-700 hover:bg-red-100"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    Retry Face ID Check (5 Attempts)
+                  </button>
+                </>
+              )}
             </div>
           )}
 
@@ -868,18 +1048,58 @@ export default function ScanAttendance() {
             </div>
           </div>
 
+          {/* Active Retry Banner */}
+          {registrationRetryState.isRetrying && (
+            <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl space-y-1.5 text-sm text-blue-700">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin text-blue-600 flex-shrink-0" />
+                  <span className="font-semibold">Checking Face ID enrollment...</span>
+                </div>
+                <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">
+                  Attempt {registrationRetryState.currentAttempt} of {registrationRetryState.maxAttempts}
+                </span>
+              </div>
+              {registrationRetryState.bufferSecondsRemaining > 0 && (
+                <div className="flex items-center gap-1.5 text-xs text-blue-600 pl-6">
+                  <Clock className="w-3.5 h-3.5" />
+                  <span>Buffer delay: retrying in {registrationRetryState.bufferSecondsRemaining}s...</span>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Error banner */}
-          {error && (
+          {error && !registrationRetryState.isRetrying && (
             <div className="p-3 bg-red-50 border border-red-200 rounded-xl space-y-2 text-sm text-red-700">
               <div className="flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 flex-shrink-0" />
                 <span className="font-semibold">{error}</span>
               </div>
               {errorCode === 'FACE_NOT_REGISTERED' && (
-                <div className="w-full flex items-center justify-center gap-2 mt-2 p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs font-semibold">
-                  <UserCheck className="w-4 h-4" />
-                  Contact your administrator or supervisor for in-person biometric enrollment
-                </div>
+                <>
+                  <div className="w-full flex items-center justify-center gap-2 mt-2 p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs font-semibold">
+                    <UserCheck className="w-4 h-4 flex-shrink-0" />
+                    <span>Contact your administrator or supervisor for in-person biometric enrollment</span>
+                  </div>
+                  <div className="pt-1 flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleManualRetryFaceRegistration}
+                      className="btn btn-sm btn-outline flex-1 flex items-center justify-center gap-2 text-xs font-semibold py-2 rounded-lg border-red-300 text-red-700 hover:bg-red-100 transition-colors"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      Retry Face ID Check (5 Attempts)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleRescanQr}
+                      className="btn btn-sm btn-secondary text-xs py-2 px-3 rounded-lg"
+                    >
+                      Rescan QR
+                    </button>
+                  </div>
+                </>
               )}
             </div>
           )}
@@ -937,15 +1157,39 @@ export default function ScanAttendance() {
             Look directly at the camera — attendance is recorded automatically when your face is recognized.
           </p>
 
-          {/* Cancel button */}
-          <button
-            className="btn btn-secondary w-full flex items-center justify-center gap-2 text-sm"
-            onClick={handleRescanQr}
-            disabled={isProcessing}
-          >
-            <RotateCcw className="w-4 h-4" />
-            Cancel & Rescan QR
-          </button>
+          {/* Action buttons */}
+          {errorCode === 'FACE_NOT_REGISTERED' ? (
+            <div className="space-y-2">
+              <button
+                type="button"
+                className="btn btn-primary w-full flex items-center justify-center gap-2 text-sm"
+                onClick={handleManualRetryFaceRegistration}
+                disabled={registrationRetryState.isRetrying}
+              >
+                <RotateCcw className={`w-4 h-4 ${registrationRetryState.isRetrying ? 'animate-spin' : ''}`} />
+                {registrationRetryState.isRetrying
+                  ? `Checking Face ID (${registrationRetryState.currentAttempt}/${registrationRetryState.maxAttempts})...`
+                  : 'Retry Face ID Check (5 Attempts)'}
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary w-full flex items-center justify-center gap-2 text-sm"
+                onClick={handleRescanQr}
+              >
+                <RotateCcw className="w-4 h-4" />
+                Cancel & Rescan QR
+              </button>
+            </div>
+          ) : (
+            <button
+              className="btn btn-secondary w-full flex items-center justify-center gap-2 text-sm"
+              onClick={handleRescanQr}
+              disabled={isProcessing}
+            >
+              <RotateCcw className="w-4 h-4" />
+              Cancel & Rescan QR
+            </button>
+          )}
         </div>
       ) : (
         /* ── Screen 2: QR Scanner Screen (Active only after Start Camera) ── */

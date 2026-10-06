@@ -1295,10 +1295,11 @@ app.post('/attendance/validate-qr', authMiddleware, async (req, res) => {
       return res.status(400).json({ error: 'You have already completed 2 attendance scans (Time In - Time Out) today. Please try again tomorrow.' });
     }
 
+    const targetUserId = Number(req.user.id) || req.user.id;
     const { data: userAccount } = await supabase
       .from('accounts')
       .select('id, face_registered, face_embedding')
-      .eq('id', req.user.id)
+      .eq('id', targetUserId)
       .single();
 
     let userFaceEmbedding = null;
@@ -1327,10 +1328,11 @@ app.get('/attendance/my-face-descriptor', authMiddleware, async (req, res) => {
   res.setHeader('Expires', '0');
 
   try {
+    const targetUserId = Number(req.user.id) || req.user.id;
     const { data: account, error } = await supabase
       .from('accounts')
       .select('id, face_registered, face_embedding')
-      .eq('id', req.user.id)
+      .eq('id', targetUserId)
       .single();
 
     if (error || !account) {
