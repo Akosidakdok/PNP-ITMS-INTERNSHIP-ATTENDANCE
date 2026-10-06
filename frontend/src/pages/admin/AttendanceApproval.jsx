@@ -18,6 +18,7 @@ import {
   ZoomIn,
   RefreshCw,
   X,
+  SwitchCamera,
 } from 'lucide-react';
 import api from '../../utils/api.js';
 
@@ -332,6 +333,14 @@ export default function AttendanceApproval() {
     fileName: '',
   });
 
+  // Camera state for live photo capture
+  const [isCameraActive, setIsCameraActive] = useState(false);
+  const [cameraLoading, setCameraLoading] = useState(false);
+  const [cameraFacingMode, setCameraFacingMode] = useState('environment'); // 'environment' | 'user'
+  const [cameraStream, setCameraStream] = useState(null);
+  const [capturedFromCamera, setCapturedFromCamera] = useState(false);
+  const videoRef = useRef(null);
+
   const fetchLogs = useCallback(async () => {
     setLoading(true);
     try {
@@ -355,6 +364,130 @@ export default function AttendanceApproval() {
     setPage(1);
   }, [filters.status, filters.date]);
 
+  const stopCamera = useCallback(() => {
+    if (cameraStream) {
+      cameraStream.getTracks().forEach(track => {
+        try {
+          track.stop();
+          track.enabled = false;
+        } catch {}
+      });
+      setCameraStream(null);
+    }
+    setIsCameraActive(false);
+    setCameraLoading(false);
+  }, [cameraStream]);
+
+  useEffect(() => {
+    if (isCameraActive && cameraStream && videoRef.current) {
+      videoRef.current.srcObject = cameraStream;
+      videoRef.current.play().catch(() => {});
+    }
+  }, [isCameraActive, cameraStream]);
+
+  useEffect(() => {
+    return () => {
+      if (cameraStream) {
+        cameraStream.getTracks().forEach(t => {
+          try { t.stop(); } catch {}
+        });
+      }
+    };
+  }, [cameraStream]);
+
+  const handleCancelPendingFile = () => {
+    if (pendingPreview) {
+      URL.revokeObjectURL(pendingPreview);
+    }
+    setPendingFile(null);
+    setPendingPreview('');
+    setIsReplacing(false);
+    setCapturedFromCamera(false);
+  };
+
+  const startCamera = async (facing = 'environment', replace = false) => {
+    handleCancelPendingFile();
+    setIsReplacing(replace);
+    setIsCameraActive(true);
+    setCameraLoading(true);
+    setCameraFacingMode(facing);
+
+    if (cameraStream) {
+      cameraStream.getTracks().forEach(t => {
+        try { t.stop(); } catch {}
+      });
+      setCameraStream(null);
+    }
+
+    try {
+      let stream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: facing,
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          },
+          audio: false,
+        });
+      } catch {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: false,
+        });
+      }
+
+      setCameraStream(stream);
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play().catch(() => {});
+      }
+    } catch (err) {
+      console.error('Camera access error:', err);
+      toast.error('Could not access camera. Please allow camera permissions.');
+      setIsCameraActive(false);
+    } finally {
+      setCameraLoading(false);
+    }
+  };
+
+  const toggleCameraFacing = () => {
+    const nextFacing = cameraFacingMode === 'user' ? 'environment' : 'user';
+    startCamera(nextFacing, isReplacing);
+  };
+
+  const capturePhoto = () => {
+    if (!videoRef.current) return;
+    const video = videoRef.current;
+    const width = video.videoWidth || 640;
+    const height = video.videoHeight || 480;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    if (cameraFacingMode === 'user') {
+      ctx.translate(width, 0);
+      ctx.scale(-1, 1);
+    }
+    ctx.drawImage(video, 0, 0, width, height);
+
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        toast.error('Failed to capture photo');
+        return;
+      }
+      const filename = `attendance-camera-${Date.now()}.jpg`;
+      const file = new File([blob], filename, { type: 'image/jpeg' });
+      setPendingFile(file);
+      setPendingPreview(URL.createObjectURL(blob));
+      setCapturedFromCamera(true);
+      stopCamera();
+    }, 'image/jpeg', 0.92);
+  };
+
   const handleAction = async (action) => {
     const actionDetails = ACTION_DETAILS[action];
     if (!selected || !actionDetails) return;
@@ -377,16 +510,8 @@ export default function AttendanceApproval() {
     finally { setSaving(false); }
   };
 
-  const handleCancelPendingFile = () => {
-    if (pendingPreview) {
-      URL.revokeObjectURL(pendingPreview);
-    }
-    setPendingFile(null);
-    setPendingPreview('');
-    setIsReplacing(false);
-  };
-
   const openDetails = async (row) => {
+    stopCamera();
     setSelected(row);
     setRemarks(row.remarks || '');
     setModal('menu');
@@ -429,6 +554,7 @@ export default function AttendanceApproval() {
       fileName: attachment?.file_name || 'attendance-proof.jpg',
     });
   };
+
 
   const handleFileSelect = (e, replace = false) => {
     const file = e.target.files?.[0];
@@ -511,6 +637,7 @@ export default function AttendanceApproval() {
 
   const closeModal = () => {
     if (saving || savingImage) return;
+    stopCamera();
     setModal(null);
     setSelected(null);
     setRemarks('');
@@ -772,31 +899,123 @@ export default function AttendanceApproval() {
                         {currentAttachment
                           ? 'Uploaded manually by Super Admin'
                           : (isSuperadmin
-                            ? 'Upload an image related to this attendance record.'
+                            ? 'Upload an image or take a live photo related to this attendance record.'
                             : 'No additional attendance image was provided.')}
                       </p>
                     </div>
 
-                    {!currentAttachment && !pendingFile && isSuperadmin && (
-                      <label className="btn btn-primary btn-sm text-xs cursor-pointer inline-flex items-center gap-1.5 shadow-xs">
-                        <Upload className="w-3.5 h-3.5" />
-                        Choose Image
-                        <input
-                          type="file"
-                          className="hidden"
-                          accept="image/jpeg,image/png,image/webp"
-                          onChange={(e) => handleFileSelect(e, false)}
-                        />
-                      </label>
+                    {!currentAttachment && !pendingFile && !isCameraActive && isSuperadmin && (
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm text-xs inline-flex items-center gap-1.5 text-blue-700 hover:bg-blue-50 border-blue-200 dark:border-blue-800 dark:text-blue-300 shadow-xs"
+                          onClick={() => startCamera('environment', false)}
+                        >
+                          <Camera className="w-3.5 h-3.5" />
+                          Open Camera
+                        </button>
+                        <label className="btn btn-primary btn-sm text-xs cursor-pointer inline-flex items-center gap-1.5 shadow-xs">
+                          <Upload className="w-3.5 h-3.5" />
+                          Choose Image
+                          <input
+                            type="file"
+                            className="hidden"
+                            accept="image/jpeg,image/png,image/webp"
+                            onChange={(e) => handleFileSelect(e, false)}
+                          />
+                        </label>
+                      </div>
                     )}
                   </div>
 
-                  {/* Upload selection preview */}
+                  {/* Live Camera Viewfinder */}
+                  {isCameraActive && (
+                    <div className="border border-blue-300 dark:border-blue-700 bg-slate-950 rounded-xl p-3 space-y-3 animate-fade-in text-white shadow-md">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-semibold flex items-center gap-2 text-blue-400">
+                          <span className="relative flex h-2 w-2">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                          </span>
+                          {isReplacing ? 'Capture Replacement Photo' : 'Live Camera Viewfinder'}
+                        </span>
+                        <button
+                          type="button"
+                          className="text-slate-400 hover:text-white p-1 rounded-md transition-colors"
+                          onClick={stopCamera}
+                          title="Close camera"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+
+                      {/* Video element */}
+                      <div className="relative rounded-lg overflow-hidden bg-black flex justify-center items-center aspect-video max-h-56">
+                        <video
+                          ref={videoRef}
+                          autoPlay
+                          playsInline
+                          muted
+                          className={`w-full h-full object-cover ${cameraFacingMode === 'user' ? 'scale-x-[-1]' : ''}`}
+                        />
+                        {cameraLoading && (
+                          <div className="absolute inset-0 bg-black/75 flex flex-col items-center justify-center gap-2 text-xs text-white">
+                            <RefreshCw className="w-5 h-5 animate-spin text-blue-400" />
+                            <span>Starting camera...</span>
+                          </div>
+                        )}
+                        {/* Overlay dashed frame */}
+                        <div className="absolute inset-4 pointer-events-none border border-white/30 rounded-lg border-dashed"></div>
+                      </div>
+
+                      {/* Viewfinder Controls */}
+                      <div className="flex items-center justify-between gap-2 pt-1">
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm text-xs text-slate-300 bg-slate-800 hover:bg-slate-700 border-slate-700"
+                          onClick={stopCamera}
+                        >
+                          Cancel
+                        </button>
+
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm text-xs text-slate-300 bg-slate-800 hover:bg-slate-700 border-slate-700 flex items-center gap-1.5"
+                            onClick={toggleCameraFacing}
+                            title="Flip Camera"
+                          >
+                            <SwitchCamera className="w-3.5 h-3.5" />
+                            Flip
+                          </button>
+
+                          <button
+                            type="button"
+                            className="btn btn-primary btn-sm text-xs flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white font-medium px-3.5"
+                            onClick={capturePhoto}
+                            disabled={cameraLoading}
+                          >
+                            <Camera className="w-3.5 h-3.5" />
+                            Capture Photo
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Upload selection / captured preview */}
                   {pendingFile && (
                     <div className="border border-indigo-200 dark:border-indigo-800 bg-indigo-50/50 dark:bg-indigo-950/40 rounded-xl p-3 space-y-2.5 animate-fade-in">
                       <div className="flex items-center justify-between text-xs">
-                        <span className="font-semibold text-indigo-900 dark:text-indigo-200">
-                          {isReplacing ? 'Replace Attendance Image' : 'New Image Preview'}
+                        <span className="font-semibold text-indigo-900 dark:text-indigo-200 flex items-center gap-1.5">
+                          {capturedFromCamera ? (
+                            <Camera className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                          ) : (
+                            <Upload className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                          )}
+                          {capturedFromCamera
+                            ? (isReplacing ? 'Captured Replacement Photo' : 'Captured Photo Preview')
+                            : (isReplacing ? 'Replace Attendance Image' : 'New Image Preview')}
                         </span>
                         <span className="text-slate-500 dark:text-slate-400 font-mono text-[11px]">
                           {formatFileSize(pendingFile.size)}
@@ -820,9 +1039,20 @@ export default function AttendanceApproval() {
 
                       <div className="flex items-center justify-between gap-2 pt-1 flex-wrap">
                         <p className="text-xs text-slate-700 dark:text-slate-300 truncate max-w-xs font-medium">
-                          📄 {pendingFile.name}
+                          {capturedFromCamera ? '📷 ' : '📄 '} {pendingFile.name}
                         </p>
                         <div className="flex items-center gap-2">
+                          {capturedFromCamera && (
+                            <button
+                              type="button"
+                              className="btn btn-secondary btn-sm text-xs flex items-center gap-1.5 text-slate-700 dark:text-slate-300"
+                              onClick={() => startCamera(cameraFacingMode, isReplacing)}
+                              disabled={savingImage}
+                            >
+                              <RotateCcw className="w-3.5 h-3.5" />
+                              Retake
+                            </button>
+                          )}
                           <button
                             type="button"
                             className="btn btn-secondary btn-sm text-xs"
@@ -855,7 +1085,7 @@ export default function AttendanceApproval() {
                   )}
 
                   {/* Existing Attachment View */}
-                  {!pendingFile && currentAttachment && (
+                  {!pendingFile && !isCameraActive && currentAttachment && (
                     <div className="border border-slate-200 dark:border-slate-700 rounded-xl p-3 bg-slate-50/70 dark:bg-slate-900/40 space-y-3">
                       <div className="flex flex-col sm:flex-row items-center gap-3">
                         <div
@@ -911,9 +1141,18 @@ export default function AttendanceApproval() {
 
                             {isSuperadmin && (
                               <>
+                                <button
+                                  type="button"
+                                  className="btn btn-secondary btn-sm text-xs flex items-center gap-1.5 text-blue-700 hover:bg-blue-50 border-blue-200 dark:border-blue-800 dark:text-blue-300"
+                                  onClick={() => startCamera('environment', true)}
+                                >
+                                  <Camera className="w-3.5 h-3.5" />
+                                  Capture New Photo
+                                </button>
+
                                 <label className="btn btn-secondary btn-sm text-xs cursor-pointer inline-flex items-center gap-1.5 text-indigo-700 hover:bg-indigo-50 border-indigo-200 dark:border-indigo-800 dark:text-indigo-300">
                                   <RefreshCw className="w-3.5 h-3.5" />
-                                  Replace Image
+                                  Replace from File
                                   <input
                                     type="file"
                                     className="hidden"
@@ -939,21 +1178,31 @@ export default function AttendanceApproval() {
                   )}
 
                   {/* Empty state */}
-                  {!pendingFile && !currentAttachment && (
+                  {!pendingFile && !isCameraActive && !currentAttachment && (
                     <div className="border border-dashed border-slate-200 dark:border-slate-700 rounded-xl p-4 text-center text-xs text-slate-500 dark:text-slate-400 bg-slate-50/50 dark:bg-slate-900/30">
                       {isSuperadmin ? (
-                        <div className="space-y-2">
+                        <div className="space-y-3">
                           <p>No attendance image has been attached.</p>
-                          <label className="btn btn-secondary btn-sm text-xs cursor-pointer inline-flex items-center gap-1.5 text-blue-700 hover:bg-blue-50 border-blue-200">
-                            <Upload className="w-3.5 h-3.5" />
-                            + Upload Image
-                            <input
-                              type="file"
-                              className="hidden"
-                              accept="image/jpeg,image/png,image/webp"
-                              onChange={(e) => handleFileSelect(e, false)}
-                            />
-                          </label>
+                          <div className="flex items-center justify-center gap-2 flex-wrap">
+                            <button
+                              type="button"
+                              className="btn btn-primary btn-sm text-xs inline-flex items-center gap-1.5 shadow-xs"
+                              onClick={() => startCamera('environment', false)}
+                            >
+                              <Camera className="w-3.5 h-3.5" />
+                              Open Camera
+                            </button>
+                            <label className="btn btn-secondary btn-sm text-xs cursor-pointer inline-flex items-center gap-1.5 text-blue-700 hover:bg-blue-50 border-blue-200 dark:border-blue-800 dark:text-blue-300">
+                              <Upload className="w-3.5 h-3.5" />
+                              + Upload Image
+                              <input
+                                type="file"
+                                className="hidden"
+                                accept="image/jpeg,image/png,image/webp"
+                                onChange={(e) => handleFileSelect(e, false)}
+                              />
+                            </label>
+                          </div>
                         </div>
                       ) : (
                         <p className="italic text-slate-400">No additional attendance image was provided.</p>
