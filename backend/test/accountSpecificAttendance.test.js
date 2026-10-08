@@ -9,7 +9,7 @@ process.env.SUPABASE_URL ||= 'http://attendance-spec.test';
 process.env.SUPABASE_SERVICE_ROLE_KEY ||= 'test-service-role-key';
 
 const { supabase } = await import('../src/supabaseClient.js');
-const { scanAttendance } = await import('../src/attendance.js');
+const { scanAttendance, getTodayScanStatus } = await import('../src/attendance.js');
 const { verifyUserFace } = await import('../src/services/faceVerificationService.js');
 
 const originalFrom = supabase.from.bind(supabase);
@@ -194,4 +194,119 @@ test('verifyUserFace accepts when Account 1 is signed in and Face 1 is presented
 
   assert.equal(result.verified, true);
   assert.equal(result.message, 'Face identity verified successfully.');
+});
+
+test('getTodayScanStatus returns has_timed_out: true and can_scan: false when user has timed out', async () => {
+  supabase.from = (table) => {
+    return {
+      select: () => ({
+        eq: () => ({
+          gte: () => ({
+            lt: () => ({
+              order: async () => ({
+                data: [
+                  { scan_type: 'time_in', scan_time: new Date().toISOString(), remarks: null },
+                  { scan_type: 'time_out', scan_time: new Date().toISOString(), remarks: null },
+                ],
+                error: null,
+              }),
+            }),
+          }),
+        }),
+      }),
+    };
+  };
+
+  const status = await getTodayScanStatus(1);
+  assert.equal(status.has_timed_out, true);
+  assert.equal(status.can_scan, false);
+  assert.equal(status.scan_count, 2);
+  assert.equal(status.next_scan_label, 'All scans completed for today');
+});
+
+test('scanAttendance rejects with ALREADY_TIMED_OUT when intern has already timed out today', async () => {
+  const face1Descriptor = createMockDescriptor(0.1);
+  const account1 = {
+    id: 1,
+    full_name: 'Account 1',
+    face_registered: true,
+    face_embedding: JSON.stringify(createFacePackage(face1Descriptor)),
+  };
+
+  supabase.from = (table) => {
+    if (table === 'qr_codes') {
+      return {
+        select: () => ({
+          eq: () => ({
+            eq: () => ({
+              gt: () => ({
+                single: async () => ({
+                  data: { id: 'qr-1', qr_code: 'TEST_QR', is_active: true },
+                  error: null,
+                }),
+              }),
+            }),
+          }),
+        }),
+      };
+    }
+    if (table === 'accounts') {
+      return {
+        select: () => ({
+          eq: () => ({
+            single: async () => ({ data: account1, error: null }),
+            neq: () => ({ data: [], error: null }),
+          }),
+        }),
+      };
+    }
+    if (table === 'attendance_logs') {
+      return {
+        select: () => ({
+          eq: () => ({
+            gte: () => ({
+              order: () => ({
+                limit: () => ({
+                  single: async () => ({ data: null, error: { message: 'Not found' } }),
+                }),
+              }),
+              lt: () => ({
+                order: async () => ({
+                  data: [
+                    { scan_type: 'time_in', scan_time: new Date().toISOString(), remarks: null },
+                    { scan_type: 'time_out', scan_time: new Date().toISOString(), remarks: null },
+                  ],
+                  error: null,
+                }),
+              }),
+            }),
+          }),
+        }),
+      };
+    }
+    return {
+      select: () => ({
+        eq: () => ({ single: async () => ({ data: null, error: null }) }),
+      }),
+    };
+  };
+
+  supabase.rpc = async () => ({ data: { allowed: true }, error: null });
+
+  await assert.rejects(
+    async () => {
+      await scanAttendance({
+        qr_code: 'TEST_QR',
+        user: account1,
+        photo: VALID_PHOTO_DATA,
+        face_embedding: createFacePackage(face1Descriptor),
+      });
+    },
+    (err) => {
+      assert.equal(err.code, 'ALREADY_TIMED_OUT');
+      assert.equal(err.statusCode, 400);
+      assert.match(err.message, /already timed out for today/i);
+      return true;
+    }
+  );
 });

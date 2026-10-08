@@ -1393,7 +1393,7 @@ app.post('/attendance/validate-qr', authMiddleware, async (req, res) => {
 
     const { data: todayLogs } = await supabase
       .from('attendance_logs')
-      .select('id, remarks')
+      .select('id, remarks, scan_type')
       .eq('intern_id', req.user.id)
       .gte('scan_time', startIso)
       .lt('scan_time', endExclusiveIso);
@@ -1401,8 +1401,12 @@ app.post('/attendance/validate-qr', authMiddleware, async (req, res) => {
     const attendanceLogs = (todayLogs || []).filter(
       log => typeof log.remarks !== 'string' || !log.remarks.startsWith('OVERRIDE:')
     );
-    if (attendanceLogs.length >= 2) {
-      return res.status(400).json({ error: 'You have already completed 2 attendance scans (Time In - Time Out) today. Please try again tomorrow.' });
+    const hasTimedOut = attendanceLogs.some(log => log.scan_type === 'time_out') || attendanceLogs.length >= 2;
+    if (hasTimedOut) {
+      return res.status(400).json({
+        error: 'You have already timed out for today. No further attendance scans are permitted today.',
+        code: 'ALREADY_TIMED_OUT',
+      });
     }
 
     const targetUserId = Number(req.user.id) || req.user.id;

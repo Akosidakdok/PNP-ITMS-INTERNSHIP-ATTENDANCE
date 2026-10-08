@@ -14,6 +14,7 @@ import {
   RefreshCw,
   SunMedium,
   Check,
+  Calendar,
 } from 'lucide-react';
 import QRScanner from '../../components/qr/QRScanner.jsx';
 import backendApi from '../../utils/backendApi.js';
@@ -56,6 +57,26 @@ const safeFormatDate = (dateVal, fmtStr) => {
   }
 };
 
+// Format current Philippine Standard Date
+const getTodayPhtDisplay = () => {
+  const now = new Date();
+  const dateStr = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Manila',
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  }).format(now);
+
+  const dayStr = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Manila',
+    weekday: 'long',
+  }).format(now);
+
+  const fullStr = `${dayStr}, ${dateStr}`;
+
+  return { dateStr, dayStr, fullStr };
+};
+
 // Convert 24-hour or 12-hour time string into readable 12-hour AM/PM format
 const formatScheduleTime = (timeStr) => {
   if (!timeStr) return null;
@@ -69,9 +90,10 @@ const formatScheduleTime = (timeStr) => {
 };
 
 // ─── 3-Step Verification Progress Indicator ──────────────────────────────────
-function StepProgressIndicator({ stage }) {
+function StepProgressIndicator({ stage, isTimedOutToday = false }) {
   // Step 1: QR Verification
   const getStep1Status = () => {
+    if (isTimedOutToday) return 'completed';
     if (stage === STAGES.QR_INVALID) return 'error';
     if ([
       STAGES.ACCOUNT_VERIFIED,
@@ -88,6 +110,7 @@ function StepProgressIndicator({ stage }) {
 
   // Step 2: Face Verification
   const getStep2Status = () => {
+    if (isTimedOutToday) return 'completed';
     if (stage === STAGES.VERIFICATION_FAILED) return 'error';
     if ([
       STAGES.ACCOUNT_VERIFIED,
@@ -104,6 +127,7 @@ function StepProgressIndicator({ stage }) {
 
   // Step 3: Attendance
   const getStep3Status = () => {
+    if (isTimedOutToday) return 'completed';
     if (stage === STAGES.VERIFICATION_SUCCESS) return 'completed';
     if (stage === STAGES.ATTENDANCE_RECORDING) return 'active';
     return 'upcoming';
@@ -188,12 +212,17 @@ function InlineErrorCard({
   const isLighting = errorCode === 'LIGHTING_LOW';
   const isCameraPermission = errorCode === 'CAMERA_ACCESS_DENIED' || errorCode === 'NotAllowedError';
   const isInvalidAccountQr = errorCode === 'INVALID_ACCOUNT_QR';
+  const isAlreadyTimedOut = errorCode === 'ALREADY_TIMED_OUT';
 
   let title = 'Verification Notice';
   let message = errorMsg || 'Please try again.';
   let icon = <AlertCircle className="w-8 h-8 text-rose-500" />;
 
-  if (isMismatch) {
+  if (isAlreadyTimedOut) {
+    title = 'Attendance Completed Today';
+    message = 'You have already timed out for today. No further attendance scans are permitted today.';
+    icon = <CheckCircle className="w-8 h-8 text-emerald-500" />;
+  } else if (isMismatch) {
     title = "Face Doesn't Match";
     message = 'The detected face does not match the face registered to this account.';
   } else if (isNoFace) {
@@ -266,7 +295,7 @@ function InlineErrorCard({
       )}
 
       <div className="pt-1 flex flex-col gap-2">
-        {!isNoFace && (
+        {!isNoFace && !isAlreadyTimedOut && (
           <button
             type="button"
             onClick={onRetry}
@@ -284,7 +313,7 @@ function InlineErrorCard({
             className="attendance-secondary-btn w-full py-2.5 text-xs font-medium rounded-xl flex items-center justify-center gap-1.5"
           >
             <CameraOff className="w-3.5 h-3.5 text-gray-500" />
-            Cancel Verification
+            {isAlreadyTimedOut ? 'Back to Attendance Screen' : 'Cancel Verification'}
           </button>
         )}
       </div>
@@ -308,6 +337,8 @@ export default function ScanAttendance() {
   const [cooldown, setCooldown] = useState(0);
   const [faceCooldown, setFaceCooldown] = useState(0);
   const [nextScanHint, setNextScanHint] = useState('Loading next scan...');
+  const [hasTimedOut, setHasTimedOut] = useState(false);
+  const [scanCount, setScanCount] = useState(0);
 
   // QR and Face state
   const [tempQrCode, setTempQrCode] = useState(null);
@@ -344,6 +375,18 @@ export default function ScanAttendance() {
   const detectionBusyRef = useRef(false);
   const initializeCameraRef = useRef(null);
 
+  // Current Philippine Standard Date info for display
+  const todayDateInfo = getTodayPhtDisplay();
+
+  // Flag if the intern has already timed out for today
+  const isTimedOutToday = Boolean(
+    hasTimedOut ||
+    (nextScanHint && (
+      nextScanHint.toLowerCase().includes('completed') ||
+      nextScanHint.toLowerCase().includes('all scans')
+    ))
+  );
+
   // Derive authenticated user identity for account verification display
   const userName =
     user?.full_name ||
@@ -354,6 +397,9 @@ export default function ScanAttendance() {
 
   // Compute Next Attendance label and target time
   const getNextScanInfo = () => {
+    if (isTimedOutToday) {
+      return { label: 'Time Out Completed', time: 'Completed' };
+    }
     const hintLower = (nextScanHint || '').toLowerCase();
     const isOut = hintLower.includes('out');
     const label = isOut ? 'Time Out' : 'Time In';
@@ -505,7 +551,11 @@ export default function ScanAttendance() {
   // Load next scan hint
   useEffect(() => {
     backendApi.get('/attendance/next-scan')
-      .then(res => setNextScanHint(res.data.next_scan_label || 'Ready to scan'))
+      .then(res => {
+        setNextScanHint(res.data.next_scan_label || 'Ready to scan');
+        setHasTimedOut(Boolean(res.data.has_timed_out));
+        setScanCount(res.data.scan_count || 0);
+      })
       .catch(() => setNextScanHint('Unable to load next scan'));
   }, []);
 
@@ -706,6 +756,10 @@ export default function ScanAttendance() {
 
   // ─── Start Camera Action (Single User-Triggered Entrypoint) ────────────────
   const handleStartCamera = async () => {
+    if (isTimedOutToday) {
+      toast.error('You have already timed out for today. No further attendance scans are permitted today.');
+      return;
+    }
     if (isStartingCamera || stage !== STAGES.CAMERA_OFF || cooldown > 0 || faceCooldown > 0) return;
     setIsStartingCamera(true);
     setError('');
@@ -823,7 +877,14 @@ export default function ScanAttendance() {
       setIsCameraStarted(false);
       setTempQrCode(null);
       setStage(STAGES.VERIFICATION_SUCCESS);
-      setNextScanHint(res.data.next_scan_label || 'Ready to scan');
+      const isNowOut = res.data.scan_type === 'time_out' || res.data.has_timed_out;
+      if (isNowOut) {
+        setHasTimedOut(true);
+        setNextScanHint('All scans completed for today');
+      } else {
+        setNextScanHint(res.data.next_scan_label || 'Ready to scan');
+        setHasTimedOut(Boolean(res.data.has_timed_out));
+      }
       setCooldown(COOLDOWN_SECONDS);
       toast.success(res.data.message || 'Verification Successful! Attendance recorded.');
     } catch (err) {
@@ -979,6 +1040,10 @@ export default function ScanAttendance() {
 
   // ─── QR Scan Handler ──────────────────────────────────────────────────────
   const handleScan = async (qrCode) => {
+    if (isTimedOutToday) {
+      toast.error('You have already timed out for today. No further attendance scans are permitted today.');
+      return;
+    }
     if (scanLockRef.current || stage !== STAGES.QR_SCANNING || cooldown > 0 || faceCooldown > 0 || scanResult) return;
     scanLockRef.current = true;
     setStage(STAGES.QR_VERIFYING);
@@ -1095,7 +1160,11 @@ export default function ScanAttendance() {
     });
     setNextScanHint('Loading...');
     backendApi.get('/attendance/next-scan')
-      .then(res => setNextScanHint(res.data.next_scan_label || 'Ready to scan'))
+      .then(res => {
+        setNextScanHint(res.data.next_scan_label || 'Ready to scan');
+        setHasTimedOut(Boolean(res.data.has_timed_out));
+        setScanCount(res.data.scan_count || 0);
+      })
       .catch(() => setNextScanHint('Unable to load next scan'));
   };
 
@@ -1153,10 +1222,15 @@ export default function ScanAttendance() {
         <p className="attendance-header-subtitle text-xs sm:text-sm font-medium">
           Secure attendance authentication
         </p>
+        {/* Real-time Current Date Badge */}
+        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300 border border-blue-200 dark:border-blue-800/60 mt-1 shadow-2xs">
+          <Calendar className="w-3.5 h-3.5 text-blue-500 dark:text-blue-400" />
+          <span>{todayDateInfo.fullStr}</span>
+        </div>
       </div>
 
       {/* 2. 3-Step Verification Progress Indicator */}
-      <StepProgressIndicator stage={stage} />
+      <StepProgressIndicator stage={stage} isTimedOutToday={isTimedOutToday} />
 
       {/* 3. Main Attendance Card Container */}
       <div className="attendance-main-card rounded-2xl sm:rounded-3xl p-4 sm:p-6 space-y-4">
@@ -1177,50 +1251,114 @@ export default function ScanAttendance() {
         {stage === STAGES.CAMERA_OFF && (
           <div className="space-y-4">
             {/* Camera-off Placeholder Viewport */}
-            <div className="attendance-camera-off-viewport w-full aspect-[4/3] max-w-[480px] mx-auto rounded-2xl flex flex-col items-center justify-center p-6 text-center space-y-3 relative overflow-hidden shadow-inner">
-              <div className="attendance-camera-off-icon-box w-16 h-16 rounded-full flex items-center justify-center">
-                <CameraOff className="w-8 h-8" />
+            {isTimedOutToday ? (
+              <div className="attendance-camera-off-viewport w-full aspect-[4/3] max-w-[480px] mx-auto rounded-2xl flex flex-col items-center justify-center p-6 text-center space-y-3 relative overflow-hidden shadow-inner border border-emerald-500/20">
+                <div className="attendance-completed-icon-box w-16 h-16 rounded-full flex items-center justify-center bg-emerald-50 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/60 shadow-xs">
+                  <CheckCircle className="w-8 h-8 stroke-[2.5]" />
+                </div>
+                <div className="space-y-1">
+                  <p className="attendance-camera-off-title font-bold text-base text-emerald-700 dark:text-emerald-300">
+                    Attendance Completed for Today
+                  </p>
+                  <p className="attendance-camera-off-desc text-xs max-w-xs leading-relaxed">
+                    You have already recorded your <strong>Time Out</strong> for today. No further attendance scans are permitted today.
+                  </p>
+                </div>
               </div>
-              <div className="space-y-1">
-                <p className="attendance-camera-off-title font-bold text-base">
-                  Camera is currently off.
-                </p>
-                <p className="attendance-camera-off-desc text-xs max-w-xs leading-relaxed">
-                  Start the camera when you're ready to verify your attendance.
-                </p>
+            ) : (
+              <div className="attendance-camera-off-viewport w-full aspect-[4/3] max-w-[480px] mx-auto rounded-2xl flex flex-col items-center justify-center p-6 text-center space-y-3 relative overflow-hidden shadow-inner">
+                <div className="attendance-camera-off-icon-box w-16 h-16 rounded-full flex items-center justify-center">
+                  <CameraOff className="w-8 h-8" />
+                </div>
+                <div className="space-y-1">
+                  <p className="attendance-camera-off-title font-bold text-base">
+                    Camera is currently off.
+                  </p>
+                  <p className="attendance-camera-off-desc text-xs max-w-xs leading-relaxed">
+                    Start the camera when you're ready to verify your attendance.
+                  </p>
+                </div>
               </div>
-            </div>
+            )}
 
-            {/* Next Attendance Card */}
-            <div className="attendance-next-card w-full max-w-[480px] mx-auto rounded-xl p-3.5 flex items-center justify-between">
+            {/* Today's Date Card (Always visible before scanning so user knows the exact date) */}
+            <div className="attendance-date-card w-full max-w-[480px] mx-auto rounded-xl p-3.5 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="attendance-next-icon-box w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0">
-                  <Clock className="w-5 h-5" />
+                <div className="attendance-date-icon-box w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <Calendar className="w-5 h-5" />
                 </div>
                 <div>
-                  <span className="attendance-next-label text-[10px] uppercase tracking-wider block">
-                    Next Attendance
+                  <span className="attendance-date-label text-[10px] uppercase tracking-wider block">
+                    Today's Date
                   </span>
-                  <span className="attendance-next-value text-sm">
-                    {nextScanInfo.label}
+                  <span className="attendance-date-value text-sm sm:text-base font-bold">
+                    {todayDateInfo.dateStr}
                   </span>
                 </div>
               </div>
-              <span className="attendance-time-pill text-sm px-3 py-1 rounded-md shadow-xs">
-                {nextScanInfo.time}
+              <span className="attendance-day-pill text-xs font-semibold px-3 py-1 rounded-md shadow-xs">
+                {todayDateInfo.dayStr}
               </span>
             </div>
 
-            {/* The ONLY Start Camera button */}
+            {/* Attendance Status / Next Attendance Card */}
+            {isTimedOutToday ? (
+              <div className="attendance-next-card attendance-next-card--completed w-full max-w-[480px] mx-auto rounded-xl p-3.5 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="attendance-next-icon-box attendance-next-icon-box--completed w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <CheckCircle className="w-5 h-5 text-emerald-500" />
+                  </div>
+                  <div>
+                    <span className="attendance-next-label attendance-next-label--completed text-[10px] uppercase tracking-wider block">
+                      Today's Attendance Status
+                    </span>
+                    <span className="attendance-next-value text-sm font-bold text-emerald-700 dark:text-emerald-300">
+                      Time Out Recorded
+                    </span>
+                  </div>
+                </div>
+                <span className="attendance-time-pill attendance-time-pill--completed text-xs px-3 py-1 rounded-md shadow-xs font-bold">
+                  Done for Today
+                </span>
+              </div>
+            ) : (
+              <div className="attendance-next-card w-full max-w-[480px] mx-auto rounded-xl p-3.5 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="attendance-next-icon-box w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <Clock className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <span className="attendance-next-label text-[10px] uppercase tracking-wider block">
+                      Next Attendance
+                    </span>
+                    <span className="attendance-next-value text-sm">
+                      {nextScanInfo.label}
+                    </span>
+                  </div>
+                </div>
+                <span className="attendance-time-pill text-sm px-3 py-1 rounded-md shadow-xs">
+                  {nextScanInfo.time}
+                </span>
+              </div>
+            )}
+
+            {/* The Main Action button (Disabled if already timed out) */}
             <div className="max-w-[480px] mx-auto">
               <button
                 id="start-camera-btn"
                 type="button"
                 onClick={handleStartCamera}
-                disabled={isStartingCamera || cooldown > 0 || faceCooldown > 0}
-                className="attendance-start-btn w-full h-12 text-sm sm:text-base font-semibold rounded-xl flex items-center justify-center gap-2 shadow-sm"
+                disabled={isTimedOutToday || isStartingCamera || cooldown > 0 || faceCooldown > 0}
+                className={`attendance-start-btn w-full h-12 text-sm sm:text-base font-semibold rounded-xl flex items-center justify-center gap-2 shadow-sm ${
+                  isTimedOutToday ? 'attendance-start-btn--completed opacity-65 cursor-not-allowed' : ''
+                }`}
               >
-                {isStartingCamera ? (
+                {isTimedOutToday ? (
+                  <>
+                    <Check className="w-5 h-5 stroke-[3] text-emerald-400" />
+                    Attendance Completed for Today
+                  </>
+                ) : isStartingCamera ? (
                   <>
                     <Loader2 className="w-5 h-5 animate-spin" />
                     Starting Camera...
@@ -1236,8 +1374,12 @@ export default function ScanAttendance() {
 
             {/* Account security helper */}
             <div className="attendance-security-note max-w-[480px] mx-auto flex items-center gap-2 text-[11px] justify-center">
-              <Shield className="attendance-security-icon w-3.5 h-3.5 flex-shrink-0" />
-              <span><strong>Account Security:</strong> Face verification matches only this account.</span>
+              <Shield className={`attendance-security-icon w-3.5 h-3.5 flex-shrink-0 ${isTimedOutToday ? 'text-emerald-500' : ''}`} />
+              {isTimedOutToday ? (
+                <span>Daily attendance limit reached. Please return tomorrow for your next scan session.</span>
+              ) : (
+                <span><strong>Account Security:</strong> Face verification matches only this account.</span>
+              )}
             </div>
           </div>
         )}
@@ -1245,9 +1387,12 @@ export default function ScanAttendance() {
         {/* State B: Active QR Scanning */}
         {(stage === STAGES.QR_SCANNING || stage === STAGES.QR_VERIFYING) && (
           <div className="space-y-3">
-            {/* Secondary Next Attendance indicator */}
+            {/* Secondary Next Attendance & Date indicator */}
             <div className="max-w-[480px] mx-auto flex items-center justify-between text-xs px-1">
               <span className="attendance-security-note font-medium flex items-center gap-1.5">
+                <Calendar className="w-3.5 h-3.5 text-blue-500" />
+                <span className="font-semibold">{todayDateInfo.dateStr}</span>
+                <span className="text-gray-400">&bull;</span>
                 <Clock className="w-3.5 h-3.5 text-blue-500" />
                 Next: <strong className="attendance-next-value">{nextScanInfo.label}</strong>
               </span>
