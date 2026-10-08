@@ -15,17 +15,52 @@ export function AuthProvider({ children }) {
       return;
     }
 
-    backendApi.get('/auth/me')
+    let isMounted = true;
+    const controller = new AbortController();
+
+    // Safety timeout: If backend takes longer than 6.5s (e.g. Render free tier cold-start or slow network),
+    // don't block the UI / splash screen indefinitely.
+    const safetyTimer = window.setTimeout(() => {
+      if (isMounted) {
+        console.warn('[AuthContext] Verification taking longer than expected, unlocking loader.');
+        setLoading(false);
+      }
+    }, 6500);
+
+    backendApi.get('/auth/me', { signal: controller.signal })
       .then((res) => {
-        setUser(res.data.user);
-        setLegalStatus(res.data.legal_status || null);
+        if (!isMounted) return;
+        if (res.data?.user) {
+          setUser(res.data.user);
+          setLegalStatus(res.data.legal_status || null);
+        } else {
+          setUser(null);
+          setLegalStatus(null);
+          localStorage.removeItem('pnp_token');
+        }
       })
-      .catch(() => {
+      .catch((err) => {
+        if (!isMounted) return;
+        if (err.name === 'CanceledError' || err.code === 'ERR_CANCELED') return;
+
+        if (err.response?.status === 401 || err.response?.status === 403) {
+          localStorage.removeItem('pnp_token');
+        }
         setUser(null);
         setLegalStatus(null);
-        localStorage.removeItem('pnp_token');
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (isMounted) {
+          window.clearTimeout(safetyTimer);
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+      window.clearTimeout(safetyTimer);
+      controller.abort();
+    };
   }, []);
 
   const login = async (username, password) => {

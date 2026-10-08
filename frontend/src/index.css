@@ -495,6 +495,38 @@ body {
   animation: systemLoaderStatusPulse 1.6s ease-in-out infinite;
 }
 
+.system-loader__skip-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 15px;
+  padding: 6px 16px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #f0c653;
+  background: rgba(240, 198, 83, 0.08);
+  border: 1px solid rgba(240, 198, 83, 0.28);
+  border-radius: 9999px;
+  cursor: pointer;
+  pointer-events: auto;
+  transition: all 0.2s ease;
+  animation: systemLoaderReveal 0.4s ease both;
+  backdrop-filter: blur(8px);
+}
+
+.system-loader__skip-btn:hover {
+  background: rgba(240, 198, 83, 0.2);
+  border-color: rgba(240, 198, 83, 0.6);
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+
+.system-loader__skip-btn:active {
+  transform: translateY(0);
+}
+
 .system-loader__meter {
   position: absolute;
   top: 50%;
