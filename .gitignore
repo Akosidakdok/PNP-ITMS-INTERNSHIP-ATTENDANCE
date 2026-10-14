@@ -18,6 +18,7 @@ frontend/dist/
 # Generated reports
 WEEKLY_TIMELINE_REPORT.md
 WEEKLY_TIMELINE_REPORT.docx
+FIXES_NEEDED.md
 
 # Logs and system files
 npm-debug.log*
