@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { Camera, RefreshCw, AlertCircle, CheckCircle2, ShieldAlert } from 'lucide-react';
+import { useEffect, useRef, useState, useCallback } from 'react';
+import { Camera, RefreshCw, AlertCircle, CheckCircle2, ShieldAlert, SwitchCamera } from 'lucide-react';
 import { analyzeFaceQuality, initializeFaceModels } from '../../utils/mediapipeService.js';
 import {
   captureVideoFrames,
@@ -17,6 +17,8 @@ export default function FaceCamera({
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const analysisBusyRef = useRef(false);
+  const isMountedRef = useRef(true);
+
   const [videoReady, setVideoReady] = useState(false);
   const [modelReady, setModelReady] = useState(false);
   const [faceReady, setFaceReady] = useState(false);
@@ -24,76 +26,188 @@ export default function FaceCamera({
   const [statusMessage, setStatusMessage] = useState('Initializing camera...');
   const [statusType, setStatusType] = useState('info'); // 'info', 'warning', 'success', 'error'
   const [isProcessing, setIsProcessing] = useState(false);
+  const [facingMode, setFacingMode] = useState('user'); // 'user' | 'environment'
+  const [availableCamerasCount, setAvailableCamerasCount] = useState(1);
 
-  useEffect(() => {
-    let active = true;
-
-    async function startCamera() {
-      try {
-        setCameraError('');
-        setVideoReady(false);
-        setModelReady(false);
-        setFaceReady(false);
-        setStatusMessage('Loading Face ID engine and requesting camera access...');
-        setStatusType('info');
-
-        const modelPromise = Promise.all([
-          initializeFaceModels(),
-          initializeFaceIdentity(),
-        ]);
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: 'user',
-            width: { ideal: 640 },
-            height: { ideal: 480 }
-          }
-        });
-
-        if (!active) {
-          stream.getTracks().forEach(t => t.stop());
-          return;
-        }
-
-        streamRef.current = stream;
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          videoRef.current.onloadedmetadata = () => {
-            if (active) {
-              setVideoReady(true);
-            }
-          };
-        }
-
-        await modelPromise;
-        if (active) {
-          setModelReady(true);
-          setStatusMessage('Position your face inside the oval');
-          setStatusType('info');
-        }
-      } catch (err) {
-        console.error('Face camera initialization error:', err);
-        if (!active) return;
-        let errMsg = err?.message || 'Failed to initialize Face ID.';
-        if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-          errMsg = 'Camera permission denied. Please enable camera access in your browser settings.';
-        } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
-          errMsg = 'No camera device found on your device.';
-        }
-        stopCamera();
-        setCameraError(errMsg);
-        setStatusMessage(errMsg);
-        setStatusType('error');
-      }
+  const stopCamera = useCallback(() => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => {
+        try {
+          track.stop();
+          track.enabled = false;
+        } catch {}
+      });
+      streamRef.current = null;
     }
-
-    startCamera();
-
-    return () => {
-      active = false;
-      stopCamera();
-    };
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
   }, []);
 
+  const startCamera = useCallback(async (desiredFacingMode = facingMode) => {
+    if (!isMountedRef.current) return;
+    try {
+      setCameraError('');
+      setVideoReady(false);
+      setFaceReady(false);
+      setStatusMessage('Loading Face ID engine and requesting camera access...');
+      setStatusType('info');
+
+      // Check available cameras count
+      if (navigator.mediaDevices?.enumerateDevices) {
+        try {
+          const devices = await navigator.mediaDevices.enumerateDevices();
+          const videoDevices = devices.filter(d => d.kind === 'videoinput');
+          if (isMountedRef.current) {
+            setAvailableCamerasCount(videoDevices.length);
+          }
+        } catch {}
+      }
+
+      await initializeFaceIdentity();
+      if (!isMountedRef.current) return;
+      setModelReady(true);
+
+      stopCamera();
+
+      // Delay to allow iOS/Android camera hardware to fully release
+      await new Promise(resolve => setTimeout(resolve, 300));
+      if (!isMountedRef.current) return;
+
+      let stream = null;
+      let attempts = 0;
+      let lastErr = null;
+
+      while (attempts < 3 && !stream && isMountedRef.current) {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: desiredFacingMode,
+              width: { ideal: 640 },
+              height: { ideal: 480 }
+            }
+          });
+        } catch (camErr) {
+          lastErr = camErr;
+          attempts += 1;
+          if (attempts >= 3 || (camErr.name !== 'NotReadableError' && camErr.name !== 'TrackStartError')) {
+            throw camErr;
+          }
+          await new Promise(resolve => setTimeout(resolve, 450));
+        }
+      }
+
+      if (!isMountedRef.current) {
+        if (stream) {
+          stream.getTracks().forEach(t => {
+            try {
+              t.stop();
+              t.enabled = false;
+            } catch {}
+          });
+        }
+        return;
+      }
+
+      if (!stream && lastErr) {
+        throw lastErr;
+      }
+
+      streamRef.current = stream;
+
+      if (videoRef.current) {
+        const vid = videoRef.current;
+        vid.srcObject = stream;
+        vid.setAttribute('playsinline', 'true');
+        vid.setAttribute('webkit-playsinline', 'true');
+        vid.muted = true;
+        vid.playsInline = true;
+
+        const onReady = () => {
+          if (!isMountedRef.current) return;
+          const playPromise = vid.play();
+          if (playPromise !== undefined) {
+            playPromise
+              .then(() => {
+                if (isMountedRef.current) {
+                  setTimeout(() => {
+                    if (isMountedRef.current) {
+                      setVideoReady(true);
+                      setStatusMessage('Position your face inside the oval');
+                      setStatusType('info');
+                    }
+                  }, 250);
+                }
+              })
+              .catch(() => {
+                if (isMountedRef.current) {
+                  setVideoReady(true);
+                  setStatusMessage('Position your face inside the oval');
+                  setStatusType('info');
+                }
+              });
+          } else {
+            setVideoReady(true);
+            setStatusMessage('Position your face inside the oval');
+            setStatusType('info');
+          }
+        };
+
+        if (vid.readyState >= 2) {
+          onReady();
+        } else {
+          vid.onloadedmetadata = onReady;
+          vid.oncanplay = onReady;
+        }
+      }
+    } catch (err) {
+      console.error('Face camera initialization error:', err);
+      if (!isMountedRef.current) return;
+      let errMsg = err?.message || 'Failed to initialize Face ID.';
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        errMsg = 'Camera permission denied. Please allow camera access in your browser or device settings.';
+      } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+        errMsg = 'No camera device found on your device.';
+      } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+        errMsg = 'Camera is already in use by another app. Please close other camera tabs and try again.';
+      }
+      stopCamera();
+      setCameraError(errMsg);
+      setStatusMessage(errMsg);
+      setStatusType('error');
+    }
+  }, [facingMode, stopCamera]);
+
+  // Initial camera mount
+  useEffect(() => {
+    isMountedRef.current = true;
+    startCamera(facingMode);
+
+    return () => {
+      isMountedRef.current = false;
+      stopCamera();
+    };
+  }, [facingMode, startCamera, stopCamera]);
+
+  // Handle visibility changes in PWA
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === 'hidden') {
+        stopCamera();
+      } else if (document.visibilityState === 'visible' && isMountedRef.current) {
+        setTimeout(() => {
+          if (isMountedRef.current) startCamera(facingMode);
+        }, 300);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [facingMode, startCamera, stopCamera]);
+
+  // Continuous face inspection loop
   useEffect(() => {
     if (disabled && !isProcessing) {
       setFaceReady(false);
@@ -139,35 +253,40 @@ export default function FaceCamera({
     };
   }, [videoReady, modelReady, isProcessing, cameraError, disabled, disabledMessage]);
 
-  const stopCamera = () => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-      streamRef.current = null;
-    }
-  };
+  const toggleCameraFacing = useCallback(() => {
+    const nextMode = facingMode === 'user' ? 'environment' : 'user';
+    setFacingMode(nextMode);
+  }, [facingMode]);
 
   const handleCapture = async () => {
     if (!videoRef.current || !videoReady || !modelReady || !faceReady || isProcessing || disabled) return;
     setIsProcessing(true);
     setFaceReady(false);
-    setStatusMessage('Detecting face quality...');
+    setStatusMessage('Capturing face samples...');
     setStatusType('info');
 
     try {
       const video = videoRef.current;
-      setStatusMessage('Capturing a short live sequence—blink once and move naturally...');
       const canvases = await captureVideoFrames(video);
-      let quality = null;
+
+      // Verify at least 3 captured frames have adequate quality
+      let validCount = 0;
+      let lastQuality = null;
       for (const sampleCanvas of canvases) {
-        quality = await analyzeFaceQuality(sampleCanvas);
-        if (!quality.valid) {
-          setStatusMessage(quality.error || 'Face check failed');
-          setStatusType('warning');
-          return;
+        const q = await analyzeFaceQuality(sampleCanvas);
+        if (q.valid) {
+          validCount += 1;
         }
+        lastQuality = q;
       }
 
-      setStatusMessage('Running identity and liveness checks...');
+      if (validCount < 2) {
+        setStatusMessage(lastQuality?.error || 'Face check failed. Keep centered and hold still.');
+        setStatusType('warning');
+        return;
+      }
+
+      setStatusMessage('Extracting biometric profile...');
       setStatusType('success');
 
       const cleanCanvas = canvases[canvases.length - 1];
@@ -205,7 +324,7 @@ export default function FaceCamera({
           dataUrl,
           canvas: cleanCanvas,
           canvases,
-          quality,
+          quality: lastQuality,
         });
       }
       setStatusMessage('Face ID saved successfully.');
@@ -226,12 +345,25 @@ export default function FaceCamera({
           <Camera className="w-5 h-5 text-blue-600" />
           {title}
         </h3>
-        {videoReady && (
-          <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-            Camera Active
-          </span>
-        )}
+        <div className="flex items-center gap-2">
+          {availableCamerasCount > 1 && (
+            <button
+              type="button"
+              onClick={toggleCameraFacing}
+              className="text-xs text-gray-600 hover:text-blue-600 flex items-center gap-1 bg-gray-100 px-2 py-1 rounded-lg border border-gray-200 transition-colors"
+              title="Switch Front/Rear Camera"
+            >
+              <SwitchCamera className="w-3.5 h-3.5" />
+              {facingMode === 'user' ? 'Rear' : 'Front'}
+            </button>
+          )}
+          {videoReady && (
+            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+              Camera Active
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Camera Container with Face Oval Mask */}
@@ -240,6 +372,13 @@ export default function FaceCamera({
           <div className="p-6 text-center text-red-400 space-y-2">
             <ShieldAlert className="w-10 h-10 mx-auto text-red-500" />
             <p className="text-sm font-medium">{cameraError}</p>
+            <button
+              type="button"
+              onClick={() => startCamera(facingMode)}
+              className="btn btn-secondary text-xs px-3 py-1.5 rounded-lg mt-2"
+            >
+              <RefreshCw className="w-3 h-3 mr-1" /> Retry Camera
+            </button>
           </div>
         ) : (
           <>
@@ -248,7 +387,7 @@ export default function FaceCamera({
               autoPlay
               playsInline
               muted
-              className="w-full h-full object-cover scale-x-[-1]"
+              className={`w-full h-full object-cover ${facingMode === 'user' ? 'scale-x-[-1]' : ''}`}
             />
 
             {/* Face Oval Overlay Guide */}
@@ -289,6 +428,7 @@ export default function FaceCamera({
 
       {/* Action Button */}
       <button
+        type="button"
         onClick={handleCapture}
         disabled={!videoReady || !modelReady || !faceReady || isProcessing || disabled || !!cameraError}
         className="btn btn-primary w-full flex items-center justify-center gap-2 text-sm font-semibold py-2.5 disabled:opacity-50 disabled:cursor-not-allowed shadow-md"

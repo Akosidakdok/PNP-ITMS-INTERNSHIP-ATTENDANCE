@@ -2,9 +2,11 @@ import { useEffect, useMemo, useState } from 'react';
 
 const EDGE_SEGMENTS = 24;
 const MINIMUM_DISPLAY_TIME = 2200;
+const MAX_FALLBACK_TIMEOUT = 6000;
 
-function getLoadingStatus(progress, systemLoading) {
+function getLoadingStatus(progress, systemLoading, waitingLong) {
   if (progress >= 100) return 'System ready';
+  if (systemLoading && waitingLong) return 'Waking up secure server...';
   if (systemLoading && progress >= 72) return 'Establishing secure connection';
   if (progress >= 48) return 'Loading secure modules';
   return 'Initializing system';
@@ -14,6 +16,8 @@ export default function SystemLoader({ systemLoading = false }) {
   const [progress, setProgress] = useState(0);
   const [pageLoaded, setPageLoaded] = useState(document.readyState === 'complete');
   const [minimumTimeElapsed, setMinimumTimeElapsed] = useState(false);
+  const [waitingLong, setWaitingLong] = useState(false);
+  const [forceComplete, setForceComplete] = useState(false);
   const [phase, setPhase] = useState('visible');
 
   const edgeSegments = useMemo(
@@ -29,7 +33,12 @@ export default function SystemLoader({ systemLoading = false }) {
 
     const handleLoad = () => setPageLoaded(true);
     window.addEventListener('load', handleLoad, { once: true });
-    return () => window.removeEventListener('load', handleLoad);
+    // Safety timer in case window.load was already dispatched or sub-resources stall
+    const pageTimer = window.setTimeout(() => setPageLoaded(true), 2500);
+    return () => {
+      window.removeEventListener('load', handleLoad);
+      window.clearTimeout(pageTimer);
+    };
   }, []);
 
   useEffect(() => {
@@ -40,14 +49,31 @@ export default function SystemLoader({ systemLoading = false }) {
     return () => window.clearTimeout(timer);
   }, []);
 
-  const canFinish = pageLoaded && minimumTimeElapsed && !systemLoading;
+  useEffect(() => {
+    // If backend takes longer than 3.5s, update status to reassure user
+    const waitTimer = window.setTimeout(() => {
+      setWaitingLong(true);
+    }, 3500);
+
+    // Hard safety cap: after 6.0s, force finish the splash screen so user is never stuck
+    const fallbackTimer = window.setTimeout(() => {
+      setForceComplete(true);
+    }, MAX_FALLBACK_TIMEOUT);
+
+    return () => {
+      window.clearTimeout(waitTimer);
+      window.clearTimeout(fallbackTimer);
+    };
+  }, []);
+
+  const canFinish = forceComplete || (pageLoaded && minimumTimeElapsed && !systemLoading);
 
   useEffect(() => {
     if (phase !== 'visible') return undefined;
 
     const timer = window.setInterval(() => {
       setProgress((current) => {
-        const limit = canFinish ? 100 : systemLoading ? 88 : 94;
+        const limit = canFinish ? 100 : (systemLoading ? (waitingLong ? 94 : 88) : 94);
         const distance = limit - current;
 
         if (distance <= 0.08) return limit;
@@ -62,7 +88,7 @@ export default function SystemLoader({ systemLoading = false }) {
     }, 90);
 
     return () => window.clearInterval(timer);
-  }, [canFinish, phase, systemLoading]);
+  }, [canFinish, phase, systemLoading, waitingLong]);
 
   useEffect(() => {
     if (progress < 100 || phase !== 'visible') return undefined;
@@ -81,7 +107,7 @@ export default function SystemLoader({ systemLoading = false }) {
   if (phase === 'hidden') return null;
 
   const roundedProgress = Math.min(100, Math.round(progress));
-  const loadingStatus = getLoadingStatus(roundedProgress, systemLoading);
+  const loadingStatus = getLoadingStatus(roundedProgress, systemLoading, waitingLong);
 
   return (
     <div
@@ -135,6 +161,15 @@ export default function SystemLoader({ systemLoading = false }) {
             <span className="system-loader__status-dot" />
             <span>{loadingStatus}</span>
           </div>
+          {waitingLong && phase === 'visible' && (
+            <button
+              type="button"
+              onClick={() => setForceComplete(true)}
+              className="system-loader__skip-btn"
+            >
+              Server waking up &bull; Click to proceed &rarr;
+            </button>
+          )}
         </div>
       </main>
 

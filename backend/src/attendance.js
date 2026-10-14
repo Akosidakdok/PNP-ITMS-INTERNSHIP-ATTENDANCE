@@ -66,20 +66,32 @@ export async function getTodayScanStatus(internId) {
     log => typeof log.remarks !== 'string' || !log.remarks.startsWith('OVERRIDE:')
   );
   const scanCount = attendanceLogs.length;
-  const nextScanLabel = scanCount >= 2
+  const hasTimedOut = attendanceLogs.some(log => log.scan_type === 'time_out') || scanCount >= 2;
+  const nextScanLabel = hasTimedOut
     ? 'All scans completed for today'
     : ['Time In', 'Time Out'][scanCount];
 
-  return { next_scan_label: nextScanLabel, scan_count: scanCount };
+  return {
+    next_scan_label: nextScanLabel,
+    scan_count: scanCount,
+    has_timed_out: hasTimedOut,
+    can_scan: !hasTimedOut,
+  };
 }
 
 import { validateFacePhoto, verifyUserFace } from './services/faceVerificationService.js';
 
 export async function scanAttendance({ qr_code, user, photo, face_embedding } = {}) {
+  if (!user || !user.id) {
+    const unauthErr = new Error('Authentication required for attendance scan');
+    unauthErr.statusCode = 401;
+    unauthErr.code = 'UNAUTHENTICATED';
+    throw unauthErr;
+  }
+
   if (!qr_code) {
     throw new Error('QR code is required');
   }
-  const validatedPhoto = validateFacePhoto(photo);
 
   const now = new Date().toISOString();
   const { data: qrData, error: qrError } = await supabase
@@ -94,32 +106,32 @@ export async function scanAttendance({ qr_code, user, photo, face_embedding } = 
     throw new Error('Invalid or expired QR code');
   }
 
-  let internId = null;
-  let internName = 'Unknown Intern';
-  if (user?.id) {
-    internId = user.id;
-    internName = user.full_name || user.username || internName;
+  const validatedPhoto = validateFacePhoto(photo);
+
+  if (!face_embedding) {
+    const faceErr = new Error('Face verification embedding is required');
+    faceErr.statusCode = 400;
+    faceErr.code = 'FACE_EMBEDDING_REQUIRED';
+    throw faceErr;
   }
 
-  // Perform Face Verification if internId is present
-  let verificationScore = null;
-  let verificationStatus = 'Unverified';
+  const internId = user.id;
+  const internName = user.full_name || user.username || 'Intern';
 
-  if (internId) {
-    const faceCheck = await verifyUserFace(internId, face_embedding);
-    if (!faceCheck.verified) {
-      const err = new Error(faceCheck.message || 'Face verification failed. Please try again.');
-      err.code = faceCheck.code || 'FACE_VERIFICATION_FAILED';
-      err.statusCode = faceCheck.statusCode || 400;
-      err.retryAfterSeconds = faceCheck.retry_after_seconds;
-      err.similarity = faceCheck.similarity;
-      err.verified = false;
-      throw err;
-    }
-
-    verificationScore = faceCheck.similarity;
-    verificationStatus = 'Verified';
+  // Perform Face Verification strictly for the authenticated intern
+  const faceCheck = await verifyUserFace(internId, face_embedding);
+  if (!faceCheck.verified) {
+    const err = new Error(faceCheck.message || 'Face does not match the registered face for this account.');
+    err.code = faceCheck.code || 'FACE_MISMATCH';
+    err.statusCode = faceCheck.statusCode || 400;
+    err.retryAfterSeconds = faceCheck.retry_after_seconds;
+    err.similarity = faceCheck.similarity;
+    err.verified = false;
+    throw err;
   }
+
+  const verificationScore = faceCheck.similarity;
+  const verificationStatus = 'Verified';
 
   let scanType = 'time_in';
   let scanLabel = 'Time In';
@@ -162,8 +174,12 @@ export async function scanAttendance({ qr_code, user, photo, face_embedding } = 
       log => typeof log.remarks !== 'string' || !log.remarks.startsWith('OVERRIDE:')
     );
     const scanCount = attendanceLogs.length;
-    if (scanCount >= 2) {
-      throw new Error('You have already completed 2 attendance scans (Time In - Time Out) today. Please try again tomorrow.');
+    const hasTimedOut = attendanceLogs.some(log => log.scan_type === 'time_out') || scanCount >= 2;
+    if (hasTimedOut) {
+      const timeoutError = new Error('You have already timed out for today. No further attendance scans are permitted today.');
+      timeoutError.code = 'ALREADY_TIMED_OUT';
+      timeoutError.statusCode = 400;
+      throw timeoutError;
     }
 
     scanOrder = scanCount + 1;
@@ -290,7 +306,8 @@ export async function scanAttendance({ qr_code, user, photo, face_embedding } = 
     console.error('Photo database insert error:', photoError);
   }
 
-  const nextScanLabel = scanOrder >= 2
+  const isNowTimedOut = scanType === 'time_out' || scanOrder >= 2;
+  const nextScanLabel = isNowTimedOut
     ? 'All scans completed for today'
     : ['Time In', 'Time Out'][scanOrder];
 
@@ -302,6 +319,8 @@ export async function scanAttendance({ qr_code, user, photo, face_embedding } = 
     scan_label: scanLabel,
     scan_order: scanOrder,
     next_scan_label: nextScanLabel,
+    has_timed_out: isNowTimedOut,
+    can_scan: !isNowTimedOut,
     intern_name: internName,
     scan_time: scanTime,
     photo_saved: !photoError,

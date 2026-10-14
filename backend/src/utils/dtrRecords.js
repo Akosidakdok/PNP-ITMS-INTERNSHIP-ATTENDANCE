@@ -6,7 +6,7 @@ import {
 } from './attendanceTime.js';
 
 const VALID_APPROVAL_STATUSES = new Set(['pending', 'approved', 'rejected']);
-const VALID_OVERRIDE_TYPES = new Set(['SUSPENDED', 'EXCUSED', 'HOURS', 'OTHERS']);
+const VALID_OVERRIDE_TYPES = new Set(['SUSPENDED', 'EXCUSED', 'HOURS', 'OTHERS', 'ABSENT', 'HOLIDAY', 'SCHOOL']);
 
 function timestampOf(value) {
   const timestamp = value instanceof Date ? value.getTime() : new Date(value).getTime();
@@ -38,13 +38,18 @@ function hoursFromMinutes(minutes) {
 }
 
 export function parseDtrOverride(remarks) {
-  if (typeof remarks !== 'string' || !remarks.startsWith('OVERRIDE:')) return null;
+  if (typeof remarks !== 'string') return null;
+  const clean = remarks.trim();
+  if (!clean.toUpperCase().startsWith('OVERRIDE:')) return null;
 
-  const parts = remarks.split(':');
-  const type = String(parts[1] || '').toUpperCase();
+  const parts = clean.split(':');
+  let type = String(parts[1] || '').trim().toUpperCase().replace(/[-\s]/g, '_');
+  if (['SCHOOL_CLASS', 'SCHOOL_F2F', 'F2F', 'CLASS'].includes(type)) {
+    type = 'SCHOOL';
+  }
   if (!VALID_OVERRIDE_TYPES.has(type)) return null;
 
-  if (type === 'HOURS' || type === 'OTHERS') {
+  if (type === 'HOURS' || type === 'OTHERS' || type === 'HOLIDAY' || type === 'SCHOOL') {
     const hours = Number(parts[2]);
     return {
       type,
@@ -140,6 +145,68 @@ function buildOverrideRecord(date, entries, overrideLog, override) {
       is_override: true,
       override_type: 'suspended',
       override_hours: 0,
+      override_remarks: override.remarks,
+      override_id: overrideLog.id ?? null,
+    };
+  }
+
+  if (override.type === 'ABSENT') {
+    return {
+      ...buildStandardDtrRecord(date, []),
+      approval_status: 'approved',
+      am_status: null,
+      pm_status: null,
+      remarks: override.remarks || 'Absent',
+      is_complete: true,
+      is_override: true,
+      override_type: 'absent',
+      override_hours: 0,
+      total_minutes: 0,
+      worked_minutes: 0,
+      approved_minutes: 0,
+      total_hours: 0,
+      override_remarks: override.remarks,
+      override_id: overrideLog.id ?? null,
+    };
+  }
+
+  if (override.type === 'HOLIDAY') {
+    const creditedMinutes = totalMinutes;
+    return {
+      ...buildStandardDtrRecord(date, []),
+      approval_status: 'approved',
+      am_status: creditedMinutes > 0 ? 'approved' : null,
+      pm_status: creditedMinutes > 0 ? 'approved' : null,
+      remarks: override.remarks || 'Holiday',
+      is_complete: true,
+      is_override: true,
+      override_type: 'holiday',
+      override_hours: hoursFromMinutes(creditedMinutes),
+      total_minutes: creditedMinutes,
+      worked_minutes: 0,
+      approved_minutes: creditedMinutes,
+      total_hours: hoursFromMinutes(creditedMinutes),
+      override_remarks: override.remarks,
+      override_id: overrideLog.id ?? null,
+    };
+  }
+
+  if (override.type === 'SCHOOL') {
+    const creditedMinutes = totalMinutes;
+    return {
+      ...buildStandardDtrRecord(date, []),
+      approval_status: 'approved',
+      am_status: creditedMinutes > 0 ? 'approved' : null,
+      pm_status: creditedMinutes > 0 ? 'approved' : null,
+      remarks: override.remarks || 'School Face to Face / Class',
+      is_complete: true,
+      is_override: true,
+      override_type: 'school',
+      override_hours: hoursFromMinutes(creditedMinutes),
+      total_minutes: creditedMinutes,
+      worked_minutes: 0,
+      approved_minutes: creditedMinutes,
+      total_hours: hoursFromMinutes(creditedMinutes),
       override_remarks: override.remarks,
       override_id: overrideLog.id ?? null,
     };

@@ -13,7 +13,9 @@ export default function DataTable({
   searchPlaceholder = 'Search...',
   emptyMessage = 'No records found',
   actions,
+  onRowClick,
 }) {
+
   const totalPages = Math.ceil(total / limit);
 
   return (
@@ -75,7 +77,17 @@ export default function DataTable({
                 </tr>
               ) : (
                 data.map((row, i) => (
-                  <tr key={row.id || i} className="animate-fade-in">
+                  <tr
+                    key={row.id || i}
+                    className={`animate-fade-in ${onRowClick ? 'cursor-pointer hover:bg-slate-50/80 transition-colors' : ''}`}
+                    onClick={(e) => {
+                      if (onRowClick) {
+                        if (e.target.closest('button, a, input, select, textarea, label')) return;
+                        onRowClick(row);
+                      }
+                    }}
+                  >
+
                     {columns.map(col => (
                       <td key={col.key} data-label={col.label}>
                         {col.render ? col.render(row[col.key], row) : row[col.key] ?? '—'}

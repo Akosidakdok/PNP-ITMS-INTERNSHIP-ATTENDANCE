@@ -6,6 +6,8 @@ import { getPhtDateKey, getPhtDayBoundsUtc } from './utils/attendanceTime.js';
 import { buildDtrRecords, summarizeDtrRecords } from './utils/dtrRecords.js';
 import { getAssignedProfileForAccount } from './services/attendanceControlService.js';
 import { validateUploadFile } from './utils/fileValidation.js';
+import { getAttachmentsForLogs, deleteAttendanceAttachment } from './services/attendanceAttachmentService.js';
+
 
 const INTERN_ROLE = 'intern';
 const ADMIN_ROLE = 'admin';
@@ -1069,12 +1071,25 @@ export async function getAttendanceLogs({ status, date, page = 1, limit = 15, di
     }
   }
 
+  const attendanceLogIds = (data || []).map(log => log.id).filter(Boolean);
+  let attachmentsMap = {};
+  try {
+    attachmentsMap = await getAttachmentsForLogs(attendanceLogIds);
+  } catch (attErr) {
+    console.warn('Could not load attendance attachments:', attErr.message);
+  }
+
   const mappedData = (data || []).map(log => {
     const accObj = accountsMap[log.intern_id];
-    const photo = log.attendance_photos?.[0]?.photo || null;
+    const originalPhoto = log.attendance_photos?.[0]?.photo || null;
+    const attachment = attachmentsMap[log.id] || null;
+    const photo = attachment?.image_url || originalPhoto;
     return {
       ...log,
       photo,
+      original_photo: originalPhoto,
+      attachment,
+      has_attachment: Boolean(attachment),
       full_name: accObj?.full_name || log.intern_name,
       division_name: accObj?.division_name,
       department_name: accObj?.division_name
@@ -1148,6 +1163,12 @@ export async function removeRejectedAttendanceForRescan(attendanceId) {
 
   if (photoDeleteError) throw photoDeleteError;
 
+  try {
+    await deleteAttendanceAttachment({ attendanceId: attendance.id, user: null, skipAudit: true });
+  } catch (attErr) {
+    console.warn('Failed to clean up attachment during rescan removal:', attErr?.message);
+  }
+
   const { data: removed, error: removeError } = await supabase
     .from('attendance_logs')
     .delete()
@@ -1187,6 +1208,12 @@ export async function deleteAttendanceEntry(attendanceId) {
     .eq('attendance_log_id', normalizedId);
 
   if (photoDeleteError) throw photoDeleteError;
+
+  try {
+    await deleteAttendanceAttachment({ attendanceId: normalizedId, user: null, skipAudit: true });
+  } catch (attErr) {
+    console.warn('Failed to clean up attachment during attendance entry deletion:', attErr?.message);
+  }
 
   const { data: removed, error: removeError } = await supabase
     .from('attendance_logs')
@@ -1493,15 +1520,32 @@ export function getDtrSummary(records = []) {
 }
 
 
-export async function setDtrOverride(internId, { date, type, hours = 0, remarks = '' }) {
-  if (!internId || !date || !type) {
-    const validationError = new Error('Intern ID, date, and override type are required');
+export async function setDtrOverride(internId, payload = {}) {
+  const { date, dates, type, hours = 0, remarks = '' } = payload;
+  const targetDates = Array.isArray(dates) && dates.length > 0
+    ? dates.map(d => String(d).trim()).filter(Boolean)
+    : (date ? [String(date).trim()] : []);
+
+  if (!internId || !targetDates.length || !type) {
+    const validationError = new Error('Intern ID, target date(s), and override type are required');
     validationError.statusCode = 400;
     throw validationError;
   }
 
-  const formattedType = String(type).toUpperCase();
-  const allowedTypes = new Set(['NONE', 'SUSPENDED', 'EXCUSED', 'HOURS', 'OTHERS']);
+  // If multiple dates provided, process all sequentially
+  if (targetDates.length > 1) {
+    const results = await Promise.all(
+      targetDates.map(d => setDtrOverride(internId, { date: d, type, hours, remarks }))
+    );
+    return { success: true, count: results.length, dates: targetDates };
+  }
+
+  const singleDate = targetDates[0];
+  let formattedType = String(type || '').trim().toUpperCase().replace(/[-\s]/g, '_');
+  if (['SCHOOL_CLASS', 'SCHOOL_F2F', 'F2F', 'CLASS'].includes(formattedType)) {
+    formattedType = 'SCHOOL';
+  }
+  const allowedTypes = new Set(['NONE', 'SUSPENDED', 'EXCUSED', 'HOURS', 'OTHERS', 'ABSENT', 'HOLIDAY', 'SCHOOL']);
   if (!allowedTypes.has(formattedType)) {
     const validationError = new Error('Unsupported DTR override type');
     validationError.statusCode = 400;
@@ -1509,7 +1553,7 @@ export async function setDtrOverride(internId, { date, type, hours = 0, remarks 
   }
 
   try {
-    getPhtDayBoundsUtc(date);
+    getPhtDayBoundsUtc(singleDate);
   } catch {
     const validationError = new Error('A valid override date is required');
     validationError.statusCode = 400;
@@ -1526,14 +1570,73 @@ export async function setDtrOverride(internId, { date, type, hours = 0, remarks 
     throw validationError;
   }
 
+  const { startIso, endExclusiveIso } = getPhtDayBoundsUtc(singleDate);
+  const { data: existingLogs, error: existingError } = await supabase
+    .from('attendance_logs')
+    .select('id, remarks')
+    .eq('intern_id', internId)
+    .gte('scan_time', startIso)
+    .lt('scan_time', endExclusiveIso);
+  if (existingError) throw existingError;
+
+  const previousOverrideIds = (existingLogs || [])
+    .filter(log => typeof log.remarks === 'string' && log.remarks.trim().toUpperCase().startsWith('OVERRIDE:'))
+    .map(log => log.id);
+
+  if (formattedType === 'NONE') {
+    if (previousOverrideIds.length === 0) {
+      return { cleared: true, removed_count: 0 };
+    }
+
+    try {
+      await supabase
+        .from('attendance_photos')
+        .delete()
+        .in('attendance_log_id', previousOverrideIds);
+    } catch (photoErr) {
+      console.warn('Notice deleting attendance_photos during override reset:', photoErr?.message || photoErr);
+    }
+
+    const { error: removeError } = await supabase
+      .from('attendance_logs')
+      .delete()
+      .in('id', previousOverrideIds);
+    if (removeError) throw removeError;
+
+    try {
+      const remainingLogs = (existingLogs || []).filter(l => !previousOverrideIds.includes(l.id));
+      if (remainingLogs.length === 0) {
+        const { data: rec } = await supabase
+          .from('attendance_records')
+          .select('id, actual_time_in, actual_time_out')
+          .eq('account_id', internId)
+          .eq('attendance_date', singleDate)
+          .maybeSingle();
+
+        if (rec && !rec.actual_time_in && !rec.actual_time_out) {
+          await supabase
+            .from('attendance_records')
+            .delete()
+            .eq('id', rec.id);
+        }
+      }
+    } catch (cleanRecErr) {
+      console.warn('Notice cleaning attendance_records during override reset:', cleanRecErr?.message || cleanRecErr);
+    }
+
+    return { cleared: true, removed_count: previousOverrideIds.length };
+  }
+
   const creditedHours = formattedType === 'EXCUSED'
     ? 8
-    : formattedType === 'SUSPENDED' || formattedType === 'NONE'
+    : (formattedType === 'SUSPENDED' || formattedType === 'ABSENT')
       ? 0
-      : numericHours;
+      : (formattedType === 'HOLIDAY' || formattedType === 'SCHOOL')
+        ? (Number.isFinite(numericHours) && numericHours > 0 ? numericHours : 0)
+        : numericHours;
   const cleanRemarks = String(remarks || '').trim();
   const overrideRemark = `OVERRIDE:${formattedType}:${creditedHours}:${cleanRemarks}`;
-  const scanTime = new Date(`${date}T08:00:00+08:00`).toISOString();
+  const scanTime = new Date(`${singleDate}T08:00:00+08:00`).toISOString();
 
   const { data: intern, error: internError } = await supabase
     .from('accounts')
@@ -1547,31 +1650,6 @@ export async function setDtrOverride(internId, { date, type, hours = 0, remarks 
     throw notFoundError;
   }
   const internName = intern.full_name || 'Intern';
-
-  const { startIso, endExclusiveIso } = getPhtDayBoundsUtc(date);
-  const { data: existingLogs, error: existingError } = await supabase
-    .from('attendance_logs')
-    .select('id, remarks')
-    .eq('intern_id', internId)
-    .gte('scan_time', startIso)
-    .lt('scan_time', endExclusiveIso);
-  if (existingError) throw existingError;
-
-  const previousOverrideIds = (existingLogs || [])
-    .filter(log => typeof log.remarks === 'string' && log.remarks.startsWith('OVERRIDE:'))
-    .map(log => log.id);
-
-  if (formattedType === 'NONE') {
-    if (previousOverrideIds.length === 0) {
-      return { cleared: true, removed_count: 0 };
-    }
-    const { error: removeError } = await supabase
-      .from('attendance_logs')
-      .delete()
-      .in('id', previousOverrideIds);
-    if (removeError) throw removeError;
-    return { cleared: true, removed_count: previousOverrideIds.length };
-  }
 
   const overridePayload = {
     intern_id: internId,
@@ -1593,6 +1671,14 @@ export async function setDtrOverride(internId, { date, type, hours = 0, remarks 
     if (error) throw error;
 
     if (duplicateOverrideIds.length > 0) {
+      try {
+        await supabase
+          .from('attendance_photos')
+          .delete()
+          .in('attendance_log_id', duplicateOverrideIds);
+      } catch (photoErr) {
+        console.warn('Notice deleting attendance_photos during duplicate override cleanup:', photoErr?.message || photoErr);
+      }
       const { error: removeDuplicateError } = await supabase
         .from('attendance_logs')
         .delete()
@@ -1612,19 +1698,25 @@ export async function setDtrOverride(internId, { date, type, hours = 0, remarks 
   return data;
 }
 
-export async function setBulkDtrOverride({ internIds, date, type, hours = 0, remarks = '' }) {
-  if (!Array.isArray(internIds) || !internIds.length || !date || !type) {
-    const validationError = new Error('Intern IDs list, date, and override type are required');
+export async function setBulkDtrOverride({ internIds, date, dates, type, hours = 0, remarks = '' }) {
+  const targetDates = Array.isArray(dates) && dates.length > 0
+    ? dates.map(d => String(d).trim()).filter(Boolean)
+    : (date ? [String(date).trim()] : []);
+
+  if (!Array.isArray(internIds) || !internIds.length || !targetDates.length || !type) {
+    const validationError = new Error('Intern IDs list, target date(s), and override type are required');
     validationError.statusCode = 400;
     throw validationError;
   }
 
   const results = [];
-  for (const internId of internIds) {
-    const res = await setDtrOverride(internId, { date, type, hours, remarks });
-    results.push(res);
+  for (const d of targetDates) {
+    const dateResults = await Promise.all(
+      internIds.map(internId => setDtrOverride(internId, { date: d, type, hours, remarks }))
+    );
+    results.push(...dateResults);
   }
-  return { success: true, count: results.length };
+  return { success: true, count: results.length, datesCount: targetDates.length, internsCount: internIds.length };
 }
 
 export async function ensureCalendarNotificationsForUser(userId) {

@@ -1,6 +1,27 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
-import { CheckCircle, XCircle, Camera, Trash2, Settings2, RotateCcw, ChevronRight, AlertTriangle, Edit3, Eye, ShieldCheck, Download, Calendar } from 'lucide-react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import {
+  CheckCircle,
+  XCircle,
+  Camera,
+  Trash2,
+  Settings2,
+  RotateCcw,
+  ChevronRight,
+  AlertTriangle,
+  Edit3,
+  Eye,
+  ShieldCheck,
+  Download,
+  Calendar,
+  Upload,
+  Image as ImageIcon,
+  ZoomIn,
+  RefreshCw,
+  X,
+  SwitchCamera,
+} from 'lucide-react';
 import api from '../../utils/api.js';
+
 import DataTable from '../../components/common/DataTable.jsx';
 import Modal from '../../components/common/Modal.jsx';
 import toast from 'react-hot-toast';
@@ -212,6 +233,35 @@ const getPht24HourTime = (value) => {
   }).format(new Date(value));
 };
 
+const formatPhtDateTime = (value) => {
+  if (!value) return '—';
+  try {
+    const d = new Date(value);
+    const datePart = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Asia/Manila',
+      month: 'short',
+      day: '2-digit',
+      year: 'numeric',
+    }).format(d);
+    const timePart = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Asia/Manila',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    }).format(d);
+    return `${datePart} • ${timePart}`;
+  } catch {
+    return '—';
+  }
+};
+
+const formatFileSize = (bytes) => {
+  if (!bytes || bytes <= 0) return '0 B';
+  const mb = bytes / (1024 * 1024);
+  if (mb >= 1) return `${mb.toFixed(2)} MB`;
+  return `${(bytes / 1024).toFixed(0)} KB`;
+};
+
 const ACTION_DETAILS = {
   approve: {
     title: 'Approve Attendance',
@@ -245,7 +295,8 @@ const ACTION_DETAILS = {
 
 export default function AttendanceApproval() {
   const { user } = useAuth();
-  const isSuperadmin = user?.role?.toLowerCase() === 'superadmin';
+  const role = user?.role?.toLowerCase();
+  const isSuperadmin = role === 'superadmin' || role === 'super_admin';
   const [logs, setLogs] = useState([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -258,6 +309,37 @@ export default function AttendanceApproval() {
   const [previewRecord, setPreviewRecord] = useState(null);
   const [dtrEditOpen, setDtrEditOpen] = useState(false);
   const [bulkModalOpen, setBulkModalOpen] = useState(false);
+
+  // Attachment state for the currently managed attendance record
+  const [currentAttachment, setCurrentAttachment] = useState(null);
+  const [attachmentLoading, setAttachmentLoading] = useState(false);
+
+  // File upload state for attendance image
+  const [pendingFile, setPendingFile] = useState(null);
+  const [pendingPreview, setPendingPreview] = useState('');
+  const [isReplacing, setIsReplacing] = useState(false);
+  const [savingImage, setSavingImage] = useState(false);
+
+  // Remove confirmation modal
+  const [removeConfirmOpen, setRemoveConfirmOpen] = useState(false);
+  const [removingImage, setRemovingImage] = useState(false);
+
+  // Full image preview modal
+  const [imageModal, setImageModal] = useState({
+    isOpen: false,
+    url: '',
+    title: '',
+    subtitle: '',
+    fileName: '',
+  });
+
+  // Camera state for live photo capture
+  const [isCameraActive, setIsCameraActive] = useState(false);
+  const [cameraLoading, setCameraLoading] = useState(false);
+  const [cameraFacingMode, setCameraFacingMode] = useState('environment'); // 'environment' | 'user'
+  const [cameraStream, setCameraStream] = useState(null);
+  const [capturedFromCamera, setCapturedFromCamera] = useState(false);
+  const videoRef = useRef(null);
 
   const fetchLogs = useCallback(async () => {
     setLoading(true);
@@ -282,6 +364,130 @@ export default function AttendanceApproval() {
     setPage(1);
   }, [filters.status, filters.date]);
 
+  const stopCamera = useCallback(() => {
+    if (cameraStream) {
+      cameraStream.getTracks().forEach(track => {
+        try {
+          track.stop();
+          track.enabled = false;
+        } catch {}
+      });
+      setCameraStream(null);
+    }
+    setIsCameraActive(false);
+    setCameraLoading(false);
+  }, [cameraStream]);
+
+  useEffect(() => {
+    if (isCameraActive && cameraStream && videoRef.current) {
+      videoRef.current.srcObject = cameraStream;
+      videoRef.current.play().catch(() => {});
+    }
+  }, [isCameraActive, cameraStream]);
+
+  useEffect(() => {
+    return () => {
+      if (cameraStream) {
+        cameraStream.getTracks().forEach(t => {
+          try { t.stop(); } catch {}
+        });
+      }
+    };
+  }, [cameraStream]);
+
+  const handleCancelPendingFile = () => {
+    if (pendingPreview) {
+      URL.revokeObjectURL(pendingPreview);
+    }
+    setPendingFile(null);
+    setPendingPreview('');
+    setIsReplacing(false);
+    setCapturedFromCamera(false);
+  };
+
+  const startCamera = async (facing = 'environment', replace = false) => {
+    handleCancelPendingFile();
+    setIsReplacing(replace);
+    setIsCameraActive(true);
+    setCameraLoading(true);
+    setCameraFacingMode(facing);
+
+    if (cameraStream) {
+      cameraStream.getTracks().forEach(t => {
+        try { t.stop(); } catch {}
+      });
+      setCameraStream(null);
+    }
+
+    try {
+      let stream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: facing,
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          },
+          audio: false,
+        });
+      } catch {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: false,
+        });
+      }
+
+      setCameraStream(stream);
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play().catch(() => {});
+      }
+    } catch (err) {
+      console.error('Camera access error:', err);
+      toast.error('Could not access camera. Please allow camera permissions.');
+      setIsCameraActive(false);
+    } finally {
+      setCameraLoading(false);
+    }
+  };
+
+  const toggleCameraFacing = () => {
+    const nextFacing = cameraFacingMode === 'user' ? 'environment' : 'user';
+    startCamera(nextFacing, isReplacing);
+  };
+
+  const capturePhoto = () => {
+    if (!videoRef.current) return;
+    const video = videoRef.current;
+    const width = video.videoWidth || 640;
+    const height = video.videoHeight || 480;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    if (cameraFacingMode === 'user') {
+      ctx.translate(width, 0);
+      ctx.scale(-1, 1);
+    }
+    ctx.drawImage(video, 0, 0, width, height);
+
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        toast.error('Failed to capture photo');
+        return;
+      }
+      const filename = `attendance-camera-${Date.now()}.jpg`;
+      const file = new File([blob], filename, { type: 'image/jpeg' });
+      setPendingFile(file);
+      setPendingPreview(URL.createObjectURL(blob));
+      setCapturedFromCamera(true);
+      stopCamera();
+    }, 'image/jpeg', 0.92);
+  };
+
   const handleAction = async (action) => {
     const actionDetails = ACTION_DETAILS[action];
     if (!selected || !actionDetails) return;
@@ -304,17 +510,162 @@ export default function AttendanceApproval() {
     finally { setSaving(false); }
   };
 
-  const openActions = (log) => {
-    setSelected(log);
-    setRemarks(log.remarks || '');
+  const openDetails = async (row) => {
+    stopCamera();
+    setSelected(row);
+    setRemarks(row.remarks || '');
     setModal('menu');
+    handleCancelPendingFile();
+
+    // Set immediate attachment from hydrated row data
+    setCurrentAttachment(row.attachment || null);
+
+    // Refresh attachment in background
+    try {
+      setAttachmentLoading(true);
+      const res = await api.get(`/attendance/${row.id}/image`);
+      if (res.data?.has_image && res.data.attachment) {
+        setCurrentAttachment(res.data.attachment);
+        const imgUrl = res.data.attachment.image_url;
+        setLogs(prev => prev.map(l => l.id === row.id ? { ...l, photo: imgUrl || l.photo, attachment: res.data.attachment, has_attachment: true } : l));
+        setSelected(prev => prev && prev.id === row.id ? { ...prev, photo: imgUrl || prev.photo, attachment: res.data.attachment, has_attachment: true } : prev);
+      } else {
+        setCurrentAttachment(null);
+        setLogs(prev => prev.map(l => l.id === row.id ? { ...l, attachment: null, has_attachment: false } : l));
+      }
+    } catch {
+      // Keep existing row.attachment
+    } finally {
+      setAttachmentLoading(false);
+    }
+  };
+
+  const openFullImageModal = (record, attachment) => {
+    const imageUrl = attachment?.image_url;
+    if (!imageUrl) return;
+
+    const dateStr = record?.scan_time ? formatPhtDate(record.scan_time) : '';
+    const typeStr = record?.scan_type === 'time_in' ? 'Time In' : 'Time Out';
+    const subtitle = record?.full_name ? `${record.full_name} • ${dateStr} • ${typeStr}` : `${dateStr} • ${typeStr}`;
+
+    setImageModal({
+      isOpen: true,
+      url: imageUrl,
+      title: 'Attendance Image',
+      subtitle,
+      fileName: attachment?.file_name || 'attendance-proof.jpg',
+    });
+  };
+
+
+  const handleFileSelect = (e, replace = false) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const validTypes = ['image/jpeg', 'image/png', 'image/webp'];
+    const ext = file.name.split('.').pop()?.toLowerCase();
+    const validExts = ['jpg', 'jpeg', 'png', 'webp'];
+
+    if (!validTypes.includes(file.type.toLowerCase()) && !validExts.includes(ext)) {
+      toast.error('Unsupported file format. Please upload JPG, PNG, or WEBP.');
+      e.target.value = '';
+      return;
+    }
+
+    const MAX_SIZE = 5 * 1024 * 1024; // 5 MB
+    if (file.size > MAX_SIZE) {
+      toast.error('Image is too large. Maximum file size is 5 MB.');
+      e.target.value = '';
+      return;
+    }
+
+    setPendingFile(file);
+    setIsReplacing(replace);
+    setPendingPreview(URL.createObjectURL(file));
+    e.target.value = '';
+  };
+
+  const handleSaveImage = async () => {
+    if (!selected || !pendingFile) return;
+
+    setSavingImage(true);
+    try {
+      const formData = new FormData();
+      formData.append('image', pendingFile);
+
+      let res;
+      if (isReplacing) {
+        res = await api.put(`/attendance/${selected.id}/image`, formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+        toast.success('Attendance image updated successfully.');
+      } else {
+        res = await api.post(`/attendance/${selected.id}/image`, formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+        toast.success('Attendance image uploaded successfully.');
+      }
+
+      const saved = res.data?.attachment || null;
+      const imgUrl = saved?.image_url;
+      setCurrentAttachment(saved);
+      setLogs(prev => prev.map(l => l.id === selected.id ? {
+        ...l,
+        photo: imgUrl || l.photo,
+        attachment: saved,
+        has_attachment: Boolean(saved),
+      } : l));
+      setSelected(prev => prev ? {
+        ...prev,
+        photo: imgUrl || prev.photo,
+        attachment: saved,
+        has_attachment: Boolean(saved),
+      } : prev);
+
+      handleCancelPendingFile();
+    } catch (error) {
+      toast.error(error?.response?.data?.error || 'Failed to save attendance image');
+    } finally {
+      setSavingImage(false);
+    }
+  };
+
+  const handleRemoveImage = async () => {
+    if (!selected) return;
+
+    setRemovingImage(true);
+    try {
+      await api.delete(`/attendance/${selected.id}/image`);
+      toast.success('Attendance image removed.');
+      setCurrentAttachment(null);
+      setLogs(prev => prev.map(l => l.id === selected.id ? {
+        ...l,
+        photo: l.original_photo || null,
+        attachment: null,
+        has_attachment: false,
+      } : l));
+      setSelected(prev => prev ? {
+        ...prev,
+        photo: prev.original_photo || null,
+        attachment: null,
+        has_attachment: false,
+      } : prev);
+      setRemoveConfirmOpen(false);
+    } catch (error) {
+      toast.error(error?.response?.data?.error || 'Failed to remove attendance image');
+    } finally {
+      setRemovingImage(false);
+    }
   };
 
   const closeModal = () => {
-    if (saving) return;
+    if (saving || savingImage) return;
+    stopCamera();
     setModal(null);
     setSelected(null);
     setRemarks('');
+    handleCancelPendingFile();
+    setCurrentAttachment(null);
   };
 
   const selectAction = (action) => {
@@ -326,8 +677,8 @@ export default function AttendanceApproval() {
     {
       key: 'full_name', label: 'Intern',
       render: (v, row) => (
-        <div>
-          <p className="font-medium text-sm text-gray-800">{v}</p>
+        <div className="cursor-pointer group">
+          <p className="font-medium text-sm text-gray-800 group-hover:text-blue-600 transition-colors">{v}</p>
           <p className="text-xs text-gray-400">{divisionLabel(row.division_name)}</p>
         </div>
       )
@@ -339,8 +690,8 @@ export default function AttendanceApproval() {
     {
       key: 'scan_time', label: 'Date & Time',
       render: v => (
-        <div>
-          <p className="text-sm font-medium">{formatPhtDate(v)}</p>
+        <div className="cursor-pointer group">
+          <p className="text-sm font-medium text-gray-800 group-hover:text-blue-600 transition-colors">{formatPhtDate(v)}</p>
           <p className="text-xs text-gray-400">{formatPhtTime(v, true)}</p>
         </div>
       )
@@ -353,11 +704,37 @@ export default function AttendanceApproval() {
     {
       key: 'photo', label: 'Selfie Preview',
       render: (v, row) => {
-        if (!v) return <span className="text-xs text-gray-400">—</span>;
+        const photoUrl = v || row.attachment?.image_url;
+        if (!photoUrl) {
+          if (isSuperadmin) {
+            return (
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm text-blue-600 font-semibold flex items-center gap-1 hover:bg-blue-50 dark:hover:bg-blue-900/30 px-2 py-1 rounded border border-dashed border-blue-300 dark:border-blue-700 text-xs"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openDetails(row);
+                }}
+                title="Bypass and attach photo"
+              >
+                <Camera className="w-3.5 h-3.5" />
+                <span>+ Add Photo</span>
+              </button>
+            );
+          }
+          return <span className="text-xs text-gray-400">—</span>;
+        }
         return (
           <button 
-            className="btn btn-ghost btn-sm text-blue-600 font-semibold flex items-center gap-1 hover:bg-blue-50 px-2 py-1 rounded"
-            onClick={() => setPreviewRecord(row)}
+            type="button"
+            className="btn btn-ghost btn-sm text-blue-600 font-semibold flex items-center gap-1 hover:bg-blue-50 dark:hover:bg-blue-900/30 px-2 py-1 rounded"
+            onClick={(e) => {
+              e.stopPropagation();
+              setPreviewRecord({
+                ...row,
+                photo: photoUrl,
+              });
+            }}
           >
             <Camera className="w-3.5 h-3.5" strokeWidth={2} /> Preview
           </button>
@@ -370,13 +747,18 @@ export default function AttendanceApproval() {
         <button
           id={`attendance-actions-btn-${row.id}`}
           className="btn btn-secondary btn-sm"
-          onClick={() => openActions(row)}
+          onClick={(e) => {
+            e.stopPropagation();
+            openDetails(row);
+          }}
         >
           <Settings2 className="w-3.5 h-3.5" /> Manage
         </button>
       )
     },
   ];
+
+  const effectivePhoto = selected?.photo || currentAttachment?.image_url || null;
 
   return (
     <div className="space-y-6 animate-fade-in attendance-approval-page">
@@ -422,6 +804,7 @@ export default function AttendanceApproval() {
           page={page}
           limit={15}
           onPageChange={setPage}
+          onRowClick={openDetails}
           emptyMessage="No attendance records found"
         />
       </div>
@@ -430,8 +813,8 @@ export default function AttendanceApproval() {
       <Modal
         isOpen={!!modal}
         onClose={closeModal}
-        title={modal === 'menu' ? 'Attendance Actions' : ACTION_DETAILS[modal]?.title || 'Review Attendance'}
-        size="sm"
+        title={modal === 'menu' ? 'Attendance Details' : ACTION_DETAILS[modal]?.title || 'Review Attendance'}
+        size={modal === 'menu' ? 'md' : 'sm'}
         footer={
           modal !== 'menu' ? (
             <>
@@ -445,22 +828,30 @@ export default function AttendanceApproval() {
                 {saving ? ACTION_DETAILS[modal]?.processing || 'Processing...' : ACTION_DETAILS[modal]?.button || 'Confirm'}
               </button>
             </>
-          ) : null
+          ) : (
+            <div className="flex items-center justify-end w-full">
+              <button type="button" className="btn btn-secondary btn-sm" onClick={closeModal} disabled={savingImage}>
+                Close
+              </button>
+            </div>
+          )
         }
       >
         {selected && (
-          <div className="space-y-3">
+          <div className="space-y-3.5">
+            {/* Record Information Card */}
             <div className="attendance-action-summary">
               <div className="attendance-action-summary__header">
                 <div>
                   <span className="attendance-action-summary__label">Intern</span>
                   <p className="attendance-action-summary__name">{selected.full_name}</p>
+                  <p className="text-xs text-slate-400 mt-0.5">{divisionLabel(selected.division_name)}</p>
                 </div>
                 <span className={`badge badge-${selected.approval_status}`}>{selected.approval_status}</span>
               </div>
               <div className="attendance-action-summary__meta">
                 <div>
-                  <span>Scan type</span>
+                  <span>Attendance Type</span>
                   <strong>{selected.scan_type === 'time_in' ? 'Time In' : 'Time Out'}</strong>
                 </div>
                 <div>
@@ -468,77 +859,455 @@ export default function AttendanceApproval() {
                   <strong>{selected.scan_time ? `${formatPhtDate(selected.scan_time)} · ${formatPhtTime(selected.scan_time)}` : '—'}</strong>
                 </div>
               </div>
+              {selected.remarks && (
+                <div className="pt-2 border-t border-slate-200/60 dark:border-slate-700/60 text-xs">
+                  <span className="text-slate-400 block font-medium">Remarks:</span>
+                  <p className="text-slate-700 dark:text-slate-300 mt-0.5">{selected.remarks}</p>
+                </div>
+              )}
             </div>
+
             {modal === 'menu' ? (
-              <div className="attendance-action-list">
-                <p className="attendance-action-list__label">Choose an action</p>
-                {selected.approval_status !== 'approved' && (
+              <>
+                    {!isSuperadmin ? (
+                      /* Regular Admin View: Only Selfie Preview */
+                      <div className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/80 space-y-2.5 shadow-xs">
+                        <div className="flex items-center justify-between gap-2">
+                          <div>
+                            <h4 className="text-xs font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
+                              <Camera className="w-4 h-4 text-blue-600" />
+                              Selfie Preview
+                            </h4>
+                            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                              {effectivePhoto
+                                ? (currentAttachment ? 'Verified attendance photo (Bypassed by Super Admin)' : 'Biometric selfie captured during scan')
+                                : 'No selfie recorded for this attendance scan.'}
+                            </p>
+                          </div>
+
+                          {effectivePhoto ? (
+                            <button
+                              type="button"
+                              className="btn btn-ghost btn-sm text-blue-600 font-semibold hover:bg-blue-50 dark:hover:bg-blue-900/30 text-xs flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-blue-200 dark:border-blue-800"
+                              onClick={() => setPreviewRecord({ ...selected, photo: effectivePhoto })}
+                            >
+                              <Eye className="w-3.5 h-3.5" /> Preview
+                            </button>
+                          ) : (
+                            <span className="text-xs text-slate-400 italic">No selfie</span>
+                          )}
+                        </div>
+
+                        {effectivePhoto && (
+                          <div
+                            className="relative rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 bg-black flex justify-center max-h-40 cursor-pointer group"
+                            onClick={() => setPreviewRecord({ ...selected, photo: effectivePhoto })}
+                            title="Click to view full preview"
+                          >
+                            <img
+                              src={effectivePhoto}
+                              alt="Selfie Preview"
+                              className="max-h-40 w-auto object-contain rounded group-hover:scale-105 transition-transform"
+                            />
+                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-medium gap-1">
+                              <ZoomIn className="w-4 h-4" />
+                              <span>Click to view full preview</span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      /* Super Admin View: Unified Selfie Preview & Bypass Module */
+                      <div className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/80 space-y-3 shadow-xs">
+                        <div className="flex items-center justify-between flex-wrap gap-2">
+                          <div>
+                            <h4 className="text-xs font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
+                              <Camera className="w-4 h-4 text-blue-600" />
+                              Selfie Preview &amp; Bypass
+                            </h4>
+                            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                              {effectivePhoto
+                                ? (currentAttachment ? 'Verified attendance photo (Bypassed by Super Admin)' : 'Biometric selfie captured during scan')
+                                : 'No selfie recorded. You can bypass and attach an official photo.'}
+                            </p>
+                          </div>
+
+                          {!effectivePhoto && !pendingFile && !isCameraActive && (
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <button
+                                type="button"
+                                className="btn btn-secondary btn-sm text-xs inline-flex items-center gap-1.5 text-blue-700 hover:bg-blue-50 border-blue-200 dark:border-blue-800 dark:text-blue-300 shadow-xs"
+                                onClick={() => startCamera('environment', false)}
+                              >
+                                <Camera className="w-3.5 h-3.5" />
+                                Open Camera
+                              </button>
+                              <label className="btn btn-primary btn-sm text-xs cursor-pointer inline-flex items-center gap-1.5 shadow-xs">
+                                <Upload className="w-3.5 h-3.5" />
+                                Choose Image
+                                <input
+                                  type="file"
+                                  className="hidden"
+                                  accept="image/jpeg,image/png,image/webp"
+                                  onChange={(e) => handleFileSelect(e, false)}
+                                />
+                              </label>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Live Camera Viewfinder */}
+                        {isCameraActive && (
+                          <div className="border border-blue-300 dark:border-blue-700 bg-slate-950 rounded-xl p-3 space-y-3 animate-fade-in text-white shadow-md">
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="font-semibold flex items-center gap-2 text-blue-400">
+                                <span className="relative flex h-2 w-2">
+                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                                  <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                                </span>
+                                {isReplacing ? 'Capture Replacement Selfie' : 'Live Camera Viewfinder'}
+                              </span>
+                              <button
+                                type="button"
+                                className="text-slate-400 hover:text-white p-1 rounded-md transition-colors"
+                                onClick={stopCamera}
+                                title="Close camera"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            </div>
+
+                            {/* Video element */}
+                            <div className="relative rounded-lg overflow-hidden bg-black flex justify-center items-center aspect-video max-h-56">
+                              <video
+                                ref={videoRef}
+                                autoPlay
+                                playsInline
+                                muted
+                                className={`w-full h-full object-cover ${cameraFacingMode === 'user' ? 'scale-x-[-1]' : ''}`}
+                              />
+                              {cameraLoading && (
+                                <div className="absolute inset-0 bg-black/75 flex flex-col items-center justify-center gap-2 text-xs text-white">
+                                  <RefreshCw className="w-5 h-5 animate-spin text-blue-400" />
+                                  <span>Starting camera...</span>
+                                </div>
+                              )}
+                              <div className="absolute inset-4 pointer-events-none border border-white/30 rounded-lg border-dashed"></div>
+                            </div>
+
+                            {/* Viewfinder Controls */}
+                            <div className="flex items-center justify-between gap-2 pt-1">
+                              <button
+                                type="button"
+                                className="btn btn-secondary btn-sm text-xs text-slate-300 bg-slate-800 hover:bg-slate-700 border-slate-700"
+                                onClick={stopCamera}
+                              >
+                                Cancel
+                              </button>
+
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  className="btn btn-secondary btn-sm text-xs text-slate-300 bg-slate-800 hover:bg-slate-700 border-slate-700 flex items-center gap-1.5"
+                                  onClick={toggleCameraFacing}
+                                  title="Flip Camera"
+                                >
+                                  <SwitchCamera className="w-3.5 h-3.5" />
+                                  Flip
+                                </button>
+
+                                <button
+                                  type="button"
+                                  className="btn btn-primary btn-sm text-xs flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white font-medium px-3.5"
+                                  onClick={capturePhoto}
+                                  disabled={cameraLoading}
+                                >
+                                  <Camera className="w-3.5 h-3.5" />
+                                  Capture Photo
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Pending captured / selected image preview */}
+                        {pendingFile && (
+                          <div className="border border-indigo-200 dark:border-indigo-800 bg-indigo-50/50 dark:bg-indigo-950/40 rounded-xl p-3 space-y-2.5 animate-fade-in">
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="font-semibold text-indigo-900 dark:text-indigo-200 flex items-center gap-1.5">
+                                {capturedFromCamera ? (
+                                  <Camera className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                                ) : (
+                                  <Upload className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                                )}
+                                {capturedFromCamera
+                                  ? (isReplacing ? 'Captured Replacement Selfie' : 'Captured Selfie Preview')
+                                  : (isReplacing ? 'Replace Attendance Selfie' : 'New Selfie Preview')}
+                              </span>
+                              <span className="text-slate-500 dark:text-slate-400 font-mono text-[11px]">
+                                {formatFileSize(pendingFile.size)}
+                              </span>
+                            </div>
+
+                            {isReplacing && (
+                              <div className="p-2 rounded-lg bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-200 flex items-start gap-1.5">
+                                <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5 text-amber-600" />
+                                <span>The attendance selfie will be replaced with this image upon saving.</span>
+                              </div>
+                            )}
+
+                            <div className="relative rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 bg-black flex justify-center max-h-48">
+                              <img
+                                src={pendingPreview}
+                                alt="Attachment preview"
+                                className="max-h-48 w-auto object-contain rounded"
+                              />
+                            </div>
+
+                            <div className="flex items-center justify-between gap-2 pt-1 flex-wrap">
+                              <p className="text-xs text-slate-700 dark:text-slate-300 truncate max-w-xs font-medium">
+                                {capturedFromCamera ? '📷 ' : '📄 '} {pendingFile.name}
+                              </p>
+                              <div className="flex items-center gap-2">
+                                {capturedFromCamera && (
+                                  <button
+                                    type="button"
+                                    className="btn btn-secondary btn-sm text-xs flex items-center gap-1.5 text-slate-700 dark:text-slate-300"
+                                    onClick={() => startCamera(cameraFacingMode, isReplacing)}
+                                    disabled={savingImage}
+                                  >
+                                    <RotateCcw className="w-3.5 h-3.5" />
+                                    Retake
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  className="btn btn-secondary btn-sm text-xs"
+                                  onClick={handleCancelPendingFile}
+                                  disabled={savingImage}
+                                >
+                                  Cancel
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn btn-primary btn-sm text-xs flex items-center gap-1.5"
+                                  onClick={handleSaveImage}
+                                  disabled={savingImage}
+                                >
+                                  {savingImage ? (
+                                    <>
+                                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                      Saving...
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Upload className="w-3.5 h-3.5" />
+                                      Save Photo
+                                    </>
+                                  )}
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Existing Photo View with Superadmin Bypass Controls */}
+                        {!pendingFile && !isCameraActive && effectivePhoto && (
+                          <div className="border border-slate-200 dark:border-slate-700 rounded-xl p-3 bg-slate-50/70 dark:bg-slate-900/40 space-y-3">
+                            <div className="flex flex-col sm:flex-row items-center gap-3">
+                              <div
+                                className="relative w-full sm:w-28 h-28 rounded-lg overflow-hidden bg-black border border-slate-200 dark:border-slate-700 shrink-0 cursor-pointer group flex items-center justify-center"
+                                onClick={() => setPreviewRecord({ ...selected, photo: effectivePhoto })}
+                                title="Click to view full preview"
+                              >
+                                <img
+                                  src={effectivePhoto}
+                                  alt="Attendance Selfie"
+                                  className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                                />
+                                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-medium gap-1">
+                                  <ZoomIn className="w-4 h-4" />
+                                  <span>Preview</span>
+                                </div>
+                              </div>
+
+                              <div className="flex-1 space-y-1.5 text-xs w-full">
+                                <div className="flex items-center justify-between">
+                                  <p className="font-semibold text-slate-800 dark:text-slate-100 text-sm truncate max-w-[200px]">
+                                    {currentAttachment?.file_name || 'Biometric Selfie'}
+                                  </p>
+                                  {currentAttachment?.file_size > 0 && (
+                                    <span className="text-[11px] text-slate-400 font-mono">
+                                      {formatFileSize(currentAttachment.file_size)}
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div className="text-slate-600 dark:text-slate-400 space-y-0.5">
+                                  <p>
+                                    <span className="text-slate-400">Source: </span>
+                                    <span className="font-semibold text-slate-700 dark:text-slate-200">
+                                      {currentAttachment ? `Bypassed by ${currentAttachment.uploaded_by_name || 'Super Admin'}` : 'Biometric Face Scan'}
+                                    </span>
+                                  </p>
+                                  {currentAttachment?.uploaded_at && (
+                                    <p>
+                                      <span className="text-slate-400">Attached: </span>
+                                      <span className="text-slate-700 dark:text-slate-200 font-medium">
+                                        {formatPhtDateTime(currentAttachment.uploaded_at)}
+                                      </span>
+                                    </p>
+                                  )}
+                                </div>
+
+                                <div className="pt-2 flex items-center gap-2 flex-wrap">
+                                  <button
+                                    type="button"
+                                    className="btn btn-secondary btn-sm text-xs flex items-center gap-1.5"
+                                    onClick={() => setPreviewRecord({ ...selected, photo: effectivePhoto })}
+                                  >
+                                    <Eye className="w-3.5 h-3.5 text-blue-600" />
+                                    View Full Preview
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    className="btn btn-secondary btn-sm text-xs flex items-center gap-1.5 text-blue-700 hover:bg-blue-50 border-blue-200 dark:border-blue-800 dark:text-blue-300"
+                                    onClick={() => startCamera('environment', true)}
+                                  >
+                                    <Camera className="w-3.5 h-3.5" />
+                                    Capture New Photo
+                                  </button>
+
+                                  <label className="btn btn-secondary btn-sm text-xs cursor-pointer inline-flex items-center gap-1.5 text-indigo-700 hover:bg-indigo-50 border-indigo-200 dark:border-indigo-800 dark:text-indigo-300">
+                                    <RefreshCw className="w-3.5 h-3.5" />
+                                    Replace from File
+                                    <input
+                                      type="file"
+                                      className="hidden"
+                                      accept="image/jpeg,image/png,image/webp"
+                                      onChange={(e) => handleFileSelect(e, true)}
+                                    />
+                                  </label>
+
+                                  {currentAttachment && (
+                                    <button
+                                      type="button"
+                                      className="btn btn-secondary btn-sm text-xs text-rose-600 hover:bg-rose-50 border-rose-200 dark:border-rose-800 dark:text-rose-400 flex items-center gap-1.5"
+                                      onClick={() => setRemoveConfirmOpen(true)}
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
+                                      Remove Image
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Empty state: No photo exists, Super Admin can bypass */}
+                        {!pendingFile && !isCameraActive && !effectivePhoto && (
+                          <div className="border border-dashed border-slate-200 dark:border-slate-700 rounded-xl p-4 text-center text-xs text-slate-500 dark:text-slate-400 bg-slate-50/50 dark:bg-slate-900/30">
+                            <div className="space-y-3">
+                              <p>No selfie recorded for this attendance scan. As Super Admin, you can bypass and attach an official photo.</p>
+                              <div className="flex items-center justify-center gap-2 flex-wrap">
+                                <button
+                                  type="button"
+                                  className="btn btn-primary btn-sm text-xs inline-flex items-center gap-1.5 shadow-xs"
+                                  onClick={() => startCamera('environment', false)}
+                                >
+                                  <Camera className="w-3.5 h-3.5" />
+                                  Open Camera
+                                </button>
+                                <label className="btn btn-secondary btn-sm text-xs cursor-pointer inline-flex items-center gap-1.5 text-blue-700 hover:bg-blue-50 border-blue-200 dark:border-blue-800 dark:text-blue-300">
+                                  <Upload className="w-3.5 h-3.5" />
+                                  + Upload Image
+                                  <input
+                                    type="file"
+                                    className="hidden"
+                                    accept="image/jpeg,image/png,image/webp"
+                                    onChange={(e) => handleFileSelect(e, false)}
+                                  />
+                                </label>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                {/* Verification Actions List */}
+                <div className="attendance-action-list pt-2">
+                  <p className="attendance-action-list__label">Attendance Verification Actions</p>
+                  {selected.approval_status !== 'approved' && (
+                    <button
+                      id={`approve-btn-${selected.id}`}
+                      className="attendance-action-row"
+                      onClick={() => selectAction('approve')}
+                    >
+                      <span className="attendance-action-row__icon attendance-action-row__icon--approve">
+                        <CheckCircle />
+                      </span>
+                      <span className="attendance-action-row__content">
+                        <strong>Approve attendance</strong>
+                        <small>Mark this scan as verified.</small>
+                      </span>
+                      <ChevronRight className="attendance-action-row__arrow" />
+                    </button>
+                  )}
+
+                  {selected.approval_status !== 'rejected' && (
+                    <button
+                      id={`reject-btn-${selected.id}`}
+                      className="attendance-action-row"
+                      onClick={() => selectAction('reject')}
+                    >
+                      <span className="attendance-action-row__icon attendance-action-row__icon--reject">
+                        <XCircle />
+                      </span>
+                      <span className="attendance-action-row__content">
+                        <strong>Reject attendance</strong>
+                        <small>Reject this scan with optional remarks.</small>
+                      </span>
+                      <ChevronRight className="attendance-action-row__arrow" />
+                    </button>
+                  )}
+
+                  {selected.approval_status === 'rejected' && (
+                    <button
+                      id={`remove-rescan-btn-${selected.id}`}
+                      className="attendance-action-row"
+                      onClick={() => selectAction('remove')}
+                    >
+                      <span className="attendance-action-row__icon attendance-action-row__icon--rescan">
+                        <RotateCcw />
+                      </span>
+                      <span className="attendance-action-row__content">
+                        <strong>Remove &amp; allow rescan</strong>
+                        <small>Reopen today&apos;s latest scan slot.</small>
+                      </span>
+                      <ChevronRight className="attendance-action-row__arrow" />
+                    </button>
+                  )}
+
+                  <div className="attendance-action-list__divider"><span>Danger zone</span></div>
                   <button
-                    id={`approve-btn-${selected.id}`}
-                    className="attendance-action-row"
-                    onClick={() => selectAction('approve')}
+                    id={`delete-attendance-btn-${selected.id}`}
+                    className="attendance-action-row attendance-action-row--danger"
+                    onClick={() => selectAction('delete')}
                   >
-                    <span className="attendance-action-row__icon attendance-action-row__icon--approve">
-                      <CheckCircle />
+                    <span className="attendance-action-row__icon attendance-action-row__icon--delete">
+                      <Trash2 />
                     </span>
                     <span className="attendance-action-row__content">
-                      <strong>Approve attendance</strong>
-                      <small>Mark this scan as verified.</small>
+                      <strong>Delete entry permanently</strong>
+                      <small>Remove the record and its selfie.</small>
                     </span>
                     <ChevronRight className="attendance-action-row__arrow" />
                   </button>
-                )}
-
-                {selected.approval_status !== 'rejected' && (
-                  <button
-                    id={`reject-btn-${selected.id}`}
-                    className="attendance-action-row"
-                    onClick={() => selectAction('reject')}
-                  >
-                    <span className="attendance-action-row__icon attendance-action-row__icon--reject">
-                      <XCircle />
-                    </span>
-                    <span className="attendance-action-row__content">
-                      <strong>Reject attendance</strong>
-                      <small>Reject this scan with optional remarks.</small>
-                    </span>
-                    <ChevronRight className="attendance-action-row__arrow" />
-                  </button>
-                )}
-
-                {selected.approval_status === 'rejected' && (
-                  <button
-                    id={`remove-rescan-btn-${selected.id}`}
-                    className="attendance-action-row"
-                    onClick={() => selectAction('remove')}
-                  >
-                    <span className="attendance-action-row__icon attendance-action-row__icon--rescan">
-                      <RotateCcw />
-                    </span>
-                    <span className="attendance-action-row__content">
-                      <strong>Remove &amp; allow rescan</strong>
-                      <small>Reopen today&apos;s latest scan slot.</small>
-                    </span>
-                    <ChevronRight className="attendance-action-row__arrow" />
-                  </button>
-                )}
-
-                <div className="attendance-action-list__divider"><span>Danger zone</span></div>
-                <button
-                  id={`delete-attendance-btn-${selected.id}`}
-                  className="attendance-action-row attendance-action-row--danger"
-                  onClick={() => selectAction('delete')}
-                >
-                  <span className="attendance-action-row__icon attendance-action-row__icon--delete">
-                    <Trash2 />
-                  </span>
-                  <span className="attendance-action-row__content">
-                    <strong>Delete entry permanently</strong>
-                    <small>Remove the record and its selfie.</small>
-                  </span>
-                  <ChevronRight className="attendance-action-row__arrow" />
-                </button>
-              </div>
+                </div>
+              </>
             ) : modal === 'remove' ? (
               <div className="attendance-action-warning attendance-action-warning--rescan">
                 <AlertTriangle />
@@ -558,6 +1327,94 @@ export default function AttendanceApproval() {
           </div>
         )}
       </Modal>
+
+      {/* Full Image Preview Modal */}
+      <Modal
+        isOpen={imageModal.isOpen}
+        onClose={() => setImageModal(m => ({ ...m, isOpen: false }))}
+        title={imageModal.title || 'Attendance Image'}
+        size="lg"
+        footer={
+          <div className="flex items-center justify-between w-full">
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm flex items-center gap-1.5"
+              onClick={() => {
+                const a = document.createElement('a');
+                a.href = imageModal.url;
+                a.download = imageModal.fileName || 'attendance-proof.jpg';
+                a.target = '_blank';
+                a.click();
+              }}
+            >
+              <Download className="w-3.5 h-3.5" /> Download
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={() => setImageModal(m => ({ ...m, isOpen: false }))}
+            >
+              Close
+            </button>
+          </div>
+        }
+      >
+        <div className="space-y-3">
+          {imageModal.subtitle && (
+            <div className="px-1 text-xs text-slate-600 dark:text-slate-300 font-medium border-b border-slate-100 dark:border-slate-800 pb-2">
+              {imageModal.subtitle}
+            </div>
+          )}
+          <div className="relative rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 shadow-sm bg-black flex justify-center items-center w-full min-h-[300px]">
+            <img
+              src={imageModal.url}
+              alt="Attendance Full Proof"
+              className="max-h-[80vh] max-w-full w-auto h-auto object-contain rounded-lg"
+            />
+          </div>
+        </div>
+      </Modal>
+
+      {/* Remove Attendance Image Confirmation Modal */}
+      <Modal
+        isOpen={removeConfirmOpen}
+        onClose={() => !removingImage && setRemoveConfirmOpen(false)}
+        title="Remove Attendance Image?"
+        size="sm"
+        footer={
+          <div className="flex items-center justify-end gap-2 w-full">
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={() => setRemoveConfirmOpen(false)}
+              disabled={removingImage}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="btn btn-danger btn-sm flex items-center gap-1.5"
+              onClick={handleRemoveImage}
+              disabled={removingImage}
+            >
+              {removingImage ? 'Removing...' : 'Remove'}
+            </button>
+          </div>
+        }
+      >
+        <div className="space-y-2 text-sm text-slate-600 dark:text-slate-300 p-1">
+          <div className="flex items-start gap-3">
+            <div className="p-2 rounded-full bg-rose-100 dark:bg-rose-950 text-rose-600 dark:text-rose-400 shrink-0">
+              <AlertTriangle className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="font-semibold text-slate-800 dark:text-slate-100">Remove Attendance Image?</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">This image will no longer be visible to admins.</p>
+            </div>
+          </div>
+        </div>
+      </Modal>
+
 
       {/* Selfie Verification Preview Modal */}
       <Modal

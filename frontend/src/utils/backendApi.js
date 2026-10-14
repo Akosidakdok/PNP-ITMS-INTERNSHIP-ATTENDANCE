@@ -7,14 +7,16 @@ const isLoopbackUrl = value => /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/?$/
 // Keep the Vite proxy for local development. For a phone or deployed webview,
 // never send API calls to its own localhost when a reachable backend URL was
 // provided separately.
+const DEFAULT_PRODUCTION_BACKEND = 'https://pnp-itms-backend.onrender.com';
 const productionBackendUrl = isLoopbackUrl(configuredBackendUrl) && networkBackendUrl
   ? networkBackendUrl
-  : (configuredBackendUrl || networkBackendUrl || window.location.origin);
+  : (configuredBackendUrl || networkBackendUrl || DEFAULT_PRODUCTION_BACKEND);
 const rawBaseUrl = import.meta.env.DEV ? '/api' : productionBackendUrl;
 const API_BASE_URL = rawBaseUrl.endsWith('/') ? rawBaseUrl.slice(0, -1) : rawBaseUrl;
 
 const backendApi = axios.create({
   baseURL: API_BASE_URL,
+  timeout: 15000,
 });
 
 // Add a request interceptor to include the auth token if it exists
