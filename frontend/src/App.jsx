@@ -69,7 +69,8 @@ function ProtectedRoute({ children, roles }) {
 }
 
 function AppRoutes() {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
+  if (loading) return null;
   return (
     <Routes>
       <Route path="/legal" element={<LegalDocuments />} />
@@ -135,12 +136,23 @@ export default function App() {
 }
 
 function AppShell() {
-  const { loading, user, legalStatus } = useAuth();
+  const { loading, user, legalStatus, connectionError, retrySession, logout } = useAuth();
   const needsLegalAcceptance = Boolean(user && !loading && legalStatus?.required);
 
   return (
     <ErrorBoundary>
-      {needsLegalAcceptance ? <LegalAcceptance /> : <AppRoutes />}
+      {loading && !user ? (
+        <div className="min-h-screen flex items-center justify-center bg-slate-950 text-sm text-slate-300">Reconnecting your session...</div>
+      ) : connectionError && !user ? (
+        <div className="min-h-screen flex items-center justify-center bg-slate-950 p-6 text-white">
+          <div className="max-w-sm text-center space-y-4">
+            <h1 className="text-xl font-semibold">Can’t reconnect yet</h1>
+            <p className="text-sm text-slate-300">Your session is saved. Check your connection and try again.</p>
+            <button type="button" onClick={retrySession} className="rounded-lg bg-blue-600 px-5 py-2 font-semibold">Retry connection</button>
+            <button type="button" onClick={logout} className="block mx-auto text-sm text-slate-300 underline">Sign out</button>
+          </div>
+        </div>
+      ) : needsLegalAcceptance ? <LegalAcceptance /> : <AppRoutes />}
       <InstallPrompt />
       <Toaster
         position="top-right"

@@ -2,6 +2,7 @@
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 import { supabase } from './supabaseClient.js';
+import { revokeAccountSessions } from './services/sessionService.js';
 import { getPhtDateKey, getPhtDayBoundsUtc } from './utils/attendanceTime.js';
 import { buildDtrRecords, summarizeDtrRecords } from './utils/dtrRecords.js';
 import { getAssignedProfileForAccount } from './services/attendanceControlService.js';
@@ -786,6 +787,9 @@ export async function updateIntern(id, payload) {
     .single();
 
   if (error) throw error;
+  if (password || ['archived', 'inactive', 'disabled'].includes(String(updates.status || '').toLowerCase())) {
+    await revokeAccountSessions(normalizedId);
+  }
   return data;
 }
 
@@ -896,6 +900,7 @@ export async function resetInternPassword(id, newPassword) {
     .eq('role', INTERN_ROLE);
 
   if (error) throw error;
+  await revokeAccountSessions(normalizedId);
   return { success: true };
 }
 
@@ -2507,6 +2512,9 @@ export async function updateSupervisor(id, payload) {
     .single();
 
   if (error) throw error;
+  if (updates.password_hash || ['archived', 'inactive', 'disabled'].includes(String(updates.status || '').toLowerCase())) {
+    await revokeAccountSessions(normalizedId);
+  }
   return data;
 }
 
@@ -2533,6 +2541,7 @@ export async function resetSupervisorPassword(id, newPassword) {
     .eq('role', 'supervisor');
 
   if (error) throw error;
+  await revokeAccountSessions(normalizedId);
   return { success: true };
 }
 

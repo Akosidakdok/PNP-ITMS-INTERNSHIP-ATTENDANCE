@@ -1,5 +1,5 @@
-import { createContext, useContext, useState, useEffect } from 'react';
-import backendApi from '../utils/backendApi.js';
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import backendApi, { clearSession, hasSavedSession, revokeSavedSession, saveSession } from '../utils/backendApi.js';
 
 const AuthContext = createContext(null);
 
@@ -7,61 +7,78 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [legalStatus, setLegalStatus] = useState(null);
+  const [connectionError, setConnectionError] = useState(false);
+  const requestId = useRef(0);
+  const needsReconnect = useRef(false);
 
-  useEffect(() => {
-    const token = localStorage.getItem('pnp_token');
-    if (!token) {
+  const restoreSession = useCallback(async () => {
+    const id = ++requestId.current;
+    if (!hasSavedSession()) {
+      needsReconnect.current = false;
+      setUser(null);
+      setLegalStatus(null);
+      setConnectionError(false);
       setLoading(false);
       return;
     }
-
-    let isMounted = true;
-    const controller = new AbortController();
-
-    // Safety timeout: If backend takes longer than 6.5s (e.g. Render free tier cold-start or slow network),
-    // don't block the UI / splash screen indefinitely.
-    const safetyTimer = window.setTimeout(() => {
-      if (isMounted) {
-        console.warn('[AuthContext] Verification taking longer than expected, unlocking loader.');
-        setLoading(false);
-      }
-    }, 6500);
-
-    backendApi.get('/auth/me', { signal: controller.signal })
-      .then((res) => {
-        if (!isMounted) return;
-        if (res.data?.user) {
-          setUser(res.data.user);
-          setLegalStatus(res.data.legal_status || null);
-        } else {
-          setUser(null);
-          setLegalStatus(null);
-          localStorage.removeItem('pnp_token');
-        }
-      })
-      .catch((err) => {
-        if (!isMounted) return;
-        if (err.name === 'CanceledError' || err.code === 'ERR_CANCELED') return;
-
-        if (err.response?.status === 401 || err.response?.status === 403) {
-          localStorage.removeItem('pnp_token');
-        }
+    setLoading(true);
+    setConnectionError(false);
+    try {
+      const { data } = await backendApi.get('/auth/me');
+      if (id !== requestId.current) return;
+      if (!data?.user) throw new Error('User account not found');
+      needsReconnect.current = false;
+      setUser(data.user);
+      setLegalStatus(data.legal_status || null);
+    } catch (error) {
+      if (id !== requestId.current) return;
+      if (error.response?.status === 401 || !hasSavedSession()) {
+        clearSession();
         setUser(null);
         setLegalStatus(null);
-      })
-      .finally(() => {
-        if (isMounted) {
-          window.clearTimeout(safetyTimer);
-          setLoading(false);
-        }
-      });
-
-    return () => {
-      isMounted = false;
-      window.clearTimeout(safetyTimer);
-      controller.abort();
-    };
+      } else {
+        needsReconnect.current = true;
+        setConnectionError(true);
+      }
+    } finally {
+      if (id === requestId.current) setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    restoreSession();
+    const handleSessionEnded = () => {
+      requestId.current += 1;
+      needsReconnect.current = false;
+      setUser(null);
+      setLegalStatus(null);
+      setConnectionError(false);
+      setLoading(false);
+    };
+    const handleStorage = event => {
+      if (event.key === 'pnp_token' || event.key === 'pnp_refresh_token') restoreSession();
+    };
+    const handleOnline = () => {
+      if (hasSavedSession() && needsReconnect.current) restoreSession();
+    };
+    window.addEventListener('pnp-session-ended', handleSessionEnded);
+    window.addEventListener('storage', handleStorage);
+    window.addEventListener('online', handleOnline);
+    return () => {
+      requestId.current += 1;
+      window.removeEventListener('pnp-session-ended', handleSessionEnded);
+      window.removeEventListener('storage', handleStorage);
+      window.removeEventListener('online', handleOnline);
+    };
+  }, [restoreSession]);
+
+  useEffect(() => {
+    if (!connectionError || !hasSavedSession()) return undefined;
+    const timer = window.setTimeout(() => {
+      if (navigator.onLine) restoreSession();
+    }, 20000);
+    return () => window.clearTimeout(timer);
+  }, [connectionError, restoreSession]);
 
   const login = async (username, password) => {
     const uname = String(username || '').trim().toLowerCase();
@@ -72,9 +89,13 @@ export function AuthProvider({ children }) {
       throw new Error(data?.error || 'Login response was missing a token');
     }
 
-    localStorage.setItem('pnp_token', data.token);
+    requestId.current += 1;
+    needsReconnect.current = false;
+    saveSession(data);
     setUser(data.user);
     setLegalStatus(data.legal_status || null);
+    setConnectionError(false);
+    setLoading(false);
     return data.user;
   };
 
@@ -91,9 +112,11 @@ export function AuthProvider({ children }) {
   };
 
   const logout = async () => {
-    localStorage.removeItem('pnp_token');
+    requestId.current += 1;
+    await revokeSavedSession();
     setUser(null);
     setLegalStatus(null);
+    setConnectionError(false);
   };
 
   const refreshUser = async () => {
@@ -101,15 +124,17 @@ export function AuthProvider({ children }) {
       const { data } = await backendApi.get('/auth/me');
       setUser(data.user);
       setLegalStatus(data.legal_status || null);
-    } catch {
-      setUser(null);
-      setLegalStatus(null);
-      localStorage.removeItem('pnp_token');
+    } catch (error) {
+      if (error.response?.status === 401) {
+        clearSession();
+        setUser(null);
+        setLegalStatus(null);
+      }
     }
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, legalStatus, login, logout, refreshUser, acceptLegalDocuments, refreshLegalStatus }}>
+    <AuthContext.Provider value={{ user, loading, connectionError, retrySession: restoreSession, legalStatus, login, logout, refreshUser, acceptLegalDocuments, refreshLegalStatus }}>
       {children}
     </AuthContext.Provider>
   );

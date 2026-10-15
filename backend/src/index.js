@@ -3,6 +3,7 @@ import express from 'express';
 import cors from 'cors';
 import multer from 'multer';
 import { loginUser } from './auth.js';
+import { refreshSession, revokeAccountSessions, revokeRefreshToken } from './services/sessionService.js';
 import { getActiveQrCode, regenerateQrCode, scanAttendance, getTodayScanStatus } from './attendance.js';
 import { registerUserFace } from './services/faceVerificationService.js';
 import {
@@ -209,6 +210,23 @@ app.post('/auth/login', async (req, res) => {
   }
 });
 
+app.post('/auth/refresh', async (req, res) => {
+  try {
+    return res.json(await refreshSession(req.body?.refresh_token));
+  } catch (error) {
+    return res.status(error.statusCode || 503).json({ error: error.message });
+  }
+});
+
+app.post('/auth/logout', async (req, res) => {
+  try {
+    await revokeRefreshToken(req.body?.refresh_token);
+    return res.json({ success: true });
+  } catch (error) {
+    return res.status(error.statusCode || 503).json({ error: error.message });
+  }
+});
+
 app.post('/auth/change-password', authMiddleware, async (req, res) => {
   const { current_password, new_password } = req.body;
   if (!current_password || !new_password) {
@@ -217,9 +235,10 @@ app.post('/auth/change-password', authMiddleware, async (req, res) => {
 
   try {
     await changePassword(req.user.id, current_password, new_password);
+    await revokeAccountSessions(req.user.id, req.user.sid);
     return res.json({ success: true });
   } catch (error) {
-    return res.status(400).json({ error: error.message });
+    return res.status(error.statusCode || 400).json({ error: error.message });
   }
 });
 

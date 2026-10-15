@@ -1,14 +1,13 @@
 import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
 import { supabase } from './supabaseClient.js';
+import { createSession } from './services/sessionService.js';
 import {
   completeLoginSuccess,
   getLoginBlockState,
   recordLoginFailure,
 } from './security/attemptLockoutService.js';
 
-const JWT_SECRET = process.env.JWT_SECRET;
-if (!JWT_SECRET) {
+if (!process.env.JWT_SECRET) {
   throw new Error('JWT_SECRET must be set in .env');
 }
 
@@ -45,6 +44,9 @@ export async function loginUser(username, password) {
   if (!data) {
     throw invalidCredentialsError();
   }
+  if (['archived', 'inactive', 'disabled'].includes(String(data.status || '').toLowerCase())) {
+    throw invalidCredentialsError();
+  }
 
   const existingBlock = getLoginBlockState(data);
   if (existingBlock.blocked) {
@@ -65,27 +67,5 @@ export async function loginUser(username, password) {
     throw loginBlockError(completionBlock);
   }
 
-  const divId = data.division_id ?? data.department_id ?? null;
-  const divName = data.division_name ?? data.department_name ?? null;
-
-  const userPayload = {
-    id: data.id,
-    username: data.username,
-    full_name: data.full_name,
-    email: data.email,
-    role: data.role,
-    division_id: divId,
-    division_name: divName,
-    department_id: divId,
-    department_name: divName,
-    face_registered: Boolean(data.face_registered),
-    self_face_enrollment_available: Boolean(data.self_face_enrollment_available),
-  };
-
-  const token = jwt.sign(userPayload, JWT_SECRET, { expiresIn: '8h' });
-
-  return {
-    user: userPayload,
-    token,
-  };
+  return createSession(data);
 }

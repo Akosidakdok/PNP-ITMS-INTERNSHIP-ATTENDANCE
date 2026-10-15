@@ -47,6 +47,10 @@ cd backend
 npm test
 ```
 
+## Persistent PWA sessions
+
+Apply `backend/supabase/migrations/20261015061204_account_sessions.sql` to the Supabase database before deploying the backend session changes. Deploy the backend before the frontend. New sign-ins receive a 30-day device session and short-lived access tokens. Existing sign-ins need one more login to receive a refresh token.
+
 ## Security
 
 - Do not commit environment files, credentials, tokens, biometric data, or production records.

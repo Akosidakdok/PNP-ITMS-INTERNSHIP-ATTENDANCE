@@ -1,5 +1,6 @@
 import jwt from 'jsonwebtoken';
 import { getLegalAcceptanceStatus, isLegalRoute } from './services/legalService.js';
+import { verifyAccessSession } from './services/sessionService.js';
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
@@ -18,6 +19,14 @@ export async function authMiddleware(req, res, next) {
     req.user = jwt.verify(token, JWT_SECRET);
   } catch (error) {
     return res.status(401).json({ error: 'Invalid or expired authorization token' });
+  }
+
+  if (req.user.sid) {
+    try {
+      req.user = { ...(await verifyAccessSession(req.user.sid, req.user.id)), sid: req.user.sid };
+    } catch (error) {
+      return res.status(error.statusCode || 503).json({ error: error.message });
+    }
   }
 
   if (isLegalRoute(req.path)) return next();
