@@ -1,0 +1,347 @@
+{
+  "version": 1,
+  "historyId": "fe935c06-b0a8-4841-9334-28f8cf0ecc24",
+  "currentRevision": "463a4647-80c0-477b-848a-a6cf4975edbf",
+  "pendingChanges": false,
+  "files": {
+    "AGENTS.md": {
+      "hash": "1d4f0c8ca2507b94fd7c9df709fff01416adbd51a0f922b9d6ed2f40129147d5",
+      "content": "C:\\Users\\CJ Baldonado\\.cache\\hyperframes\\history\\fe935c06-b0a8-4841-9334-28f8cf0ecc24\\blobs\\1d\\1d4f0c8ca2507b94fd7c9df709fff01416adbd51a0f922b9d6ed2f40129147d5"
+    },
+    "CLAUDE.md": {
+      "hash": "1d4f0c8ca2507b94fd7c9df709fff01416adbd51a0f922b9d6ed2f40129147d5",
+      "content": "C:\\Users\\CJ Baldonado\\.cache\\hyperframes\\history\\fe935c06-b0a8-4841-9334-28f8cf0ecc24\\blobs\\1d\\1d4f0c8ca2507b94fd7c9df709fff01416adbd51a0f922b9d6ed2f40129147d5"
+    },
+    "assets/ITMS_LOGO.png": {
+      "hash": "479ef4812af785853d5fdfa8b8572ac5a4208701c678100537d9f54e3df91d65",
+      "content": "C:\\Users\\CJ Baldonado\\.cache\\hyperframes\\history\\fe935c06-b0a8-4841-9334-28f8cf0ecc24\\blobs\\47\\479ef4812af785853d5fdfa8b8572ac5a4208701c678100537d9f54e3df91d65"
+    },
+    "assets/PNP_LOGO.png": {
+      "hash": "6a233eb4e5f837f896266711e90eb917741f59f164ee37a88b9e75a8c4121880",
+      "content": "C:\\Users\\CJ Baldonado\\.cache\\hyperframes\\history\\fe935c06-b0a8-4841-9334-28f8cf0ecc24\\blobs\\6a\\6a233eb4e5f837f896266711e90eb917741f59f164ee37a88b9e75a8c4121880"
+    },
+    "assets/screens/01_splash_loader.png": {
+      "hash": "c18eef6657ab819e7cefe7f95cb7dcee11e539eccd51e5abd9cf8a5e6a9c5c02",
+      "content": "C:\\Users\\CJ Baldonado\\.cache\\hyperframes\\history\\fe935c06-b0a8-4841-9334-28f8cf0ecc24\\blobs\\c1\\c18eef6657ab819e7cefe7f95cb7dcee11e539eccd51e5abd9cf8a5e6a9c5c02"
+    },
+    "assets/screens/02_sign_in.png": {
+      "hash": "7f6235b0c136c723c4ef1a92653297bdac1e616a44ee121d8ed1825ba2feb4b9",
+      "content": "C:\\Users\\CJ Baldonado\\.cache\\hyperframes\\history\\fe935c06-b0a8-4841-9334-28f8cf0ecc24\\blobs\\7f\\7f6235b0c136c723c4ef1a92653297bdac1e616a44ee121d8ed1825ba2feb4b9"
+    },
+    "assets/screens/03_terms_legal.png": {
+      "hash": "dc1a7981f7fd57aa48cc270b116094b92261112e33b087837c36b3035afd9bfc",
+      "content": "C:\\Users\\CJ Baldonado\\.cache\\hyperframes\\history\\fe935c06-b0a8-4841-9334-28f8cf0ecc24\\blobs\\dc\\dc1a7981f7fd57aa48cc270b116094b92261112e33b087837c36b3035afd9bfc"
+    },
+    "assets/screens/04_intern_dashboard.png": {
+      "hash": "4f452a56dd18af0c3361417d5b1808a7c3404ac6e896e95260253ec3f7c62d29",
+      "content": "C:\\Users\\CJ Baldonado\\.cache\\hyperframes\\history\\fe935c06-b0a8-4841-9334-28f8cf0ecc24\\blobs\\4f\\4f452a56dd18af0c3361417d5b1808a7c3404ac6e896e95260253ec3f7c62d29"
+    },
+    "assets/screens/05_attendance_verification_gate.png": {
+      "hash": "bf7e2cf7be22a8486141b2be112b2bcd8b94d3d3f1e2bcddf156c874204c94d5",
+      "content": "C:\\Users\\CJ Baldonado\\.cache\\hyperframes\\history\\fe935c06-b0a8-4841-9334-28f8cf0ecc24\\blobs\\bf\\bf7e2cf7be22a8486141b2be112b2bcd8b94d3d3f1e2bcddf156c874204c94d5"
+    },
+    "assets/screens/06_attendance_completed.png": {
+      "hash": "3aab6d7e19b41a7de4000743309e4859dc00fdee79b741dc300714286dc6d848",
+      "content": "C:\\Users\\CJ Baldonado\\.cache\\hyperframes\\history\\fe935c06-b0a8-4841-9334-28f8cf0ecc24\\blobs\\3a\\3aab6d7e19b41a7de4000743309e4859dc00fdee79b741dc300714286dc6d848"
+    },
+    "assets/screens/07_dtr_export.png": {
+      "hash": "bb0dfb5b9b06c50fe95f2878b87edba8770a63e6aaf4c1c9fb01894645ea7940",
+      "content": "C:\\Users\\CJ Baldonado\\.cache\\hyperframes\\history\\fe935c06-b0a8-4841-9334-28f8cf0ecc24\\blobs\\bb\\bb0dfb5b9b06c50fe95f2878b87edba8770a63e6aaf4c1c9fb01894645ea7940"
+    },
+    "assets/screens/08_my_documents.png": {
+      "hash": "63dac6eda943e4421e4b6df95e3f7d6250ebbf59ee988ff2d78079b6e72befdd",
+      "content": "C:\\Users\\CJ Baldonado\\.cache\\hyperframes\\history\\fe935c06-b0a8-4841-9334-28f8cf0ecc24\\blobs\\63\\63dac6eda943e4421e4b6df95e3f7d6250ebbf59ee988ff2d78079b6e72befdd"
+    },
+    "assets/test_vo.wav": {
+      "hash": "a6b715bf0b1a0ef0d85d8f2be312ab83ef4215a6210771d19317b4cf28edacf0",
+      "content": "C:\\Users\\CJ Baldonado\\.cache\\hyperframes\\history\\fe935c06-b0a8-4841-9334-28f8cf0ecc24\\blobs\\a6\\a6b715bf0b1a0ef0d85d8f2be312ab83ef4215a6210771d19317b4cf28edacf0"
+    },
+    "assets/vo1.wav": {
+      "hash": "9305d71e3167e9f2d21859867009cd2d03f78d4334fe3aa6940989a3fb7bc7b6",
+      "content": "C:\\Users\\CJ Baldonado\\.cache\\hyperframes\\history\\fe935c06-b0a8-4841-9334-28f8cf0ecc24\\blobs\\93\\9305d71e3167e9f2d21859867009cd2d03f78d4334fe3aa6940989a3fb7bc7b6"
+    },
+    "assets/vo2.wav": {
+      "hash": "004d640f74da0b13d0ed6dd57ab3d8e6e8511eaebd75191795f3a7a46dee97bd",
+      "content": "C:\\Users\\CJ Baldonado\\.cache\\hyperframes\\history\\fe935c06-b0a8-4841-9334-28f8cf0ecc24\\blobs\\00\\004d640f74da0b13d0ed6dd57ab3d8e6e8511eaebd75191795f3a7a46dee97bd"
+    },
+    "assets/vo3.wav": {
+      "hash": "b8f4757cbf4d7728e0f8b524049df66c13ec575d2c234375edca011bfe0e96c7",
+      "content": "C:\\Users\\CJ Baldonado\\.cache\\hyperframes\\history\\fe935c06-b0a8-4841-9334-28f8cf0ecc24\\blobs\\b8\\b8f4757cbf4d7728e0f8b524049df66c13ec575d2c234375edca011bfe0e96c7"
+    },
+    "assets/vo4.wav": {
+      "hash": "b533efc07747b3918b1af7559efd2a8f8c35c68a722c431916e272ab53af030e",
+      "content": "C:\\Users\\CJ Baldonado\\.cache\\hyperframes\\history\\fe935c06-b0a8-4841-9334-28f8cf0ecc24\\blobs\\b5\\b533efc07747b3918b1af7559efd2a8f8c35c68a722c431916e272ab53af030e"
+    },
+    "assets/vo5.wav": {
+      "hash": "ecdef022ba3f9bb234954d4f61c73e3dfd93869844c19850e33c0fe9df6c494e",
+      "content": "C:\\Users\\CJ Baldonado\\.cache\\hyperframes\\history\\fe935c06-b0a8-4841-9334-28f8cf0ecc24\\blobs\\ec\\ecdef022ba3f9bb234954d4f61c73e3dfd93869844c19850e33c0fe9df6c494e"
+    },
+    "assets/vo6.wav": {
+      "hash": "95b4fae1eb15b261070485c0f734ac8ebc35bf973a11f8e2cf9fcbffe317a384",
+      "content": "C:\\Users\\CJ Baldonado\\.cache\\hyperframes\\history\\fe935c06-b0a8-4841-9334-28f8cf0ecc24\\blobs\\95\\95b4fae1eb15b261070485c0f734ac8ebc35bf973a11f8e2cf9fcbffe317a384"
+    },
+    "assets/vo7.wav": {
+      "hash": "3a344b294dd6b8aae324211a4078d3176fe1cddd1976c2b0e0048bc38a0ad4a2",
+      "content": "C:\\Users\\CJ Baldonado\\.cache\\hyperframes\\history\\fe935c06-b0a8-4841-9334-28f8cf0ecc24\\blobs\\3a\\3a344b294dd6b8aae324211a4078d3176fe1cddd1976c2b0e0048bc38a0ad4a2"
+    },
+    "hyperframes.json": {
+      "hash": "53dbce1e19aa713cbb12ee0bc4d206143b45ab15e6ffbfcaa8f69572d4d24d50",
+      "content": "C:\\Users\\CJ Baldonado\\.cache\\hyperframes\\history\\fe935c06-b0a8-4841-9334-28f8cf0ecc24\\blobs\\53\\53dbce1e19aa713cbb12ee0bc4d206143b45ab15e6ffbfcaa8f69572d4d24d50"
+    },
+    "index.html": {
+      "hash": "7321428e4cd0a3ea984ba129baa406589e96384adb644a13dd3d6979a98ace0b",
+      "content": "C:\\Users\\CJ Baldonado\\.cache\\hyperframes\\history\\fe935c06-b0a8-4841-9334-28f8cf0ecc24\\blobs\\73\\7321428e4cd0a3ea984ba129baa406589e96384adb644a13dd3d6979a98ace0b"
+    },
+    "meta.json": {
+      "hash": "67720409deffe677a2d79a5fbc694de3c6a5622bcda2f408973248549ddf04c3",
+      "content": "C:\\Users\\CJ Baldonado\\.cache\\hyperframes\\history\\fe935c06-b0a8-4841-9334-28f8cf0ecc24\\blobs\\67\\67720409deffe677a2d79a5fbc694de3c6a5622bcda2f408973248549ddf04c3"
+    },
+    "package.json": {
+      "hash": "4bc1ba6fa9ba152a40aa40db694c2b5c82807ed9e35339ca0474ac53e5278a1d",
+      "content": "C:\\Users\\CJ Baldonado\\.cache\\hyperframes\\history\\fe935c06-b0a8-4841-9334-28f8cf0ecc24\\blobs\\4b\\4bc1ba6fa9ba152a40aa40db694c2b5c82807ed9e35339ca0474ac53e5278a1d"
+    },
+    "assets/music/bgm.mp3": {
+      "hash": "aa56ab1cdcbef6b05566c6a7c114323078580ccf6a740a9e6c6b6c4b40b4389f",
+      "content": "C:\\Users\\CJ Baldonado\\.cache\\hyperframes\\history\\fe935c06-b0a8-4841-9334-28f8cf0ecc24\\blobs\\aa\\aa56ab1cdcbef6b05566c6a7c114323078580ccf6a740a9e6c6b6c4b40b4389f"
+    },
+    "assets/voiceover.wav": {
+      "hash": "4d762fa14e96c01fabc5497c5b0e4e87d36b92551f4078b6301f1052c37b02af",
+      "content": "C:\\Users\\CJ Baldonado\\.cache\\hyperframes\\history\\fe935c06-b0a8-4841-9334-28f8cf0ecc24\\blobs\\4d\\4d762fa14e96c01fabc5497c5b0e4e87d36b92551f4078b6301f1052c37b02af"
+    }
+  },
+  "revisions": {
+    "18fc395f-7f96-495d-a0f6-1562a7ad2646": {
+      "actor": {
+        "kind": "outside",
+        "name": "Outside"
+      },
+      "label": "Changed outside the app",
+      "startedAt": 1792373579121,
+      "endedAt": 1792373579124,
+      "files": {
+        "index.html": {
+          "before": "C:\\Users\\CJ Baldonado\\.cache\\hyperframes\\history\\fe935c06-b0a8-4841-9334-28f8cf0ecc24\\blobs\\76\\760d55cfceb4655dc68fac1c6b2614f46d4b02bd75264a7ae46b6f3ee7ed1978",
+          "after": "C:\\Users\\CJ Baldonado\\.cache\\hyperframes\\history\\fe935c06-b0a8-4841-9334-28f8cf0ecc24\\blobs\\a7\\a741d57294cb00e8d95c593c718ca875b87b9ff1af51e8c717284c63223e2cca"
+        }
+      }
+    },
+    "f40e738c-ab36-4781-9406-e3b6201df477": {
+      "actor": {
+        "kind": "outside",
+        "name": "Outside"
+      },
+      "label": "Changed outside the app",
+      "startedAt": 1792373632690,
+      "endedAt": 1792373632691,
+      "files": {
+        "index.html": {
+          "before": "C:\\Users\\CJ Baldonado\\.cache\\hyperframes\\history\\fe935c06-b0a8-4841-9334-28f8cf0ecc24\\blobs\\a7\\a741d57294cb00e8d95c593c718ca875b87b9ff1af51e8c717284c63223e2cca",
+          "after": "C:\\Users\\CJ Baldonado\\.cache\\hyperframes\\history\\fe935c06-b0a8-4841-9334-28f8cf0ecc24\\blobs\\6c\\6cdc220671f94d86068afeaf25ddf5132d138b4468e4702d9cb2e006e7b3778b"
+        }
+      }
+    },
+    "463a4647-80c0-477b-848a-a6cf4975edbf": {
+      "actor": {
+        "kind": "outside",
+        "name": "Outside"
+      },
+      "label": "Changed outside the app",
+      "startedAt": 1792374518193,
+      "endedAt": 1792374518909,
+      "files": {
+        "assets/ITMS_LOGO.png": {
+          "before": "C:\\Users\\CJ Baldonado\\.cache\\hyperframes\\history\\fe935c06-b0a8-4841-9334-28f8cf0ecc24\\blobs\\d6\\d67ea345b685e64028cbe3ad3e2d9290a69692ae0a9baa4fb801b028fee9c28a",
+          "after": "C:\\Users\\CJ Baldonado\\.cache\\hyperframes\\history\\fe935c06-b0a8-4841-9334-28f8cf0ecc24\\blobs\\47\\479ef4812af785853d5fdfa8b8572ac5a4208701c678100537d9f54e3df91d65"
+        },
+        "assets/PNP_LOGO.png": {
+          "before": "C:\\Users\\CJ Baldonado\\.cache\\hyperframes\\history\\fe935c06-b0a8-4841-9334-28f8cf0ecc24\\blobs\\65\\65d30ea463fb1bfc38b2d6f79e4fce1c5ef9b96adf01a3263dc4e50d1328a37b",
+          "after": "C:\\Users\\CJ Baldonado\\.cache\\hyperframes\\history\\fe935c06-b0a8-4841-9334-28f8cf0ecc24\\blobs\\6a\\6a233eb4e5f837f896266711e90eb917741f59f164ee37a88b9e75a8c4121880"
+        },
+        "assets/screens/01_splash_loader.png": {
+          "before": "C:\\Users\\CJ Baldonado\\.cache\\hyperframes\\history\\fe935c06-b0a8-4841-9334-28f8cf0ecc24\\blobs\\fb\\fb8c39cfec20c5cec887af716c86d9dc8c65a7b21a65808d6f631dee1810899c",
+          "after": "C:\\Users\\CJ Baldonado\\.cache\\hyperframes\\history\\fe935c06-b0a8-4841-9334-28f8cf0ecc24\\blobs\\c1\\c18eef6657ab819e7cefe7f95cb7dcee11e539eccd51e5abd9cf8a5e6a9c5c02"
+        },
+        "assets/screens/02_sign_in.png": {
+          "before": "C:\\Users\\CJ Baldonado\\.cache\\hyperframes\\history\\fe935c06-b0a8-4841-9334-28f8cf0ecc24\\blobs\\5a\\5af8f817bfc4750316a2a9c5e9f7c01c4d68ce34b740b8cf98f8339ea61b21eb",
+          "after": "C:\\Users\\CJ Baldonado\\.cache\\hyperframes\\history\\fe935c06-b0a8-4841-9334-28f8cf0ecc24\\blobs\\7f\\7f6235b0c136c723c4ef1a92653297bdac1e616a44ee121d8ed1825ba2feb4b9"
+        },
+        "assets/screens/03_terms_legal.png": {
+          "before": "C:\\Users\\CJ Baldonado\\.cache\\hyperframes\\history\\fe935c06-b0a8-4841-9334-28f8cf0ecc24\\blobs\\f9\\f932355fa6c42cee2c018b4f34346415186cca3ac1619fc61dc059766c15c657",
+          "after": "C:\\Users\\CJ Baldonado\\.cache\\hyperframes\\history\\fe935c06-b0a8-4841-9334-28f8cf0ecc24\\blobs\\dc\\dc1a7981f7fd57aa48cc270b116094b92261112e33b087837c36b3035afd9bfc"
+        },
+        "assets/screens/04_intern_dashboard.png": {
+          "before": "C:\\Users\\CJ Baldonado\\.cache\\hyperframes\\history\\fe935c06-b0a8-4841-9334-28f8cf0ecc24\\blobs\\51\\51b77885e418f75169557ef94c40d8925cd812a23f48a792ec9394a88b91a95c",
+          "after": "C:\\Users\\CJ Baldonado\\.cache\\hyperframes\\history\\fe935c06-b0a8-4841-9334-28f8cf0ecc24\\blobs\\4f\\4f452a56dd18af0c3361417d5b1808a7c3404ac6e896e95260253ec3f7c62d29"
+        },
+        "assets/screens/05_attendance_verification_gate.png": {
+          "before": "C:\\Users\\CJ Baldonado\\.cache\\hyperframes\\history\\fe935c06-b0a8-4841-9334-28f8cf0ecc24\\blobs\\82\\82d166eb579bd886dccacd751a2d24b58a51720ca50704206f4582a02e6dad07",
+          "after": "C:\\Users\\CJ Baldonado\\.cache\\hyperframes\\history\\fe935c06-b0a8-4841-9334-28f8cf0ecc24\\blobs\\bf\\bf7e2cf7be22a8486141b2be112b2bcd8b94d3d3f1e2bcddf156c874204c94d5"
+        },
+        "assets/screens/06_attendance_completed.png": {
+          "before": "C:\\Users\\CJ Baldonado\\.cache\\hyperframes\\history\\fe935c06-b0a8-4841-9334-28f8cf0ecc24\\blobs\\55\\55247e31c1428b228bddecc14a0dab7ebc51dbb61fc91430c5707e6dc40daf7d",
+          "after": "C:\\Users\\CJ Baldonado\\.cache\\hyperframes\\history\\fe935c06-b0a8-4841-9334-28f8cf0ecc24\\blobs\\3a\\3aab6d7e19b41a7de4000743309e4859dc00fdee79b741dc300714286dc6d848"
+        },
+        "assets/screens/07_dtr_export.png": {
+          "before": "C:\\Users\\CJ Baldonado\\.cache\\hyperframes\\history\\fe935c06-b0a8-4841-9334-28f8cf0ecc24\\blobs\\ff\\ff556c03b9c6798339ebfd692240f4be8bd91684de762d83faf852a52ef0b1e9",
+          "after": "C:\\Users\\CJ Baldonado\\.cache\\hyperframes\\history\\fe935c06-b0a8-4841-9334-28f8cf0ecc24\\blobs\\bb\\bb0dfb5b9b06c50fe95f2878b87edba8770a63e6aaf4c1c9fb01894645ea7940"
+        },
+        "assets/screens/08_my_documents.png": {
+          "before": "C:\\Users\\CJ Baldonado\\.cache\\hyperframes\\history\\fe935c06-b0a8-4841-9334-28f8cf0ecc24\\blobs\\f4\\f4dbc400e5dc9ba6787d666aaa400dd290272768accfb67715a6b899585288fb",
+          "after": "C:\\Users\\CJ Baldonado\\.cache\\hyperframes\\history\\fe935c06-b0a8-4841-9334-28f8cf0ecc24\\blobs\\63\\63dac6eda943e4421e4b6df95e3f7d6250ebbf59ee988ff2d78079b6e72befdd"
+        },
+        "assets/voiceover.wav": {
+          "before": "C:\\Users\\CJ Baldonado\\.cache\\hyperframes\\history\\fe935c06-b0a8-4841-9334-28f8cf0ecc24\\blobs\\cb\\cb72676ab72a08d5f508ac3c16da78bcf3aa6c8a5a3e203ba7bbedb3ba81d5f5",
+          "after": "C:\\Users\\CJ Baldonado\\.cache\\hyperframes\\history\\fe935c06-b0a8-4841-9334-28f8cf0ecc24\\blobs\\4d\\4d762fa14e96c01fabc5497c5b0e4e87d36b92551f4078b6301f1052c37b02af"
+        },
+        "index.html": {
+          "before": "C:\\Users\\CJ Baldonado\\.cache\\hyperframes\\history\\fe935c06-b0a8-4841-9334-28f8cf0ecc24\\blobs\\6c\\6cdc220671f94d86068afeaf25ddf5132d138b4468e4702d9cb2e006e7b3778b",
+          "after": "C:\\Users\\CJ Baldonado\\.cache\\hyperframes\\history\\fe935c06-b0a8-4841-9334-28f8cf0ecc24\\blobs\\73\\7321428e4cd0a3ea984ba129baa406589e96384adb644a13dd3d6979a98ace0b"
+        }
+      }
+    }
+  },
+  "checks": {
+    "latest": {
+      "revision": "463a4647-80c0-477b-848a-a6cf4975edbf",
+      "id": "2d6b0aac-a63d-4727-945b-ebc7d2d86f5b"
+    },
+    "revisions": {
+      "18fc395f-7f96-495d-a0f6-1562a7ad2646": [
+        {
+          "id": "6e02c2de-7cd8-46cd-991b-485835dd7709",
+          "scope": "project",
+          "metadata": {
+            "ok": true,
+            "browserSkipped": false,
+            "options": {
+              "samples": 9,
+              "atTransitions": false,
+              "maxIssues": 80,
+              "collapseStatic": true,
+              "tolerance": 2,
+              "timeout": 3000,
+              "contrast": true,
+              "strict": false,
+              "snapshots": false,
+              "browserGpuMode": "auto"
+            }
+          },
+          "createdAt": 1792373602538,
+          "contentHash": "26ff560e4cb91103bbe9350a46904ee344f2827e4f604f48fe286e35a42dbec1",
+          "revision": "18fc395f-7f96-495d-a0f6-1562a7ad2646",
+          "inputFingerprint": "e38a9365430d8722a78123ae3ee455a41c6f06d80c623f237fdf7f72cee71616",
+          "inputScope": "local-project-files",
+          "attribution": "recorded-revision",
+          "status": "cleaned",
+          "cleanedAfterRender": "106d3ad8-89ca-472d-8829-db65ac5581f2"
+        }
+      ],
+      "f40e738c-ab36-4781-9406-e3b6201df477": [
+        {
+          "id": "2f205631-4576-4798-a182-f613c1e9a527",
+          "scope": "project",
+          "report": "C:\\Users\\CJ Baldonado\\Documents\\GitHub\\PNP-ITMS-INTERNSHIP-ATTENDANCE\\brag-output\\composition\\.hyperframes\\artifacts\\checks\\2f205631-4576-4798-a182-f613c1e9a527.json",
+          "metadata": {
+            "ok": true,
+            "browserSkipped": false,
+            "options": {
+              "samples": 9,
+              "atTransitions": false,
+              "maxIssues": 80,
+              "collapseStatic": true,
+              "tolerance": 2,
+              "timeout": 3000,
+              "contrast": true,
+              "strict": false,
+              "snapshots": false,
+              "browserGpuMode": "auto"
+            }
+          },
+          "createdAt": 1792373646928,
+          "contentHash": "f9372c50a9f5b7f5d7f75ebe6dbdb3d83ef743a8b9ab0a0fbe566f305b1a12c3",
+          "revision": "f40e738c-ab36-4781-9406-e3b6201df477",
+          "inputFingerprint": "9f3e57d7bd96f052df7346aa6500b4e30d38ba793c52aadeeee24e0a06ff97c3",
+          "inputScope": "local-project-files",
+          "attribution": "recorded-revision"
+        }
+      ],
+      "463a4647-80c0-477b-848a-a6cf4975edbf": [
+        {
+          "id": "2d6b0aac-a63d-4727-945b-ebc7d2d86f5b",
+          "scope": "project",
+          "report": "C:\\Users\\CJ Baldonado\\Documents\\GitHub\\PNP-ITMS-INTERNSHIP-ATTENDANCE\\brag-output\\composition\\.hyperframes\\artifacts\\checks\\2d6b0aac-a63d-4727-945b-ebc7d2d86f5b.json",
+          "metadata": {
+            "ok": true,
+            "browserSkipped": false,
+            "options": {
+              "samples": 9,
+              "atTransitions": false,
+              "maxIssues": 80,
+              "collapseStatic": true,
+              "tolerance": 2,
+              "timeout": 3000,
+              "contrast": true,
+              "strict": false,
+              "snapshots": false,
+              "browserGpuMode": "auto"
+            }
+          },
+          "createdAt": 1792374537125,
+          "contentHash": "8b6eed107c0e1bdfd28f6e07a4526ff89e69c3361f26c7c597bfd0d0e402a52a",
+          "revision": "463a4647-80c0-477b-848a-a6cf4975edbf",
+          "inputFingerprint": "07de1d1792c877f84a0fc0fc88c1fc9e8c49e0fd94f37102f9585d1814ba4a5f",
+          "inputScope": "local-project-files",
+          "attribution": "recorded-revision"
+        }
+      ]
+    },
+    "unversioned": [
+      {
+        "id": "e3bcbc6d-c6ad-4176-be79-a5d459c26536",
+        "scope": "project",
+        "report": "C:\\Users\\CJ Baldonado\\Documents\\GitHub\\PNP-ITMS-INTERNSHIP-ATTENDANCE\\brag-output\\composition\\.hyperframes\\artifacts\\checks\\e3bcbc6d-c6ad-4176-be79-a5d459c26536.json",
+        "metadata": {
+          "ok": false,
+          "browserSkipped": true,
+          "options": {
+            "samples": 9,
+            "atTransitions": false,
+            "maxIssues": 80,
+            "collapseStatic": true,
+            "tolerance": 2,
+            "timeout": 3000,
+            "contrast": true,
+            "strict": false,
+            "snapshots": false,
+            "browserGpuMode": "auto"
+          }
+        },
+        "createdAt": 1792373521438,
+        "contentHash": "2bff69fd34cbfd522b5ac17ebb0f8e2c42f2bbbdbab62e3e449a4a0f715e78f1",
+        "revision": null,
+        "inputFingerprint": "9d334214be3119aff0636937132f6a94ad4b064c5f0a4fd3d6bd423f21930a1e",
+        "inputScope": "local-project-files",
+        "attribution": "unversioned"
+      }
+    ]
+  },
+  "snapshots": {
+    "latest": null,
+    "revisions": {},
+    "unversioned": []
+  },
+  "renders": {
+    "latest": {
+      "id": "e7ac1400-3d43-453e-8cbc-7740403ce2c6",
+      "completedAt": 1792374740296,
+      "output": "C:\\Users\\CJ Baldonado\\Documents\\GitHub\\PNP-ITMS-INTERNSHIP-ATTENDANCE\\brag-output\\brag.mp4",
+      "status": "completed",
+      "revision": "463a4647-80c0-477b-848a-a6cf4975edbf"
+    },
+    "retainedRevisions": [
+      "463a4647-80c0-477b-848a-a6cf4975edbf",
+      "f40e738c-ab36-4781-9406-e3b6201df477"
+    ]
+  },
+  "pendingArtifactCleanup": []
+}

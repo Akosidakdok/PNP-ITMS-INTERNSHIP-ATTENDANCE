@@ -1,0 +1,1052 @@
+<!doctype html>
+<html lang="en" data-resolution="landscape">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>PNP Internship Attendance System (P-IDTMS) Showcase</title>
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Outfit:wght@600;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      *, *::before, *::after {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html, body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #030712;
+        font-family: 'Inter', system-ui, sans-serif;
+        color: #f8fafc;
+        -webkit-font-smoothing: antialiased;
+      }
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: radial-gradient(ellipse at 50% 25%, #001948 0%, #030a1e 55%, #01040d 100%);
+        perspective: 1400px;
+      }
+
+      /* 3D Grid & Institutional Depth Elements */
+      .bg-grid {
+        position: absolute;
+        inset: -200px;
+        background-image: 
+          linear-gradient(rgba(56, 189, 248, 0.04) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(56, 189, 248, 0.04) 1px, transparent 1px);
+        background-size: 64px 64px;
+        transform: rotateX(60deg) translateY(-80px);
+        transform-origin: 50% 0%;
+        pointer-events: none;
+        z-index: 1;
+        opacity: 0.8;
+      }
+
+      /* Ambient Light Glows */
+      .bloom {
+        position: absolute;
+        border-radius: 9999px;
+        filter: blur(150px);
+        pointer-events: none;
+        z-index: 2;
+      }
+      .bloom-1 { top: -80px; left: 15%; width: 700px; height: 500px; background: rgba(30, 64, 175, 0.25); }
+      .bloom-2 { bottom: -100px; right: 10%; width: 800px; height: 600px; background: rgba(56, 189, 248, 0.15); }
+      .bloom-3 { top: 40%; left: 35%; width: 500px; height: 500px; background: rgba(234, 179, 8, 0.08); }
+
+      /* Persistent Top Branding Header */
+      .header-bar {
+        position: absolute;
+        top: 36px;
+        left: 80px;
+        right: 80px;
+        height: 60px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        z-index: 50;
+      }
+      .header-brand {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+      }
+      .header-logo-group {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+      }
+      .header-logo {
+        width: 48px;
+        height: 48px;
+        object-fit: contain;
+        background: transparent;
+        border: none;
+        filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.6));
+      }
+      .header-title-box {
+        display: flex;
+        flex-direction: column;
+      }
+      .header-main-title {
+        font-family: 'Outfit', sans-serif;
+        font-size: 24px;
+        font-weight: 800;
+        letter-spacing: -0.02em;
+        color: #ffffff;
+      }
+      .header-sub-title {
+        font-size: 13px;
+        font-weight: 500;
+        color: #93c5fd;
+        letter-spacing: 0.02em;
+      }
+      .header-status-badge {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        background: rgba(15, 23, 42, 0.7);
+        border: 1px solid rgba(56, 189, 248, 0.3);
+        backdrop-filter: blur(12px);
+        padding: 8px 20px;
+        border-radius: 9999px;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 13px;
+        font-weight: 600;
+        color: #38bdf8;
+      }
+      .status-pulse {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #10b981;
+        box-shadow: 0 0 10px #10b981;
+      }
+
+      /* Persistent Caption Subtitle Pill */
+      .caption-container {
+        position: absolute;
+        bottom: 34px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 50;
+        width: 100%;
+        max-width: 1360px;
+        display: flex;
+        justify-content: center;
+      }
+      .caption-pill {
+        background: rgba(4, 12, 30, 0.88);
+        border: 1px solid rgba(56, 189, 248, 0.35);
+        backdrop-filter: blur(16px);
+        padding: 12px 32px;
+        border-radius: 20px;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        box-shadow: 0 15px 40px rgba(0, 0, 0, 0.6);
+      }
+      .caption-bullet {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: #eab308;
+        box-shadow: 0 0 12px #eab308;
+      }
+      .caption-text {
+        font-size: 18px;
+        font-weight: 500;
+        color: #f8fafc;
+        line-height: 1.4;
+      }
+
+      /* Scene Viewport */
+      .scene {
+        position: absolute;
+        inset: 0;
+        width: 1920px;
+        height: 1080px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 20;
+        perspective: 1400px;
+        transform-style: preserve-3d;
+      }
+
+      /* Pure Transparent Phone Frame (Only the real phone is visible!) */
+      .phone-frame {
+        position: relative;
+        width: 387px;
+        height: 784px;
+        background: transparent;
+        border: none;
+        box-shadow: none;
+        filter: drop-shadow(0 30px 60px rgba(0, 0, 0, 0.85)) drop-shadow(0 0 35px rgba(56, 189, 248, 0.22));
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transform-style: preserve-3d;
+        flex-shrink: 0;
+      }
+      .phone-img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        display: block;
+      }
+
+      /* HUD Metric and Feature Cards */
+      .hud-card {
+        background: rgba(8, 20, 50, 0.85);
+        border: 1px solid rgba(56, 189, 248, 0.35);
+        backdrop-filter: blur(14px);
+        border-radius: 18px;
+        padding: 24px 28px;
+        box-shadow: 0 20px 45px rgba(0, 0, 0, 0.6);
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .hud-tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 12px;
+        font-weight: 700;
+        color: #38bdf8;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+      .hud-title {
+        font-family: 'Outfit', sans-serif;
+        font-size: 26px;
+        font-weight: 800;
+        color: #ffffff;
+        line-height: 1.2;
+      }
+      .hud-desc {
+        font-size: 15px;
+        font-weight: 400;
+        color: #93c5fd;
+        line-height: 1.5;
+        max-width: 460px;
+      }
+
+      .badge-verified {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        background: rgba(16, 185, 129, 0.18);
+        border: 1px solid rgba(52, 211, 153, 0.4);
+        color: #34d399;
+        padding: 6px 14px;
+        border-radius: 9999px;
+        font-weight: 700;
+        font-size: 13px;
+      }
+      .badge-official {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        background: rgba(234, 179, 8, 0.18);
+        border: 1px solid rgba(250, 204, 21, 0.45);
+        color: #facc15;
+        padding: 6px 16px;
+        border-radius: 9999px;
+        font-weight: 700;
+        font-size: 13px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+
+      /* ═══════════════════════════════════════════════════════════════════ */
+      /* SCENE SPECIFIC STYLES                                               */
+      /* ═══════════════════════════════════════════════════════════════════ */
+
+      /* Scene 1: Opening Reveal (Logos with NO background) */
+      .s1-wrap {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        z-index: 10;
+        transform-style: preserve-3d;
+      }
+      .s1-emblem-cluster {
+        display: flex;
+        align-items: center;
+        gap: 40px;
+        margin-bottom: 24px;
+        transform-style: preserve-3d;
+      }
+      .s1-emblem-card {
+        width: 140px;
+        height: 140px;
+        background: transparent;
+        border: none;
+        padding: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        filter: drop-shadow(0 15px 35px rgba(0, 0, 0, 0.75)) drop-shadow(0 0 25px rgba(56, 189, 248, 0.25));
+      }
+      .s1-emblem-card img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+      }
+      .s1-headline {
+        font-family: 'Outfit', sans-serif;
+        font-size: 68px;
+        font-weight: 900;
+        letter-spacing: -0.03em;
+        line-height: 1.1;
+        color: #ffffff;
+        margin-bottom: 16px;
+        text-shadow: 0 6px 30px rgba(0, 0, 0, 0.7);
+        max-width: 1400px;
+      }
+      .s1-highlight {
+        background: linear-gradient(135deg, #38bdf8 0%, #60a5fa 50%, #facc15 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+      }
+      .s1-subline {
+        font-size: 24px;
+        font-weight: 500;
+        color: #bfdbfe;
+        letter-spacing: 0.02em;
+        max-width: 1000px;
+        margin-bottom: 30px;
+      }
+      .s1-pill-row {
+        display: flex;
+        gap: 16px;
+      }
+
+      /* Scene 2: 3-Phone Access Perspective */
+      .s2-stage {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 48px;
+        width: 100%;
+        padding: 0 100px;
+        transform-style: preserve-3d;
+      }
+      .s2-side-info {
+        display: flex;
+        flex-direction: column;
+        gap: 24px;
+        max-width: 440px;
+      }
+
+      /* Scene 3: Intern Dashboard Hero */
+      .s3-stage {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 80px;
+        width: 100%;
+        padding: 0 120px;
+        transform-style: preserve-3d;
+      }
+      .s3-metrics-col {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+        width: 520px;
+      }
+      .metric-highlight-card {
+        background: rgba(7, 18, 45, 0.85);
+        border: 1px solid rgba(56, 189, 248, 0.35);
+        border-radius: 18px;
+        padding: 20px 24px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .metric-val {
+        font-family: 'Outfit', sans-serif;
+        font-size: 32px;
+        font-weight: 800;
+        color: #38bdf8;
+      }
+
+      /* Scene 4: 2-Factor Biometric Attendance */
+      .s4-stage {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 60px;
+        width: 100%;
+        padding: 0 100px;
+        transform-style: preserve-3d;
+      }
+      .s4-step-connector {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 12px;
+        padding: 0 10px;
+      }
+      .laser-line {
+        width: 120px;
+        height: 3px;
+        background: linear-gradient(90deg, #38bdf8, #10b981);
+        box-shadow: 0 0 14px #38bdf8;
+      }
+
+      /* Scene 5: Digital DTR Civil Service */
+      .s5-stage {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 80px;
+        width: 100%;
+        padding: 0 120px;
+        transform-style: preserve-3d;
+      }
+
+      /* Scene 6: Documents Repository */
+      .s6-stage {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 80px;
+        width: 100%;
+        padding: 0 120px;
+        transform-style: preserve-3d;
+      }
+
+      /* Scene 7: Multi-Screen 3D Wall & Clean Outro */
+      .s7-wall-stage {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transform-style: preserve-3d;
+      }
+      .s7-wall-phone {
+        position: absolute;
+        width: 290px;
+        height: 587px;
+        background: transparent;
+        border: none;
+        box-shadow: none;
+        filter: drop-shadow(0 20px 40px rgba(0, 0, 0, 0.85)) drop-shadow(0 0 25px rgba(56, 189, 248, 0.18));
+      }
+      .s7-wall-phone img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+      }
+      .s7-center-overlay {
+        position: absolute;
+        z-index: 50;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        background: rgba(3, 10, 28, 0.96);
+        border: 2px solid rgba(56, 189, 248, 0.5);
+        backdrop-filter: blur(24px);
+        padding: 48px 64px;
+        border-radius: 32px;
+        box-shadow: 0 35px 90px rgba(0, 0, 0, 0.95), 0 0 60px rgba(56, 189, 248, 0.35);
+      }
+      .s7-headline {
+        font-family: 'Outfit', sans-serif;
+        font-size: 54px;
+        font-weight: 900;
+        color: #ffffff;
+        margin-top: 16px;
+        margin-bottom: 12px;
+      }
+      .s7-subheadline {
+        font-size: 20px;
+        color: #93c5fd;
+        max-width: 820px;
+        line-height: 1.5;
+        margin-bottom: 24px;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="60"
+      data-width="1920"
+      data-height="1080"
+    >
+      <!-- Background Grid & Dynamic Atmospheric Blooms -->
+      <div class="bg-grid"></div>
+      <div class="bloom bloom-1" data-layout-allow-overflow></div>
+      <div class="bloom bloom-2" data-layout-allow-overflow></div>
+      <div class="bloom bloom-3" data-layout-allow-overflow></div>
+
+      <!-- Persistent Top Header Watermark (Logos with NO background) -->
+      <div id="header-bar" class="header-bar clip" data-start="0" data-duration="60" data-track-index="15">
+        <div class="header-brand">
+          <div class="header-logo-group">
+            <img src="assets/PNP_LOGO.png" alt="PNP Seal" class="header-logo" />
+            <img src="assets/ITMS_LOGO.png" alt="ITMS Logo" class="header-logo" />
+          </div>
+          <div class="header-title-box">
+            <div class="header-main-title">PNP-IDTMS</div>
+            <div class="header-sub-title">Information Technology and Daily Time Management System</div>
+          </div>
+        </div>
+        <div class="header-status-badge">
+          <div class="status-pulse"></div>
+          <span>OFFICIAL SECURE SYSTEM</span>
+        </div>
+      </div>
+
+      <!-- Persistent Dynamic Voiceover Caption Bar -->
+      <div id="caption-container" class="caption-container clip" data-start="0" data-duration="60" data-track-index="14">
+        <div class="caption-pill">
+          <div class="caption-bullet"></div>
+          <div id="captionText" class="caption-text">
+            Welcome to the Philippine National Police Internship Attendance and Time Management System.
+          </div>
+        </div>
+      </div>
+
+      <!-- Audio Tracks: Background Music & Master Voiceover -->
+      <audio
+        id="bgm"
+        class="clip"
+        data-start="0"
+        data-duration="60"
+        data-track-index="16"
+        data-volume="0.18"
+        src="assets/music/bgm.mp3"
+      ></audio>
+
+      <audio
+        id="vo"
+        class="clip"
+        data-start="0"
+        data-duration="60"
+        data-track-index="17"
+        data-volume="1.0"
+        src="assets/voiceover.wav"
+      ></audio>
+
+      <!-- ═══════════════════════════════════════════════════════════════════ -->
+      <!-- SCENE 1: INSTITUTIONAL OPENING & EMBLEM REVEAL (0.0s – 6.0s)        -->
+      <!-- ═══════════════════════════════════════════════════════════════════ -->
+      <div
+        id="scene1"
+        class="scene clip"
+        data-start="0"
+        data-duration="6.0"
+        data-track-index="1"
+      >
+        <div class="s1-wrap" id="s1Content">
+          <div class="s1-emblem-cluster">
+            <div class="s1-emblem-card" id="s1LogoPnp">
+              <img src="assets/PNP_LOGO.png" alt="Philippine National Police" />
+            </div>
+            <div class="s1-emblem-card" id="s1LogoItms">
+              <img src="assets/ITMS_LOGO.png" alt="Information Technology Management Service" />
+            </div>
+          </div>
+          <div class="badge-official" style="margin-bottom: 20px;">
+            Philippine National Police • ITMS
+          </div>
+          <h1 class="s1-headline">
+            PNP INTERNSHIP <br />
+            <span class="s1-highlight">ATTENDANCE SYSTEM</span>
+          </h1>
+          <p class="s1-subline">
+            Personnel Information and Daily Time Management System (P-IDTMS)
+          </p>
+          <div class="s1-pill-row">
+            <span class="badge-verified">✓ 2-Factor Biometric Verification</span>
+            <span class="badge-verified">✓ Automated DTR Form 48</span>
+            <span class="badge-verified">✓ Secure Document Vault</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══════════════════════════════════════════════════════════════════ -->
+      <!-- SCENE 2: MOBILE ACCESS & LEGAL AUTHORIZATION (6.0s – 14.0s)         -->
+      <!-- ═══════════════════════════════════════════════════════════════════ -->
+      <div
+        id="scene2"
+        class="scene clip"
+        data-start="6.0"
+        data-duration="8.0"
+        data-track-index="2"
+      >
+        <div class="s2-stage">
+          <div class="s2-side-info" id="s2TextCol">
+            <div class="hud-tag">AUTHENTICATION & COMPLIANCE</div>
+            <h2 class="hud-title">Secured Access & Official Terms Verification</h2>
+            <p class="hud-desc">
+              PWA mobile application initializes encrypted internal modules with multi-tier credential authentication and mandatory legal data policy agreement.
+            </p>
+            <div class="hud-card">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span class="badge-verified">End-to-End Encryption</span>
+                <span style="font-size: 13px; color: #94a3b8; font-family: 'JetBrains Mono', monospace;">TLS 1.3</span>
+              </div>
+              <div style="font-size: 14px; color: #cbd5e1; margin-top: 6px;">
+                Strict access control configured for PNP supervisors and university interns.
+              </div>
+            </div>
+          </div>
+
+          <!-- Left Phone: Splash Loader -->
+          <div class="phone-frame" id="s2Phone1">
+            <img src="assets/screens/01_splash_loader.png" alt="P-IDTMS Splash Loader" class="phone-img" />
+          </div>
+
+          <!-- Center Phone: Sign In Portal -->
+          <div class="phone-frame" id="s2Phone2" style="z-index: 10;">
+            <img src="assets/screens/02_sign_in.png" alt="Sign In Portal" class="phone-img" />
+          </div>
+
+          <!-- Right Phone: Legal Terms -->
+          <div class="phone-frame" id="s2Phone3">
+            <img src="assets/screens/03_terms_legal.png" alt="Legal Terms Acceptance" class="phone-img" />
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══════════════════════════════════════════════════════════════════ -->
+      <!-- SCENE 3: LIVE INTERN DASHBOARD & PROGRESS (14.0s – 22.0s)           -->
+      <!-- ═══════════════════════════════════════════════════════════════════ -->
+      <div
+        id="scene3"
+        class="scene clip"
+        data-start="14.0"
+        data-duration="8.0"
+        data-track-index="3"
+      >
+        <div class="s3-stage">
+          <!-- Hero Phone: Intern Dashboard -->
+          <div class="phone-frame" id="s3HeroPhone">
+            <img src="assets/screens/04_intern_dashboard.png" alt="Intern Dashboard" class="phone-img" />
+          </div>
+
+          <!-- Metrics Callouts -->
+          <div class="s3-metrics-col" id="s3Metrics">
+            <div class="hud-tag">REAL-TIME MONITORING</div>
+            <h2 class="hud-title">Comprehensive Internship Progress Dashboard</h2>
+            <p class="hud-desc">
+              Interns and training officers monitor hours required, rendered duty time, and biometric enrollment status with live synchronization.
+            </p>
+
+            <div class="metric-highlight-card">
+              <div>
+                <div style="font-size: 13px; font-weight: 600; color: #94a3b8; text-transform: uppercase;">Required Duty</div>
+                <div style="font-size: 15px; color: #e2e8f0; font-weight: 500;">Academic OJT Requirement</div>
+              </div>
+              <div class="metric-val">300 Hours</div>
+            </div>
+
+            <div class="metric-highlight-card">
+              <div>
+                <div style="font-size: 13px; font-weight: 600; color: #94a3b8; text-transform: uppercase;">Security Enrollment</div>
+                <div style="font-size: 15px; color: #e2e8f0; font-weight: 500;">Facial Biometrics</div>
+              </div>
+              <div class="badge-official">Face ID Required</div>
+            </div>
+
+            <div class="metric-highlight-card">
+              <div>
+                <div style="font-size: 13px; font-weight: 600; color: #94a3b8; text-transform: uppercase;">Affiliated Institution</div>
+                <div style="font-size: 15px; color: #e2e8f0; font-weight: 500;">Pamantasan ng Lungsod ng Valenzuela</div>
+              </div>
+              <div style="font-family: 'JetBrains Mono', monospace; font-size: 18px; color: #38bdf8; font-weight: 700;">BSIT</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══════════════════════════════════════════════════════════════════ -->
+      <!-- SCENE 4: 2-FACTOR BIOMETRIC ATTENDANCE (22.0s – 32.5s)             -->
+      <!-- ═══════════════════════════════════════════════════════════════════ -->
+      <div
+        id="scene4"
+        class="scene clip"
+        data-start="22.0"
+        data-duration="10.5"
+        data-track-index="4"
+      >
+        <div class="s4-stage">
+          <div class="hud-card" id="s4InfoCard" style="max-width: 420px;">
+            <div class="hud-tag">TAMPER-PROOF VERIFICATION</div>
+            <h2 class="hud-title">Two-Factor Attendance Pipeline</h2>
+            <p class="hud-desc">
+              Eliminates proxy clock-ins by chaining dynamic QR code scanning with biometric face verification before committing attendance events.
+            </p>
+            <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 10px;">
+              <div class="badge-verified">1. QR Verification Verified</div>
+              <div class="badge-verified">2. Face Biometrics Verified</div>
+              <div class="badge-verified">3. Attendance Event Recorded</div>
+            </div>
+          </div>
+
+          <!-- Phone Left: Verification Gate -->
+          <div class="phone-frame" id="s4PhoneGate">
+            <img src="assets/screens/05_attendance_verification_gate.png" alt="Verification Gate" class="phone-img" />
+          </div>
+
+          <!-- Animated Connector Line -->
+          <div class="s4-step-connector" id="s4Connector">
+            <div class="laser-line"></div>
+            <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #38bdf8; font-weight: 700;">INSTANT COMMIT</span>
+            <div class="laser-line"></div>
+          </div>
+
+          <!-- Phone Right: Attendance Completed -->
+          <div class="phone-frame" id="s4PhoneDone">
+            <img src="assets/screens/06_attendance_completed.png" alt="Attendance Completed" class="phone-img" />
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══════════════════════════════════════════════════════════════════ -->
+      <!-- SCENE 5: DIGITAL DTR & CIVIL SERVICE EXPORT (32.5s – 43.0s)        -->
+      <!-- ═══════════════════════════════════════════════════════════════════ -->
+      <div
+        id="scene5"
+        class="scene clip"
+        data-start="32.5"
+        data-duration="10.5"
+        data-track-index="5"
+      >
+        <div class="s5-stage">
+          <!-- Phone Display: DTR Export -->
+          <div class="phone-frame" id="s5PhoneDTR">
+            <img src="assets/screens/07_dtr_export.png" alt="Daily Time Record" class="phone-img" />
+          </div>
+
+          <!-- Details & Export Highlights -->
+          <div class="hud-card" id="s5InfoCard" style="max-width: 540px;">
+            <div class="hud-tag">OFFICIAL CIVIL SERVICE FORM 48</div>
+            <h2 class="hud-title">Automated Daily Time Record (DTR)</h2>
+            <p class="hud-desc">
+              Accurately computes daily render times, breaks, and supervisor-approved duty hours with instantaneous generation of official compliance documents.
+            </p>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 10px;">
+              <div style="background: rgba(15, 23, 42, 0.7); padding: 14px 18px; border-radius: 14px; border: 1px solid rgba(56,189,248,0.25);">
+                <div style="font-size: 12px; color: #94a3b8; font-weight: 600;">DAYS PRESENT</div>
+                <div style="font-family: 'Outfit', sans-serif; font-size: 28px; font-weight: 800; color: #38bdf8;">10 Days</div>
+              </div>
+              <div style="background: rgba(15, 23, 42, 0.7); padding: 14px 18px; border-radius: 14px; border: 1px solid rgba(56,189,248,0.25);">
+                <div style="font-size: 12px; color: #94a3b8; font-weight: 600;">TOTAL HOURS</div>
+                <div style="font-family: 'Outfit', sans-serif; font-size: 28px; font-weight: 800; color: #34d399;">80h 00m</div>
+              </div>
+            </div>
+
+            <div style="display: flex; gap: 12px; margin-top: 14px;">
+              <span class="badge-verified">A4 PDF Export</span>
+              <span class="badge-verified">High-Res PNG</span>
+              <span class="badge-verified">Direct Print</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══════════════════════════════════════════════════════════════════ -->
+      <!-- SCENE 6: SECURE DOCUMENT REPOSITORY (43.0s – 51.5s)                 -->
+      <!-- ═══════════════════════════════════════════════════════════════════ -->
+      <div
+        id="scene6"
+        class="scene clip"
+        data-start="43.0"
+        data-duration="8.5"
+        data-track-index="6"
+      >
+        <div class="s6-stage">
+          <div class="hud-card" id="s6InfoCard" style="max-width: 500px;">
+            <div class="hud-tag">CENTRALIZED REPOSITORY</div>
+            <h2 class="hud-title">Secure Personnel & OJT Document Vault</h2>
+            <p class="hud-desc">
+              Organized digital archive for mandatory internship attachments, training certificates, and endorsement orders with verified supervisory approval badges.
+            </p>
+            <div style="background: rgba(15, 23, 42, 0.7); padding: 16px 20px; border-radius: 14px; border: 1px solid rgba(56,189,248,0.25); margin-top: 10px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                <span style="font-family: 'JetBrains Mono', monospace; font-size: 13px; color: #93c5fd;">attendance_attachment:536</span>
+                <span class="badge-verified" style="font-size: 11px; padding: 2px 8px;">Approved</span>
+              </div>
+              <div style="font-size: 13px; color: #94a3b8;">
+                Verified on-site biometric capture record • 222 KB
+              </div>
+            </div>
+          </div>
+
+          <!-- Phone: Documents Vault -->
+          <div class="phone-frame" id="s6PhoneDocs">
+            <img src="assets/screens/08_my_documents.png" alt="My Documents Vault" class="phone-img" />
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══════════════════════════════════════════════════════════════════ -->
+      <!-- SCENE 7: COMPLETE 3D WALL & CLEAN INSTITUTIONAL OUTRO (51.5s – 60.0s)-->
+      <!-- ═══════════════════════════════════════════════════════════════════ -->
+      <div
+        id="scene7"
+        class="scene clip"
+        data-start="51.5"
+        data-duration="8.5"
+        data-track-index="7"
+      >
+        <div class="s7-wall-stage" id="s7Wall">
+          <!-- 3D Layered Panoramic Array of Real Screens (Wide Arc) -->
+          <div class="s7-wall-phone" id="wallPhone1" style="transform: translate3d(-720px, -60px, -180px) rotateY(28deg);">
+            <img src="assets/screens/01_splash_loader.png" alt="Screen 1" />
+          </div>
+          <div class="s7-wall-phone" id="wallPhone2" style="transform: translate3d(-460px, 40px, -70px) rotateY(18deg);">
+            <img src="assets/screens/02_sign_in.png" alt="Screen 2" />
+          </div>
+          <div class="s7-wall-phone" id="wallPhone3" style="transform: translate3d(-220px, -50px, 40px) rotateY(8deg);">
+            <img src="assets/screens/04_intern_dashboard.png" alt="Screen 3" />
+          </div>
+          <div class="s7-wall-phone" id="wallPhone4" style="transform: translate3d(220px, 50px, 40px) rotateY(-8deg);">
+            <img src="assets/screens/05_attendance_verification_gate.png" alt="Screen 4" />
+          </div>
+          <div class="s7-wall-phone" id="wallPhone5" style="transform: translate3d(460px, -40px, -70px) rotateY(-18deg);">
+            <img src="assets/screens/07_dtr_export.png" alt="Screen 5" />
+          </div>
+          <div class="s7-wall-phone" id="wallPhone6" style="transform: translate3d(720px, 60px, -180px) rotateY(-28deg);">
+            <img src="assets/screens/08_my_documents.png" alt="Screen 6" />
+          </div>
+
+          <!-- Hero Center Overlay (Reveals after phones fade back) -->
+          <div class="s7-center-overlay" id="s7Overlay" style="opacity: 0;">
+            <div style="display: flex; align-items: center; justify-content: center; gap: 36px; margin-bottom: 20px;">
+              <img src="assets/PNP_LOGO.png" alt="PNP Logo" style="width: 100px; height: 100px; object-fit: contain; filter: drop-shadow(0 10px 25px rgba(0,0,0,0.8));" />
+              <img src="assets/ITMS_LOGO.png" alt="ITMS Logo" style="width: 100px; height: 100px; object-fit: contain; filter: drop-shadow(0 10px 25px rgba(0,0,0,0.8));" />
+            </div>
+            <div class="badge-official" style="margin-bottom: 16px;">
+              Philippine National Police • ITMS
+            </div>
+            <h1 class="s7-headline" style="margin-top: 0;">PNP INTERNSHIP ATTENDANCE SYSTEM</h1>
+            <p class="s7-subheadline">
+              Modernizing personnel management, digital time records, and biometric verification for the Philippine National Police Information Technology Management Service.
+            </p>
+            <div style="display: flex; gap: 14px;">
+              <span class="badge-verified">✓ One Integrated System</span>
+              <span class="badge-verified">✓ Real-Time Records</span>
+              <span class="badge-verified">✓ Paperless DTR</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- GSAP Motion Timeline -->
+    <script>
+      document.addEventListener('DOMContentLoaded', () => {
+        const tl = gsap.timeline();
+        window.__timelines = window.__timelines || {};
+        window.__timelines['main'] = tl;
+
+        // Dynamic Captions Sync
+        tl.to({}, { duration: 6.0, onStart: () => setCaption("Welcome to the Philippine National Police Internship Attendance and Time Management System.") }, 0.0);
+        tl.to({}, { duration: 8.0, onStart: () => setCaption("Engineered for security, the system initializes encrypted modules with official access and terms verification.") }, 6.0);
+        tl.to({}, { duration: 8.0, onStart: () => setCaption("The intern dashboard delivers live visibility into required hours, rendered duty, and biometric enrollment status.") }, 14.0);
+        tl.to({}, { duration: 10.5, onStart: () => setCaption("Attendance is authenticated through a multi-step verification pipeline, combining QR validation with biometric face recognition.") }, 22.0);
+        tl.to({}, { duration: 10.5, onStart: () => setCaption("Daily Time Records calculate rendered hours automatically, enabling instant review and one-tap A4 Civil Service PDF export.") }, 32.5);
+        tl.to({}, { duration: 8.5, onStart: () => setCaption("Centralized document management secures required OJT attachments and tracks supervisor approval status.") }, 43.0);
+        tl.to({}, { duration: 8.5, onStart: () => setCaption("P-IDTMS: Modernizing internship monitoring for the PNP Information Technology Management Service.") }, 51.5);
+
+        function setCaption(text) {
+          const el = document.getElementById('captionText');
+          if (el) el.textContent = text;
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        // SCENE 1 ANIMATIONS (0.0s - 6.0s)
+        // ═══════════════════════════════════════════════════════════════════
+        tl.fromTo('#s1LogoPnp', 
+          { scale: 0.6, rotationY: 45, opacity: 0 }, 
+          { scale: 1.0, rotationY: 0, opacity: 1, duration: 1.4, ease: 'power3.out' }, 
+          0.2
+        );
+        tl.fromTo('#s1LogoItms', 
+          { scale: 0.6, rotationY: -45, opacity: 0 }, 
+          { scale: 1.0, rotationY: 0, opacity: 1, duration: 1.4, ease: 'power3.out' }, 
+          0.3
+        );
+        tl.fromTo('.s1-headline', 
+          { y: 40, opacity: 0 }, 
+          { y: 0, opacity: 1, duration: 1.2, ease: 'power3.out' }, 
+          0.6
+        );
+        tl.fromTo('.s1-subline', 
+          { y: 25, opacity: 0 }, 
+          { y: 0, opacity: 1, duration: 1.0, ease: 'power2.out' }, 
+          1.0
+        );
+        tl.fromTo('.s1-pill-row', 
+          { y: 20, opacity: 0 }, 
+          { y: 0, opacity: 1, duration: 1.0, ease: 'power2.out' }, 
+          1.3
+        );
+        tl.to('#s1Content', 
+          { scale: 1.05, duration: 3.5, ease: 'sine.inOut' }, 
+          2.0
+        );
+
+        // ═══════════════════════════════════════════════════════════════════
+        // SCENE 2 ANIMATIONS (6.0s - 14.0s)
+        // ═══════════════════════════════════════════════════════════════════
+        tl.fromTo('#s2TextCol', 
+          { x: -80, opacity: 0 }, 
+          { x: 0, opacity: 1, duration: 1.2, ease: 'power3.out' }, 
+          6.2
+        );
+        tl.fromTo('#s2Phone1', 
+          { x: -60, y: 30, rotationY: 28, scale: 0.85, opacity: 0 }, 
+          { x: 0, y: 0, rotationY: 18, scale: 0.92, opacity: 1, duration: 1.4, ease: 'power3.out' }, 
+          6.3
+        );
+        tl.fromTo('#s2Phone2', 
+          { y: 60, scale: 0.9, opacity: 0 }, 
+          { y: 0, scale: 1.04, opacity: 1, duration: 1.5, ease: 'power3.out' }, 
+          6.6
+        );
+        tl.fromTo('#s2Phone3', 
+          { x: 60, y: 30, rotationY: -28, scale: 0.85, opacity: 0 }, 
+          { x: 0, y: 0, rotationY: -18, scale: 0.92, opacity: 1, duration: 1.4, ease: 'power3.out' }, 
+          6.9
+        );
+        tl.to('#s2Phone2', 
+          { scale: 1.08, duration: 4.5, ease: 'sine.inOut' }, 
+          8.5
+        );
+
+        // ═══════════════════════════════════════════════════════════════════
+        // SCENE 3 ANIMATIONS (14.0s - 22.0s)
+        // ═══════════════════════════════════════════════════════════════════
+        tl.fromTo('#s3HeroPhone', 
+          { x: -100, rotationY: 24, scale: 0.88, opacity: 0 }, 
+          { x: 0, rotationY: 8, scale: 1.02, opacity: 1, duration: 1.6, ease: 'power3.out' }, 
+          14.2
+        );
+        tl.fromTo('#s3Metrics', 
+          { x: 100, opacity: 0 }, 
+          { x: 0, opacity: 1, duration: 1.4, ease: 'power3.out' }, 
+          14.5
+        );
+        tl.to('#s3HeroPhone', 
+          { rotationY: 0, scale: 1.06, duration: 5.0, ease: 'sine.inOut' }, 
+          16.0
+        );
+
+        // ═══════════════════════════════════════════════════════════════════
+        // SCENE 4 ANIMATIONS (22.0s - 32.5s)
+        // ═══════════════════════════════════════════════════════════════════
+        tl.fromTo('#s4InfoCard', 
+          { x: -80, opacity: 0 }, 
+          { x: 0, opacity: 1, duration: 1.2, ease: 'power3.out' }, 
+          22.2
+        );
+        tl.fromTo('#s4PhoneGate', 
+          { y: 50, scale: 0.9, opacity: 0 }, 
+          { y: 0, scale: 1.0, opacity: 1, duration: 1.4, ease: 'power3.out' }, 
+          22.5
+        );
+        tl.fromTo('#s4Connector', 
+          { scaleX: 0, opacity: 0 }, 
+          { scaleX: 1.0, opacity: 1, duration: 1.0, ease: 'power2.out' }, 
+          23.8
+        );
+        tl.fromTo('#s4PhoneDone', 
+          { y: 50, scale: 0.9, opacity: 0 }, 
+          { y: 0, scale: 1.02, opacity: 1, duration: 1.4, ease: 'power3.out' }, 
+          24.5
+        );
+        tl.to('#s4PhoneDone', 
+          { scale: 1.06, duration: 5.5, ease: 'sine.inOut' }, 
+          26.0
+        );
+
+        // ═══════════════════════════════════════════════════════════════════
+        // SCENE 5 ANIMATIONS (32.5s - 43.0s)
+        // ═══════════════════════════════════════════════════════════════════
+        tl.fromTo('#s5PhoneDTR', 
+          { x: -80, rotationY: -18, scale: 0.9, opacity: 0 }, 
+          { x: 0, rotationY: 0, scale: 1.04, opacity: 1, duration: 1.6, ease: 'power3.out' }, 
+          32.7
+        );
+        tl.fromTo('#s5InfoCard', 
+          { x: 80, opacity: 0 }, 
+          { x: 0, opacity: 1, duration: 1.4, ease: 'power3.out' }, 
+          33.1
+        );
+        tl.to('#s5PhoneDTR', 
+          { scale: 1.08, duration: 6.0, ease: 'sine.inOut' }, 
+          35.0
+        );
+
+        // ═══════════════════════════════════════════════════════════════════
+        // SCENE 6 ANIMATIONS (43.0s - 51.5s)
+        // ═══════════════════════════════════════════════════════════════════
+        tl.fromTo('#s6InfoCard', 
+          { x: -80, opacity: 0 }, 
+          { x: 0, opacity: 1, duration: 1.2, ease: 'power3.out' }, 
+          43.2
+        );
+        tl.fromTo('#s6PhoneDocs', 
+          { x: 80, rotationY: 16, scale: 0.92, opacity: 0 }, 
+          { x: 0, rotationY: 0, scale: 1.04, opacity: 1, duration: 1.5, ease: 'power3.out' }, 
+          43.5
+        );
+        tl.to('#s6PhoneDocs', 
+          { scale: 1.07, duration: 5.0, ease: 'sine.inOut' }, 
+          45.0
+        );
+
+        // ═══════════════════════════════════════════════════════════════════
+        // SCENE 7 ANIMATIONS (51.5s - 60.0s)
+        // ═══════════════════════════════════════════════════════════════════
+        // Reveal 3D panoramic wall of all 6 phones spaced out in wide arc
+        tl.fromTo('.s7-wall-phone', 
+          { scale: 0.8, opacity: 0 }, 
+          { scale: 1.0, opacity: 0.92, stagger: 0.08, duration: 1.2, ease: 'power3.out' }, 
+          51.7
+        );
+        tl.to('#s7Wall', 
+          { scale: 1.04, duration: 4.0, ease: 'sine.inOut' }, 
+          52.0
+        );
+        // At 55.8s, fade phones backward into the dark void so center is completely clear!
+        tl.to('.s7-wall-phone', 
+          { scale: 0.72, opacity: 0.12, duration: 1.2, ease: 'power2.inOut' }, 
+          55.8
+        );
+        // Reveal unoccluded center outro card with transparent logos and institutional text
+        tl.fromTo('#s7Overlay', 
+          { scale: 0.88, opacity: 0, y: 30 }, 
+          { scale: 1.0, opacity: 1, y: 0, duration: 1.4, ease: 'power3.out' }, 
+          56.0
+        );
+      });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,12 @@
+Introducing the PNP Internship Attendance and Time Management System (P-IDTMS).
+
+Built for the Philippine National Police Information Technology Management Service (PNP ITMS), P-IDTMS replaces cumbersome paper punch cards with a secure, centralized Progressive Web App. The system automates Civil Service Form 48 Daily Time Records, authenticates clock-ins with two-factor QR and facial biometrics, and protects official OJT documentation in an encrypted cloud vault.
+
+Key Highlights Demonstrated:
+- 📱 End-to-End Encrypted Mobile Sign-In & Legal Terms Compliance
+- 📊 Real-Time Intern Duty Progress & Hours Auditing (300h Requirement)
+- ⚡ 2-Factor Biometric Verification: Chained QR Scanning & AI Face Recognition
+- 📄 Automated Civil Service Form 48 DTR with 1-Click A4 PDF & PNG Export
+- 🗄️ Secure Digital Document Vault with Verified Supervisor Approval Tracking
+
+#PNPITMS #PIDTMS #GovTech #WebDevelopment #FaceRecognition #AttendanceManagement #DigitalTransformation #PublicSafetyIT
