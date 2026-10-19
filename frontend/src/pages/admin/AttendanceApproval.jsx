@@ -306,6 +306,7 @@ export default function AttendanceApproval() {
   const [selected, setSelected] = useState(null);
   const [remarks, setRemarks] = useState('');
   const [saving, setSaving] = useState(false);
+  const [selectedAttendanceIds, setSelectedAttendanceIds] = useState(() => new Set());
   const [previewRecord, setPreviewRecord] = useState(null);
   const [dtrEditOpen, setDtrEditOpen] = useState(false);
   const [bulkModalOpen, setBulkModalOpen] = useState(false);
@@ -363,6 +364,10 @@ export default function AttendanceApproval() {
   useEffect(() => {
     setPage(1);
   }, [filters.status, filters.date]);
+
+  useEffect(() => {
+    setSelectedAttendanceIds(new Set());
+  }, [page, filters.status, filters.date]);
 
   const stopCamera = useCallback(() => {
     if (cameraStream) {
@@ -508,6 +513,49 @@ export default function AttendanceApproval() {
       toast.error(error?.response?.data?.error || `Failed to ${action} attendance`);
     }
     finally { setSaving(false); }
+  };
+
+  const pendingLogs = logs.filter(log => log.approval_status === 'pending');
+  const selectedPendingLogs = pendingLogs.filter(log => selectedAttendanceIds.has(log.id));
+  const allPendingSelected = pendingLogs.length > 0
+    && pendingLogs.every(log => selectedAttendanceIds.has(log.id));
+
+  const toggleAttendanceSelection = (id) => {
+    setSelectedAttendanceIds(current => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAllPendingSelection = () => {
+    setSelectedAttendanceIds(current => {
+      const next = new Set(current);
+      if (allPendingSelected) pendingLogs.forEach(log => next.delete(log.id));
+      else pendingLogs.forEach(log => next.add(log.id));
+      return next;
+    });
+  };
+
+  const handleBulkDecision = async (action, records) => {
+    const targets = records.filter(record => record.approval_status === 'pending');
+    if (!targets.length || !['approve', 'reject'].includes(action) || saving) return;
+
+    setSaving(true);
+    const results = await Promise.allSettled(
+      targets.map(record => api.patch(`/attendance/${record.id}/${action}`, { remarks: '' }))
+    );
+    const succeeded = results.filter(result => result.status === 'fulfilled').length;
+    const failed = results.length - succeeded;
+    if (failed === 0) {
+      toast.success(`${succeeded} attendance record${succeeded === 1 ? '' : 's'} ${action === 'approve' ? 'approved' : 'rejected'}`);
+    } else {
+      toast.error(`${succeeded} ${action === 'approve' ? 'approved' : 'rejected'}, ${failed} failed. Refresh the list and retry failed records.`);
+    }
+    setSelectedAttendanceIds(new Set());
+    await fetchLogs();
+    setSaving(false);
   };
 
   const openDetails = async (row) => {
@@ -675,6 +723,28 @@ export default function AttendanceApproval() {
 
   const columns = [
     {
+      key: 'selection',
+      label: (
+        <input
+          type="checkbox"
+          aria-label="Select all pending attendance on this page"
+          checked={allPendingSelected}
+          disabled={!pendingLogs.length || saving || loading}
+          onChange={toggleAllPendingSelection}
+        />
+      ),
+      width: '44px',
+      render: (_, row) => row.approval_status === 'pending' ? (
+        <input
+          type="checkbox"
+          aria-label={`Select attendance for ${row.full_name}`}
+          checked={selectedAttendanceIds.has(row.id)}
+          disabled={saving}
+          onChange={() => toggleAttendanceSelection(row.id)}
+        />
+      ) : null,
+    },
+    {
       key: 'full_name', label: 'Intern',
       render: (v, row) => (
         <div className="cursor-pointer group">
@@ -806,6 +876,46 @@ export default function AttendanceApproval() {
           onPageChange={setPage}
           onRowClick={openDetails}
           emptyMessage="No attendance records found"
+          actions={(
+            <>
+              <button
+                type="button"
+                className="btn btn-success btn-sm"
+                disabled={!pendingLogs.length || saving || loading}
+                onClick={() => handleBulkDecision('approve', pendingLogs)}
+              >
+                <CheckCircle className="w-4 h-4" /> Accept all ({pendingLogs.length})
+              </button>
+              <button
+                type="button"
+                className="btn btn-danger btn-sm"
+                disabled={!pendingLogs.length || saving || loading}
+                onClick={() => handleBulkDecision('reject', pendingLogs)}
+              >
+                <XCircle className="w-4 h-4" /> Reject all ({pendingLogs.length})
+              </button>
+              {selectedPendingLogs.length > 0 && (
+                <>
+                  <button
+                    type="button"
+                    className="btn btn-success btn-sm"
+                    disabled={saving || loading}
+                    onClick={() => handleBulkDecision('approve', selectedPendingLogs)}
+                  >
+                    Accept selected ({selectedPendingLogs.length})
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-danger btn-sm"
+                    disabled={saving || loading}
+                    onClick={() => handleBulkDecision('reject', selectedPendingLogs)}
+                  >
+                    Reject selected ({selectedPendingLogs.length})
+                  </button>
+                </>
+              )}
+            </>
+          )}
         />
       </div>
 
