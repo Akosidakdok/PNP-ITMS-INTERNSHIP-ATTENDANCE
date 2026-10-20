@@ -910,7 +910,7 @@ app.put('/admin/dtr/:internId/edit', authMiddleware, superadminMiddleware, async
   }
 });
 
-app.put('/admin/dtr/:internId/batch-alter', authMiddleware, superadminMiddleware, async (req, res) => {
+app.put('/admin/dtr/:internId/batch-alter', authMiddleware, adminOnlyMiddleware, async (req, res) => {
   try {
     const internId = Number(req.params.internId);
     const {
@@ -935,36 +935,42 @@ app.put('/admin/dtr/:internId/batch-alter', authMiddleware, superadminMiddleware
 
     const results = [];
     const errors = [];
+    const batchSize = 5;
 
-    for (const d of dates) {
-      try {
-        if (mode === 'override') {
-          const resOverride = await setDtrOverride(internId, {
-            date: d,
-            type: override_type,
-            hours: Number(hours) || 0,
-            remarks: remarks || '',
-          });
-          await supabase.from('dtr_edit_history').insert([{
-            account_id: internId,
-            field_name: 'Schedule Override',
-            original_value: 'N/A',
-            new_value: `${override_type}: ${remarks || ''} (${hours || 0} hrs)`,
-            modified_by: req.user.id,
-            modified_at: new Date().toISOString(),
-            reason: reason.trim(),
-          }]);
-          results.push({ date: d, success: true, result: resOverride });
-        } else if (mode === 'clear' || mode === 'delete') {
-          const resClear = await deleteDtrAttendance({
-            internId,
-            date: d,
-            reason: reason.trim(),
-            modified_by: req.user.id,
-            target: clear_target || 'attendance',
-          });
-          results.push({ date: d, success: true, result: resClear });
-        } else {
+    for (let index = 0; index < dates.length; index += batchSize) {
+      const dateBatch = dates.slice(index, index + batchSize);
+      const batchResults = await Promise.all(dateBatch.map(async d => {
+        try {
+          if (mode === 'override') {
+            const resOverride = await setDtrOverride(internId, {
+              date: d,
+              type: override_type,
+              hours: Number(hours) || 0,
+              remarks: remarks || '',
+            });
+            await supabase.from('dtr_edit_history').insert([{
+              account_id: internId,
+              field_name: 'Schedule Override',
+              original_value: 'N/A',
+              new_value: `${override_type}: ${remarks || ''} (${hours || 0} hrs)`,
+              modified_by: req.user.id,
+              modified_at: new Date().toISOString(),
+              reason: reason.trim(),
+            }]);
+            return { date: d, success: true, result: resOverride };
+          }
+
+          if (mode === 'clear' || mode === 'delete') {
+            const resClear = await deleteDtrAttendance({
+              internId,
+              date: d,
+              reason: reason.trim(),
+              modified_by: req.user.id,
+              target: clear_target || 'attendance',
+            });
+            return { date: d, success: true, result: resClear };
+          }
+
           // mode === 'time'
           const resEdit = await editDtrRecord({
             internId,
@@ -975,10 +981,18 @@ app.put('/admin/dtr/:internId/batch-alter', authMiddleware, superadminMiddleware
             reason: reason.trim(),
             modified_by: req.user.id,
           });
-          results.push({ date: d, success: true, result: resEdit });
+          return { date: d, success: true, result: resEdit };
+        } catch (err) {
+          return { date: d, success: false, error: err.message };
         }
-      } catch (err) {
-        errors.push({ date: d, error: err.message });
+      }));
+
+      for (const result of batchResults) {
+        if (result.success) {
+          results.push(result);
+        } else {
+          errors.push({ date: result.date, error: result.error });
+        }
       }
     }
 

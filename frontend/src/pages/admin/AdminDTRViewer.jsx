@@ -50,6 +50,7 @@ function generateDateRange(fromStr, toStr, excludeWeekends = false) {
 export default function AdminDTRViewer() {
   const { user } = useAuth();
   const isSuperadmin = user?.role === 'superadmin';
+  const canAlterDtr = isSuperadmin || user?.role === 'admin';
   const canManageOverrides = isSuperadmin || user?.role === 'admin' || user?.role === 'supervisor';
 
   const [interns, setInterns] = useState([]);
@@ -370,7 +371,7 @@ export default function AdminDTRViewer() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto dtr-page-actions">
-          {isSuperadmin && selectedDates.length > 0 && (
+          {canAlterDtr && selectedDates.length > 0 && (
             <button
               type="button"
               className="btn btn-primary flex items-center gap-1.5 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-xs"
@@ -1269,7 +1270,7 @@ export default function AdminDTRViewer() {
               <Calendar className="w-3.5 h-3.5" />
               Set Status ({selectedDates.length} Date{selectedDates.length > 1 ? 's' : ''})
             </button>
-            {isSuperadmin && (
+            {canAlterDtr && (
               <button
                 type="button"
                 className="btn btn-sm bg-slate-700 hover:bg-slate-600 text-white font-bold flex items-center gap-1.5 shadow-md text-xs px-3.5"
@@ -1284,13 +1285,14 @@ export default function AdminDTRViewer() {
       )}
 
       {/* Superadmin Batch / Single Date Alteration Modal */}
-      {isSuperadmin && batchAlterModalOpen && (
+      {canAlterDtr && batchAlterModalOpen && (
         <DTRBatchAlterModal
           isOpen={batchAlterModalOpen}
           onClose={() => setBatchAlterModalOpen(false)}
           intern={selectedInternData}
           selectedDates={selectedDates}
           existingRecords={dtrRecords}
+          isSuperadmin={isSuperadmin}
           onSaveSuccess={() => {
             loadDTR();
             setSelectedDates([]);
