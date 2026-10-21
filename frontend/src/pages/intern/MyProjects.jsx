@@ -581,17 +581,6 @@ export default function MyProjects() {
                 Edit Project
               </button>
             )}
-            <button
-              type="button"
-              onClick={() => {
-                setActiveProjectForFiles(quickViewProject);
-                setQuickViewProject(null);
-              }}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-sm font-semibold text-white hover:bg-blue-700 transition-colors"
-            >
-              <FileText className="w-4 h-4" />
-              Files & Deliverables
-            </button>
           </>
         )}
       >

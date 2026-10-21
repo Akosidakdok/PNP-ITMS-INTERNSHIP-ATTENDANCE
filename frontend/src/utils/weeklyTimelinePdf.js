@@ -17,7 +17,7 @@ function prettyDate(value) {
 export function createWeeklyTimelinePdf(projectTitle, report) {
   const pdf = new jsPDF({ unit: 'mm', format: 'a4' });
   const contentWidth = PAGE_WIDTH - LEFT - RIGHT;
-  let y = 20;
+  let y = 21;
   const ensureRoom = (height = 6) => {
     if (y + height > BOTTOM) {
       pdf.addPage();
@@ -25,28 +25,27 @@ export function createWeeklyTimelinePdf(projectTitle, report) {
     }
   };
 
-  pdf.setProperties({ title: `Timeline of Activities - ${projectTitle}` });
+  pdf.setProperties({ title: `Weekly Timeline Report - ${projectTitle}` });
   pdf.setFont('helvetica', 'bold');
-  pdf.setFontSize(17);
-  pdf.text('Timeline of Activities', PAGE_WIDTH / 2, y, { align: 'center' });
-  y += 7;
-  pdf.setFont('helvetica', 'normal');
-  pdf.setFontSize(10);
-  pdf.text('Project Weekly Timeline Report', PAGE_WIDTH / 2, y, { align: 'center' });
-  y += 6;
-  pdf.setFontSize(11);
-  pdf.setFont('helvetica', 'bold');
+  pdf.setFontSize(16);
+  pdf.text('WEEKLY TIMELINE REPORT', PAGE_WIDTH / 2, y, { align: 'center' });
+  y += 8;
+  pdf.setFontSize(12);
   const titleLines = pdf.splitTextToSize(projectTitle || 'Untitled Project', contentWidth);
   pdf.text(titleLines, PAGE_WIDTH / 2, y, { align: 'center' });
-  y += titleLines.length * 5 + 1;
+  y += titleLines.length * 5 + 2;
   pdf.setFont('helvetica', 'normal');
-  pdf.setFontSize(9);
+  pdf.setFontSize(10);
   pdf.text(`Reporting Window: ${prettyDate(report.start_date)} - ${prettyDate(report.end_date)}`, PAGE_WIDTH / 2, y, { align: 'center' });
-  y += 10;
+  y += 7;
+  pdf.setDrawColor(190, 204, 222);
+  pdf.setLineWidth(0.35);
+  pdf.line(LEFT, y, PAGE_WIDTH - RIGHT, y);
+  y += 8;
 
   const addField = (label, rawValue) => {
     const value = String(rawValue || '').trim() || '-';
-    const labelWidth = 36;
+    const labelWidth = 39;
     const lines = pdf.splitTextToSize(value, contentWidth - labelWidth);
     ensureRoom(5);
     pdf.setFont('helvetica', 'bold');
@@ -71,7 +70,7 @@ export function createWeeklyTimelinePdf(projectTitle, report) {
     pdf.text(`WEEK: Week ${index + 1}`, LEFT, y);
     y += 5;
     addField('FOCUS', week.focus);
-    addField('ACCOMPLISHMENT', week.accomplishments);
+    addField('ACCOMPLISHMENTS', week.accomplishments);
     addField('STATUS', week.status || 'Not Started');
     y += 1.5;
   });

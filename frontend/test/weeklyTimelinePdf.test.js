@@ -14,11 +14,17 @@ const makeReport = (overrides = {}) => ({
   ...overrides,
 });
 
-test('creates a report with all ten weeks and blank draft values', () => {
+test('creates a centered weekly timeline report template with all ten weeks and draft values', () => {
   const pdf = createWeeklyTimelinePdf('P-IDTMS', makeReport());
   const pageText = pdf.internal.pages.flat().join(' ');
   assert.equal(pdf.internal.getNumberOfPages(), 1);
+  assert.match(pageText, /WEEKLY TIMELINE REPORT/);
+  assert.match(pageText, /P-IDTMS/);
+  assert.match(pageText, /Reporting Window: Aug 10, 2026 - Oct 14, 2026/);
+  assert.doesNotMatch(pageText, /Timeline of Activities/);
   assert.match(pageText, /Week 10/);
+  assert.match(pageText, /FOCUS/);
+  assert.match(pageText, /ACCOMPLISHMENTS/);
   assert.match(pageText, /Not Started/);
   assert.match(pageText, /Aug 10, 2026/);
 });
