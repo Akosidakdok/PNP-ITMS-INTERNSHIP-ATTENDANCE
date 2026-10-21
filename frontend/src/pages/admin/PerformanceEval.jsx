@@ -33,6 +33,7 @@ const PERFORMANCE_CRITERIA = [
 
 const INIT_FORM = {
   intern_id: '',
+  evaluator_name: '',
   project_quality: 80,
   project_timeliness: 80,
   project_problem_solving: 80,
@@ -140,7 +141,10 @@ export default function PerformanceEval() {
   }, [includeArchived]);
 
   const openCreate = () => {
-    setForm(INIT_FORM);
+    setForm({
+      ...INIT_FORM,
+      evaluator_name: user?.full_name || user?.username || '',
+    });
     setEditId(null);
     setModal('form');
   };
@@ -149,6 +153,7 @@ export default function PerformanceEval() {
     const details = parseEvaluationDetails(e);
     setForm({
       intern_id: e.intern_id,
+      evaluator_name: e.evaluator_name || '',
       project_quality: details.project_scores?.project_quality ?? 80,
       project_timeliness: details.project_scores?.project_timeliness ?? 80,
       project_problem_solving: details.project_scores?.project_problem_solving ?? 80,
@@ -248,6 +253,10 @@ export default function PerformanceEval() {
       toast.error('Select an intern');
       return;
     }
+    if (!form.evaluator_name.trim()) {
+      toast.error('Enter the evaluator/supervisor name');
+      return;
+    }
 
     const projectScore = (
       (form.project_quality * 0.20) +
@@ -293,6 +302,7 @@ export default function PerformanceEval() {
     });
 
     const payload = {
+      evaluator_name: form.evaluator_name.trim(),
       overall_score: overallScore,
       overall_rating: rating,
       comments: serializedDetails,
@@ -531,7 +541,13 @@ export default function PerformanceEval() {
 
               <div className="form-group">
                 <label className="form-label">Evaluator/Supervisor</label>
-                <input className="form-input bg-gray-100 font-medium" value={user?.full_name || user?.username || ''} disabled />
+                <input
+                  className="form-input font-medium"
+                  value={form.evaluator_name}
+                  onChange={e => setForm(f => ({ ...f, evaluator_name: e.target.value }))}
+                  maxLength={150}
+                  required
+                />
               </div>
 
               {selectedInternDetails && (

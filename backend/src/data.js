@@ -34,6 +34,7 @@ const SELF_PROFILE_EDITABLE_FIELDS = new Set([
 ]);
 const EVALUATION_CREATE_FIELDS = new Set([
   'intern_id',
+  'evaluator_name',
   'overall_score',
   'overall_rating',
   'comments',
@@ -44,6 +45,7 @@ const EVALUATION_CREATE_FIELDS = new Set([
   'initiative',
 ]);
 const EVALUATION_UPDATE_FIELDS = new Set([
+  'evaluator_name',
   'overall_score',
   'overall_rating',
   'comments',
@@ -252,6 +254,15 @@ async function hydrateDivisionNames(accounts = []) {
 
 function normalizeEvaluationFields(fields) {
   const normalized = { ...fields };
+  if (normalized.evaluator_name !== undefined) {
+    normalized.evaluator_name = String(normalized.evaluator_name || '').trim();
+    if (!normalized.evaluator_name) {
+      const validationError = new Error('Evaluator/supervisor name is required');
+      validationError.statusCode = 400;
+      throw validationError;
+    }
+  }
+
   for (const field of EVALUATION_SCORE_FIELDS) {
     if (normalized[field] === undefined || normalized[field] === null || normalized[field] === '') continue;
     const value = Number(normalized[field]);
@@ -1972,7 +1983,7 @@ export async function createEvaluation(payload, evaluatorId, evaluatorName) {
     ...fields,
     intern_id: internId,
     evaluator_id: evaluatorId,
-    evaluator_name: evaluatorName,
+    evaluator_name: String(fields.evaluator_name || evaluatorName || '').trim(),
     evaluation_date: new Date().toISOString(),
     created_at: new Date().toISOString(),
   };
