@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { BarChart3, Download, Filter } from 'lucide-react';
 import api from '../../utils/api.js';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 import { divisionLabel } from '../../utils/display.js';
+import { jsPDF } from 'jspdf';
 
 const toMinutes = (minutes, hours) => Number.isFinite(Number(minutes))
   ? Math.max(0, Math.round(Number(minutes)))
@@ -15,12 +16,25 @@ const formatDuration = minutes => {
 };
 
 const csvCell = value => `"${String(value ?? '').replaceAll('"', '""')}"`;
+const REPORT_HEADERS = ['Intern Name', 'School', 'Division', 'Days Present', 'Total Hours', 'Required Hours', 'Rendered Hours'];
+
+const currentMonthRange = () => {
+  const today = new Date();
+  return {
+    start_date: format(new Date(today.getFullYear(), today.getMonth(), 1), 'yyyy-MM-dd'),
+    end_date: format(today, 'yyyy-MM-dd'),
+  };
+};
+
+const formatReportDate = date => format(new Date(`${date}T00:00:00`), 'MMM d, yyyy');
 
 export default function Reports() {
   const [report, setReport] = useState([]);
   const [loading, setLoading] = useState(false);
   const [divisions, setDivisions] = useState([]);
-  const [filters, setFilters] = useState({ month: new Date().getMonth() + 1, year: new Date().getFullYear(), division_id: '' });
+  const [filters, setFilters] = useState(() => ({ ...currentMonthRange(), division_id: '' }));
+  const reportRequestId = useRef(0);
+  const hasMountedFilterEffect = useRef(false);
 
   useEffect(() => {
     api.get('/divisions')
@@ -30,43 +44,193 @@ export default function Reports() {
   }, []);
 
   const fetchReport = async () => {
+    if (!filters.start_date || !filters.end_date) {
+      toast.error('Choose both a start date and an end date');
+      return;
+    }
+    if (filters.start_date > filters.end_date) {
+      toast.error('Start date must be on or before end date');
+      return;
+    }
+
+    const requestId = ++reportRequestId.current;
     setLoading(true);
     try {
-      const res = await api.get('/admin/reports/attendance', { params: filters });
-      setReport(res.data.report || []);
+      const res = await api.get('/admin/reports/attendance', { params: {
+        start_date: filters.start_date,
+        end_date: filters.end_date,
+        division_id: filters.division_id,
+      } });
+      if (requestId === reportRequestId.current) setReport(res.data.report || []);
     } catch {
-      setReport([]);
-      toast.error('Failed to generate report.');
-    } finally { setLoading(false); }
+      if (requestId === reportRequestId.current) {
+        setReport([]);
+        toast.error('Failed to generate report.');
+      }
+    } finally {
+      if (requestId === reportRequestId.current) setLoading(false);
+    }
   };
 
   useEffect(() => {
-    // A report belongs to the exact filter set used to generate it. Clear the
-    // previous result immediately when a filter changes so it cannot be
-    // exported under a different month, year, or division.
+    // Keep exports tied to the exact date range and division used to generate them.
+    if (!hasMountedFilterEffect.current) {
+      hasMountedFilterEffect.current = true;
+      return;
+    }
+    reportRequestId.current += 1;
+    setLoading(false);
     setReport([]);
-  }, [filters.month, filters.year, filters.division_id]);
+  }, [filters.start_date, filters.end_date, filters.division_id]);
 
-  const exportCSV = () => {
-    const headers = ['Full Name', 'School', 'Division', 'Days Present', 'Total Hours', 'Required Hours', 'Rendered Hours'];
-    const rows = report.map(r => [
-      r.full_name,
-      r.school || '',
-      divisionLabel(r.division_name),
-      r.days_present,
-      (toMinutes(r.total_minutes, r.total_hours) / 60).toFixed(2),
-      r.required_hours,
-      (toMinutes(r.rendered_minutes, r.rendered_hours) / 60).toFixed(2),
-    ]);
-    const csv = `\uFEFF${[headers, ...rows].map(row => row.map(csvCell).join(',')).join('\n')}`;
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `PNP-ITMS-Report-${filters.year}-${String(filters.month).padStart(2, '0')}.csv`;
-    link.click();
+  const getExportRows = () => report.map(r => ({
+    full_name: r.full_name,
+    school: r.school || '',
+    division: divisionLabel(r.division_name),
+    days_present: Number(r.days_present) || 0,
+    total_hours: toMinutes(r.total_minutes, r.total_hours) / 60,
+    required_hours: Number(r.required_hours) || 0,
+    rendered_hours: toMinutes(r.rendered_minutes, r.rendered_hours) / 60,
+  }));
+
+  const getSelectedDivisionLabel = () => {
+    if (!filters.division_id) return 'All Divisions';
+    const division = divisions.find(d => String(d.id) === String(filters.division_id));
+    return division ? divisionLabel(division.name) : 'Selected Division';
   };
 
-  const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const getFilenameDateRange = () => `${filters.start_date}_to_${filters.end_date}`;
+
+  const exportCSV = () => {
+    const rows = getExportRows().map(r => [
+      r.full_name,
+      r.school,
+      r.division,
+      r.days_present,
+      r.total_hours.toFixed(2),
+      r.required_hours,
+      r.rendered_hours.toFixed(2),
+    ]);
+    const csv = `\uFEFF${[REPORT_HEADERS, ...rows].map(row => row.map(csvCell).join(',')).join('\n')}`;
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const link = document.createElement('a');
+    const objectUrl = URL.createObjectURL(blob);
+    link.href = objectUrl;
+    link.download = `PNP-ITMS-Report-${getFilenameDateRange()}.csv`;
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+  };
+
+  const reportRows = getExportRows();
+  const dateRangeLabel = filters.start_date && filters.end_date
+    ? `${formatReportDate(filters.start_date)} to ${formatReportDate(filters.end_date)}`
+    : 'Select a date range';
+
+  const exportPDF = () => {
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const margin = 12;
+    const columns = [
+      { label: 'Intern Name', width: 48, value: row => row.full_name },
+      { label: 'School', width: 42, value: row => row.school || '—' },
+      { label: 'Division', width: 48, value: row => row.division },
+      { label: 'Days Present', width: 30, value: row => String(row.days_present) },
+      { label: 'Total Hours', width: 34, value: row => row.total_hours.toFixed(2) },
+      { label: 'Required Hours', width: 34, value: row => String(row.required_hours) },
+      { label: 'Rendered Hours', width: 37, value: row => row.rendered_hours.toFixed(2) },
+    ];
+    const tableWidth = columns.reduce((total, column) => total + column.width, 0);
+    const tableLeft = (pageWidth - tableWidth) / 2;
+    const headerHeight = 10;
+    const rowLineHeight = 4;
+
+    const drawTableHeader = y => {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
+      doc.setTextColor(255, 255, 255);
+      doc.setDrawColor(203, 213, 225);
+      let x = tableLeft;
+      columns.forEach(column => {
+        doc.setFillColor(30, 64, 175);
+        doc.rect(x, y, column.width, headerHeight, 'FD');
+        doc.text(column.label, x + 2, y + 6.5);
+        x += column.width;
+      });
+      doc.setTextColor(15, 23, 42);
+      doc.setFont('helvetica', 'normal');
+      return y + headerHeight;
+    };
+
+    const drawPageHeading = () => {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(15);
+      doc.setTextColor(17, 24, 39);
+      doc.text('PNP-ITMS Attendance Report', margin, 13);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.text(`Date range: ${dateRangeLabel}`, margin, 20);
+      doc.text(`Division: ${getSelectedDivisionLabel()}`, margin, 25);
+      return drawTableHeader(31);
+    };
+
+    let y = drawPageHeading();
+    const bodyRows = reportRows.map(row => columns.map(column => String(column.value(row))));
+
+    bodyRows.forEach((row, rowIndex) => {
+      const cellLines = row.map((value, columnIndex) => doc.splitTextToSize(value, columns[columnIndex].width - 4));
+      const lineCount = Math.max(...cellLines.map(lines => lines.length));
+      const rowHeight = Math.max(9, lineCount * rowLineHeight + 2);
+      if (y + rowHeight > pageHeight - 12) {
+        doc.addPage();
+        y = drawPageHeading();
+      }
+
+      let x = tableLeft;
+      columns.forEach((column, columnIndex) => {
+        doc.setFillColor(rowIndex % 2 === 0 ? 255 : 248, rowIndex % 2 === 0 ? 255 : 250, rowIndex % 2 === 0 ? 255 : 252);
+        doc.setDrawColor(203, 213, 225);
+        doc.rect(x, y, column.width, rowHeight, 'FD');
+        doc.text(cellLines[columnIndex], x + 2, y + 4, { lineHeightFactor: 1 });
+        x += column.width;
+      });
+      y += rowHeight;
+    });
+
+    doc.save(`PNP-ITMS-Report-${getFilenameDateRange()}.pdf`);
+  };
+
+  const exportExcel = async () => {
+    try {
+      const XLSX = await import('xlsx');
+      const tableRows = reportRows.map(row => [
+        row.full_name,
+        row.school,
+        row.division,
+        row.days_present,
+        Number(row.total_hours.toFixed(2)),
+        row.required_hours,
+        Number(row.rendered_hours.toFixed(2)),
+      ]);
+      const worksheet = XLSX.utils.aoa_to_sheet([
+        ['PNP-ITMS Attendance Report'],
+        [`Date range: ${dateRangeLabel}`],
+        [`Division: ${getSelectedDivisionLabel()}`],
+        [],
+        REPORT_HEADERS,
+        ...tableRows,
+      ]);
+      worksheet['!cols'] = [
+        { wch: 30 }, { wch: 28 }, { wch: 30 }, { wch: 16 }, { wch: 16 }, { wch: 18 }, { wch: 18 },
+      ];
+      worksheet['!autofilter'] = { ref: `A5:G${Math.max(5, tableRows.length + 5)}` };
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Attendance Report');
+      XLSX.writeFileXLSX(workbook, `PNP-ITMS-Report-${getFilenameDateRange()}.xlsx`);
+    } catch {
+      toast.error('Could not export the Excel report');
+    }
+  };
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -75,24 +239,42 @@ export default function Reports() {
           <h1 className="text-xl sm:text-2xl font-bold text-gray-800" style={{ fontFamily: 'Outfit, sans-serif' }}>Reports</h1>
           <p className="text-gray-500 text-sm">Attendance and performance summary reports</p>
         </div>
-        <button id="export-csv-btn" className="btn btn-primary w-full sm:w-auto" onClick={exportCSV} disabled={report.length === 0}>
-          <Download className="w-4 h-4" /> Export CSV
-        </button>
+        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+          <button id="export-pdf-btn" className="btn btn-secondary w-full sm:w-auto" onClick={exportPDF} disabled={report.length === 0}>
+            <Download className="w-4 h-4" /> Export PDF
+          </button>
+          <button id="export-excel-btn" className="btn btn-secondary w-full sm:w-auto" onClick={exportExcel} disabled={report.length === 0}>
+            <Download className="w-4 h-4" /> Export Excel
+          </button>
+          <button id="export-csv-btn" className="btn btn-primary w-full sm:w-auto" onClick={exportCSV} disabled={report.length === 0}>
+            <Download className="w-4 h-4" /> Export CSV
+          </button>
+        </div>
       </div>
 
       {/* Filters */}
       <div className="card p-4 flex flex-col sm:flex-row sm:flex-wrap gap-3 sm:items-end">
         <div className="form-group w-full sm:w-auto">
-          <label className="form-label">Month</label>
-          <select className="form-input form-select text-sm w-full sm:w-auto" value={filters.month} onChange={e => setFilters(f => ({ ...f, month: e.target.value }))}>
-            {months.map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
-          </select>
+          <label className="form-label" htmlFor="report-start-date">From</label>
+          <input
+            id="report-start-date"
+            type="date"
+            className="form-input text-sm w-full sm:w-auto"
+            value={filters.start_date}
+            max={filters.end_date || undefined}
+            onChange={e => setFilters(f => ({ ...f, start_date: e.target.value }))}
+          />
         </div>
         <div className="form-group w-full sm:w-auto">
-          <label className="form-label">Year</label>
-          <select className="form-input form-select text-sm w-full sm:w-auto" value={filters.year} onChange={e => setFilters(f => ({ ...f, year: e.target.value }))}>
-            {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
-          </select>
+          <label className="form-label" htmlFor="report-end-date">To</label>
+          <input
+            id="report-end-date"
+            type="date"
+            className="form-input text-sm w-full sm:w-auto"
+            value={filters.end_date}
+            min={filters.start_date || undefined}
+            onChange={e => setFilters(f => ({ ...f, end_date: e.target.value }))}
+          />
         </div>
         <div className="form-group w-full sm:w-auto">
           <label className="form-label">Division</label>
@@ -101,7 +283,7 @@ export default function Reports() {
             {divisions.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
           </select>
         </div>
-        <button id="generate-report-btn" className="btn btn-primary btn-sm w-full sm:w-auto" onClick={fetchReport} disabled={loading}>
+        <button id="generate-report-btn" className="btn btn-primary btn-sm w-full sm:w-auto" onClick={fetchReport} disabled={loading || !filters.start_date || !filters.end_date || filters.start_date > filters.end_date}>
           <Filter className="w-4 h-4" /> {loading ? 'Loading...' : 'Generate'}
         </button>
       </div>
@@ -111,7 +293,7 @@ export default function Reports() {
         <div className="p-4 border-b border-gray-100 flex items-center gap-2">
           <BarChart3 className="w-4 h-4 text-blue-600" />
           <h2 className="font-bold text-gray-800 text-sm">
-            Attendance Report — {months[filters.month - 1]} {filters.year}
+            Attendance Report — {dateRangeLabel}
           </h2>
         </div>
         <div className="overflow-x-auto">

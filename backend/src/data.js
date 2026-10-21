@@ -1428,7 +1428,31 @@ export async function getSupervisorDashboardStats(user) {
   };
 }
 
-export async function getAttendanceReport({ month, year, division_id, department_id } = {}) {
+function getAttendanceDateRangeBounds(startDate, endDate) {
+  if (typeof startDate !== 'string' || typeof endDate !== 'string' || !startDate || !endDate) {
+    throw validationError('Start date and end date are required');
+  }
+
+  let startBounds;
+  let endBounds;
+  try {
+    startBounds = getPhtDayBoundsUtc(startDate);
+    endBounds = getPhtDayBoundsUtc(endDate);
+  } catch {
+    throw validationError('A valid start date and end date are required');
+  }
+
+  if (startBounds.dateKey > endBounds.dateKey) {
+    throw validationError('Start date must be on or before end date');
+  }
+
+  return { startIso: startBounds.startIso, endExclusiveIso: endBounds.endExclusiveIso };
+}
+
+export async function getAttendanceReport({ startDate, endDate, month, year, division_id, department_id } = {}) {
+  const hasDateRange = startDate !== undefined || endDate !== undefined;
+  if (hasDateRange) getAttendanceDateRangeBounds(startDate, endDate);
+
   const divId = division_id || department_id;
   let internQuery = supabase
     .from('accounts')
@@ -1449,9 +1473,13 @@ export async function getAttendanceReport({ month, year, division_id, department
       const mNum = month ? Number(month) : undefined;
       const yNum = year ? Number(year) : undefined;
 
-      const monthlyDtr = await getDtrRecords(intern.id, { month: mNum, year: yNum });
-      const allTimeDtr = await getDtrRecords(intern.id, { allTime: true });
-      const monthlySummary = summarizeDtrRecords(monthlyDtr);
+      const [periodDtr, allTimeDtr] = await Promise.all([
+        hasDateRange
+          ? getDtrRecords(intern.id, { startDate, endDate })
+          : getDtrRecords(intern.id, { month: mNum, year: yNum }),
+        getDtrRecords(intern.id, { allTime: true }),
+      ]);
+      const periodSummary = summarizeDtrRecords(periodDtr);
       const cumulativeSummary = summarizeDtrRecords(allTimeDtr);
 
       return {
@@ -1460,10 +1488,10 @@ export async function getAttendanceReport({ month, year, division_id, department
         school: intern.school,
         division_name: intern.division_name,
         department_name: intern.division_name,
-        days_present: monthlySummary.days_present,
-        total_minutes: monthlySummary.worked_minutes,
-        approved_minutes: monthlySummary.approved_minutes,
-        total_hours: monthlySummary.worked_hours,
+        days_present: periodSummary.days_present,
+        total_minutes: periodSummary.worked_minutes,
+        approved_minutes: periodSummary.approved_minutes,
+        total_hours: periodSummary.worked_hours,
         required_hours: Number(intern.required_hours || 0),
         rendered_minutes: cumulativeSummary.approved_minutes,
         rendered_hours: cumulativeSummary.approved_hours,
@@ -1474,7 +1502,10 @@ export async function getAttendanceReport({ month, year, division_id, department
   return reportData;
 }
 
-export async function getDtrRecords(userId, { month, year, limit = 31, allTime = false } = {}) {
+export async function getDtrRecords(userId, { month, year, startDate, endDate, limit = 31, allTime = false } = {}) {
+  const hasDateRange = startDate !== undefined || endDate !== undefined;
+  const dateRangeBounds = hasDateRange ? getAttendanceDateRangeBounds(startDate, endDate) : null;
+
   const buildQuery = (selectFields) => {
     let q = supabase
       .from('attendance_logs')
@@ -1482,7 +1513,9 @@ export async function getDtrRecords(userId, { month, year, limit = 31, allTime =
       .eq('intern_id', userId)
       .order('scan_time', { ascending: true });
 
-    if (month !== undefined || year !== undefined) {
+    if (dateRangeBounds) {
+      q = q.gte('scan_time', dateRangeBounds.startIso).lt('scan_time', dateRangeBounds.endExclusiveIso);
+    } else if (month !== undefined || year !== undefined) {
       const monthNumber = Number(month);
       const yearNumber = Number(year);
       if (

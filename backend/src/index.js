@@ -564,7 +564,13 @@ app.get('/admin/reports/attendance', authMiddleware, adminMiddleware, async (req
     if (req.user.role === 'supervisor') {
       divId = await getCurrentSupervisorDivisionId(req.user);
     }
-    const report = await getAttendanceReport({ month: Number(req.query.month), year: Number(req.query.year), division_id: divId });
+    const report = await getAttendanceReport({
+      startDate: req.query.start_date,
+      endDate: req.query.end_date,
+      month: req.query.month ? Number(req.query.month) : undefined,
+      year: req.query.year ? Number(req.query.year) : undefined,
+      division_id: divId,
+    });
     return res.json({ report });
   } catch (error) {
     return res.status(error.statusCode || 500).json({ error: error.message });
