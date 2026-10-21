@@ -42,7 +42,16 @@ async function loadReport(projectId) {
 export async function getProjectWeeklyTimeline(projectId, user, { forExport = false } = {}) {
   const access = await authorize(user, projectId, forExport ? 'export' : 'read');
   const report = await loadReport(projectId);
-  if (!report) return null;
+  if (!report) {
+    if (forExport) return null;
+    return {
+      project: {
+        id: access.project.id,
+        title: access.project.title,
+      },
+      permissions: getWeeklyTimelinePermissions(access),
+    };
+  }
   return {
     ...report,
     end_date: calculateWeeklyTimelineEndDate(report.start_date),

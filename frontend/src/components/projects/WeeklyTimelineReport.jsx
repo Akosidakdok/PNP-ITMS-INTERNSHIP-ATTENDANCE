@@ -13,6 +13,7 @@ function emptyReport() {
     start_date: '',
     end_date: '',
     revision: 0,
+    permissions: null,
     weeks: Array.from({ length: 10 }, (_, index) => ({
       week: index + 1,
       focus: '',
@@ -29,6 +30,7 @@ function normalizeReport(report) {
     start_date: report.start_date || '',
     end_date: calculateWeeklyTimelineEndDate(report.start_date),
     revision: Number(report.revision) || 0,
+    permissions: report.permissions || null,
     weeks: defaults.weeks.map((week, index) => ({ ...week, ...(report.weeks?.[index] || {}) })),
   };
 }
@@ -40,6 +42,7 @@ export default function WeeklyTimelineReport({ projectId, projectTitle, canEdit 
   const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [saveConflict, setSaveConflict] = useState(false);
+  const canEditReport = report.permissions?.canEdit ?? canEdit;
 
   const loadReport = useCallback(async () => {
     setLoading(true);
@@ -147,7 +150,7 @@ export default function WeeklyTimelineReport({ projectId, projectTitle, canEdit 
           {loadError && (
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-800">
               <p role="alert">
-                {canEdit
+                {canEditReport
                   ? 'The saved report could not load. You can fill the weekly boxes below, but saving is paused until the saved report loads.'
                   : loadError}
               </p>
@@ -160,12 +163,12 @@ export default function WeeklyTimelineReport({ projectId, projectTitle, canEdit 
               </button>
             </div>
           )}
-          {!canEdit && !report.start_date && (
+          {!canEditReport && !report.start_date && (
             <p className="rounded-lg bg-slate-50 px-3 py-4 text-sm text-slate-500">
               No weekly timeline report has been saved yet.
             </p>
           )}
-          {(canEdit || report.start_date) && <>
+          {(canEditReport || report.start_date) && <>
           {saveConflict && (
             <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-800">
               <span>Another intern saved changes first. Your unsaved edits are still here.</span>
@@ -183,8 +186,8 @@ export default function WeeklyTimelineReport({ projectId, projectTitle, canEdit 
               Reporting start date
               <input
                 type="date"
-                required={canEdit}
-                disabled={!canEdit || saving}
+                required={canEditReport}
+                disabled={!canEditReport || saving}
                 value={report.start_date}
                 onChange={event => setStartDate(event.target.value)}
                 className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-normal text-slate-800 disabled:bg-slate-50"
@@ -194,13 +197,13 @@ export default function WeeklyTimelineReport({ projectId, projectTitle, canEdit 
               Reporting end date <span className="font-normal text-slate-400">(auto-calculated)</span>
               <input
                 type="date"
-                required={canEdit}
-                disabled={!canEdit || saving}
-                readOnly={canEdit}
+                required={canEditReport}
+                disabled={!canEditReport || saving}
+                readOnly={canEditReport}
                 value={report.end_date}
                 className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-normal text-slate-800 read-only:bg-slate-50 read-only:text-slate-600 disabled:bg-slate-50"
               />
-              {canEdit && <span className="block font-normal text-slate-400">Calculated as a 10-week window from the start date.</span>}
+              {canEditReport && <span className="block font-normal text-slate-400">Calculated as a 10-week window from the start date.</span>}
             </label>
           </div>
 
@@ -213,7 +216,7 @@ export default function WeeklyTimelineReport({ projectId, projectTitle, canEdit 
                     Status
                     <select
                       value={week.status || 'Not Started'}
-                      disabled={!canEdit || saving}
+                      disabled={!canEditReport || saving}
                       onChange={event => updateWeek(index, 'status', event.target.value)}
                       className={`rounded-lg border px-2.5 py-1.5 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-100 ${getWeeklyTimelineStatusStyle(week.status || 'Not Started').controlClass}`}
                     >
@@ -227,10 +230,10 @@ export default function WeeklyTimelineReport({ projectId, projectTitle, canEdit 
                     <textarea
                       rows={2}
                       maxLength={4000}
-                      disabled={!canEdit || saving}
+                      disabled={!canEditReport || saving}
                       value={week.focus || ''}
                       onChange={event => updateWeek(index, 'focus', event.target.value)}
-                      placeholder={canEdit ? 'What was the focus this week?' : '-'}
+                      placeholder={canEditReport ? 'What was the focus this week?' : '-'}
                       className="w-full resize-y rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-normal text-slate-800 placeholder:text-slate-400 disabled:bg-slate-50"
                     />
                   </label>
@@ -239,10 +242,10 @@ export default function WeeklyTimelineReport({ projectId, projectTitle, canEdit 
                     <textarea
                       rows={2}
                       maxLength={4000}
-                      disabled={!canEdit || saving}
+                      disabled={!canEditReport || saving}
                       value={week.accomplishments || ''}
                       onChange={event => updateWeek(index, 'accomplishments', event.target.value)}
-                      placeholder={canEdit ? 'Describe what was completed.' : '-'}
+                      placeholder={canEditReport ? 'Describe what was completed.' : '-'}
                       className="w-full resize-y rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-normal text-slate-800 placeholder:text-slate-400 disabled:bg-slate-50"
                     />
                   </label>
@@ -251,7 +254,7 @@ export default function WeeklyTimelineReport({ projectId, projectTitle, canEdit 
             ))}
           </div>
 
-          {canEdit && (
+          {canEditReport && (
             <div className="flex justify-end border-t border-slate-100 pt-4">
               <button
                 type="submit"
