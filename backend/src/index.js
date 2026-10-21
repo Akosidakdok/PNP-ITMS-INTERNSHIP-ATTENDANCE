@@ -645,25 +645,14 @@ app.put('/interns/me/profile', authMiddleware, async (req, res) => {
   }
 });
 
-app.post('/interns', authMiddleware, adminMiddleware, async (req, res) => {
+app.post('/interns', authMiddleware, adminOnlyMiddleware, async (req, res) => {
   try {
-    let internPayload = req.body;
-    if (req.user.role === 'supervisor') {
-      const supervisorDivisionId = await getCurrentSupervisorDivisionId(req.user);
-      internPayload = {
-        ...req.body,
-        division_id: supervisorDivisionId,
-      };
-      delete internPayload.division_name;
-      delete internPayload.department_id;
-      delete internPayload.department_name;
-    }
-    const intern = await createIntern(internPayload);
+    const intern = await createIntern(req.body);
     
     // Send welcome email asynchronously
     if (intern.email) {
       const name = intern.first_name ? `${intern.first_name} ${intern.last_name}` : intern.full_name;
-      sendWelcomeEmail(intern.email, name, intern.username, internPayload.password);
+      sendWelcomeEmail(intern.email, name, intern.username, req.body.password);
     }
     
     return res.json({ intern });

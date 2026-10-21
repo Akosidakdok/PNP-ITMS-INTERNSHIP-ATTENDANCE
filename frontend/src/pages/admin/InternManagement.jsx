@@ -73,6 +73,8 @@ const calculateEstimatedEndDate = (startDateStr, requiredHours) => {
 };
 
 export default function InternManagement() {
+  const { user } = useAuth();
+  const canCreateInterns = user?.role === 'admin' || user?.role === 'superadmin';
   const [interns, setInterns] = useState([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -867,9 +869,11 @@ export default function InternManagement() {
           >
             <Calendar className="w-4 h-4 text-blue-600" /> Bulk DTR Override
           </button>
-          <button id="create-intern-btn" className="btn btn-primary" onClick={openCreate}>
-            <UserPlus className="w-4 h-4" /> Add Intern
-          </button>
+          {canCreateInterns && (
+            <button id="create-intern-btn" className="btn btn-primary" onClick={openCreate}>
+              <UserPlus className="w-4 h-4" /> Add Intern
+            </button>
+          )}
         </div>
       </div>
 
