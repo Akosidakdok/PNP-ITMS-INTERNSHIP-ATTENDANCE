@@ -1,4 +1,5 @@
 import { jsPDF } from 'jspdf';
+import { getWeeklyTimelineStatusStyle } from './weeklyTimelineStatus.js';
 
 const PAGE_WIDTH = 210;
 const LEFT = 16;
@@ -63,6 +64,25 @@ export function createWeeklyTimelinePdf(projectTitle, report) {
     }
   };
 
+  const addStatus = rawValue => {
+    const status = String(rawValue || 'Not Started').trim() || 'Not Started';
+    const style = getWeeklyTimelineStatusStyle(status);
+    const labelWidth = 39;
+    const x = LEFT + labelWidth;
+    ensureRoom(6);
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(9);
+    const badgeWidth = pdf.getTextWidth(status) + 4;
+    pdf.setTextColor(0, 0, 0);
+    pdf.text('STATUS:', LEFT, y);
+    pdf.setFillColor(...style.pdfBackground);
+    pdf.roundedRect(x, y - 3.6, badgeWidth, 5.5, 1.5, 1.5, 'F');
+    pdf.setTextColor(...style.pdfText);
+    pdf.text(status, x + 2, y);
+    pdf.setTextColor(0, 0, 0);
+    y += 4.7;
+  };
+
   (report.weeks || []).forEach((week, index) => {
     ensureRoom(20);
     pdf.setFont('helvetica', 'bold');
@@ -71,7 +91,7 @@ export function createWeeklyTimelinePdf(projectTitle, report) {
     y += 5;
     addField('FOCUS', week.focus);
     addField('ACCOMPLISHMENTS', week.accomplishments);
-    addField('STATUS', week.status || 'Not Started');
+    addStatus(week.status);
     y += 1.5;
   });
 

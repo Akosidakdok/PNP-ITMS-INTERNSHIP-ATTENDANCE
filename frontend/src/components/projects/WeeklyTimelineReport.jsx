@@ -4,6 +4,7 @@ import toast from 'react-hot-toast';
 import api from '../../utils/api.js';
 import { calculateWeeklyTimelineEndDate } from '../../utils/weeklyTimelineDates.js';
 import { downloadWeeklyTimelinePdf } from '../../utils/weeklyTimelinePdf.js';
+import { getWeeklyTimelineStatusStyle } from '../../utils/weeklyTimelineStatus.js';
 
 const STATUSES = ['Not Started', 'In Progress', 'Completed', 'Blocked'];
 
@@ -214,9 +215,9 @@ export default function WeeklyTimelineReport({ projectId, projectTitle, canEdit 
                       value={week.status || 'Not Started'}
                       disabled={!canEdit || saving}
                       onChange={event => updateWeek(index, 'status', event.target.value)}
-                      className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 disabled:bg-slate-50"
+                      className={`rounded-lg border px-2.5 py-1.5 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-100 ${getWeeklyTimelineStatusStyle(week.status || 'Not Started').controlClass}`}
                     >
-                      {STATUSES.map(status => <option key={status} value={status}>{status}</option>)}
+                      {STATUSES.map(status => <option key={status} value={status} className={getWeeklyTimelineStatusStyle(status).controlClass}>{status}</option>)}
                     </select>
                   </label>
                 </div>
