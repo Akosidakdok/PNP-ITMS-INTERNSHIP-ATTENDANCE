@@ -438,7 +438,7 @@ export default function DTRPreviewModal({
                 <img
                   src="/PNP_LOGO.png"
                   alt="PNP Logo"
-                  style={{ width: '85px', height: '105px', objectFit: 'contain' }}
+                  style={{ width: '105px', height: '105px', objectFit: 'contain' }}
                   onError={(e) => { e.target.style.display = 'none'; }}
                 />
 
