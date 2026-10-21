@@ -136,21 +136,24 @@ export default function WeeklyTimelineReport({ projectId, projectTitle, canEdit 
         <div className="flex items-center justify-center gap-2 px-5 py-10 text-sm text-slate-500">
           <Loader2 className="h-4 w-4 animate-spin" /> Loading weekly timeline...
         </div>
-      ) : loadError ? (
-        <div className="space-y-3 p-5">
-          <p role="alert" className="rounded-lg border border-red-100 bg-red-50 px-3 py-3 text-sm text-red-700">
-            {loadError}. Editing is paused until the saved report loads.
-          </p>
-          <button
-            type="button"
-            onClick={loadReport}
-            className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-          >
-            Retry loading
-          </button>
-        </div>
       ) : (
         <form onSubmit={saveReport} className="space-y-4 p-4 sm:p-5">
+          {loadError && (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-800">
+              <p role="alert">
+                {canEdit
+                  ? 'The saved report could not load. You can fill the weekly boxes below, but saving is paused until the saved report loads.'
+                  : loadError}
+              </p>
+              <button
+                type="button"
+                onClick={loadReport}
+                className="shrink-0 rounded-lg border border-amber-300 bg-white px-3 py-1.5 font-semibold text-amber-900 hover:bg-amber-100"
+              >
+                Retry loading
+              </button>
+            </div>
+          )}
           {!canEdit && !report.start_date && (
             <p className="rounded-lg bg-slate-50 px-3 py-4 text-sm text-slate-500">
               No weekly timeline report has been saved yet.
@@ -246,11 +249,11 @@ export default function WeeklyTimelineReport({ projectId, projectTitle, canEdit 
             <div className="flex justify-end border-t border-slate-100 pt-4">
               <button
                 type="submit"
-                disabled={saving}
+                disabled={saving || Boolean(loadError)}
                 className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                {saving ? 'Saving...' : 'Save Weekly Timeline'}
+                {saving ? 'Saving...' : loadError ? 'Wait for report to load' : 'Save Weekly Timeline'}
               </button>
             </div>
           )}
