@@ -291,10 +291,7 @@ export function summarizeDtrRecords(records = []) {
       approvedMinutes += recordApprovedMinutes;
       if (record.is_complete) approvedDays += 1;
     }
-    if (
-      record?.approval_status !== 'rejected'
-      && (Boolean(record?.time_in) || (record?.is_override && recordApprovedMinutes > 0))
-    ) {
+    if (Boolean(record?.time_in) && record?.am_status !== 'rejected') {
       daysPresent += 1;
     }
   }
