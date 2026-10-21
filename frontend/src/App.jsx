@@ -156,6 +156,7 @@ function AppShell() {
       <InstallPrompt />
       <Toaster
         position="top-right"
+        containerStyle={{ zIndex: 10001 }}
         toastOptions={{
           duration: 4000,
           style: { borderRadius: '10px', fontFamily: 'Inter, sans-serif', fontSize: '14px' },
