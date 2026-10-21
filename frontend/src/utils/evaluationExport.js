@@ -52,41 +52,58 @@ function waitForImages(element) {
   }));
 }
 
-export async function printEvaluationElement(element, title = 'Evaluation', printWindow) {
+export async function printEvaluationElement(element, title = 'Evaluation') {
   if (!element) throw new Error('Evaluation sheet is unavailable');
-  if (!printWindow || printWindow.closed) throw new Error('Print window is unavailable');
 
   const pages = await renderEvaluationPages(element);
-  const printDocument = printWindow.document;
-  printDocument.open();
-  printDocument.write('<!doctype html><html><head><meta charset="utf-8"><title></title></head><body></body></html>');
-  printDocument.close();
-  printDocument.title = title;
-  const style = printDocument.createElement('style');
+  const printRoot = document.createElement('div');
+  printRoot.id = 'evaluation-print-root';
+  const style = document.createElement('style');
   style.textContent = `
     @page { size: A4 portrait; margin: ${PAGE_MARGIN_MM}mm; }
-    html, body { margin: 0; padding: 0; background: #fff; }
-    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    .evaluation-print-page { display: block; width: ${A4_WIDTH_MM - PAGE_MARGIN_MM * 2}mm; break-after: page; page-break-after: always; }
-    .evaluation-print-page:last-child { break-after: auto; page-break-after: auto; }
-    .evaluation-print-page img { display: block; width: 100%; height: auto; }
+    @media screen {
+      #evaluation-print-root { display: none !important; }
+    }
+    @media print {
+      html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; }
+      body.evaluation-print-active > *:not(#evaluation-print-root) { display: none !important; visibility: hidden !important; }
+      body.evaluation-print-active #evaluation-print-root,
+      body.evaluation-print-active #evaluation-print-root * { visibility: visible !important; }
+      body.evaluation-print-active #evaluation-print-root { display: block !important; width: ${A4_WIDTH_MM - PAGE_MARGIN_MM * 2}mm !important; margin: 0 auto !important; }
+      body.evaluation-print-active #dtr-print-frame { display: none !important; visibility: hidden !important; }
+      .evaluation-print-page { display: block; break-after: page; page-break-after: always; }
+      .evaluation-print-page:last-child { break-after: auto; page-break-after: auto; }
+      .evaluation-print-page img { display: block; width: 100%; height: auto; }
+      body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    }
   `;
-  printDocument.head.appendChild(style);
+  document.head.appendChild(style);
 
   pages.forEach(page => {
-    const pageElement = printDocument.createElement('div');
+    const pageElement = document.createElement('div');
     pageElement.className = 'evaluation-print-page';
-    const image = printDocument.createElement('img');
+    const image = document.createElement('img');
     image.src = page.data;
     pageElement.appendChild(image);
-    printDocument.body.appendChild(pageElement);
+    printRoot.appendChild(pageElement);
   });
 
-  await Promise.all(Array.from(printDocument.querySelectorAll('img'), image => image.decode()));
-  await printDocument.fonts?.ready;
-  await new Promise(resolve => printWindow.requestAnimationFrame(() => printWindow.requestAnimationFrame(resolve)));
-  printWindow.focus();
-  printWindow.print();
+  const originalTitle = document.title;
+  document.body.appendChild(printRoot);
+  document.body.classList.add('evaluation-print-active');
+  document.title = title;
+
+  try {
+    await Promise.all(Array.from(printRoot.querySelectorAll('img'), image => image.decode()));
+    await document.fonts?.ready;
+    await new Promise(resolve => window.requestAnimationFrame(() => window.requestAnimationFrame(resolve)));
+    window.print();
+  } finally {
+    document.body.classList.remove('evaluation-print-active');
+    printRoot.remove();
+    style.remove();
+    document.title = originalTitle;
+  }
 }
 
 async function renderEvaluationPages(element) {
