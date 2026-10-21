@@ -50,8 +50,10 @@ function generateDateRange(fromStr, toStr, excludeWeekends = false) {
 export default function AdminDTRViewer() {
   const { user } = useAuth();
   const isSuperadmin = user?.role === 'superadmin';
+  const isSupervisor = user?.role === 'supervisor';
   const canAlterDtr = isSuperadmin || user?.role === 'admin';
-  const canManageOverrides = isSuperadmin || user?.role === 'admin' || user?.role === 'supervisor';
+  const canManageOverrides = isSuperadmin || user?.role === 'admin';
+  const canUseBulkDtrOverride = isSuperadmin || user?.role === 'admin';
 
   const [interns, setInterns] = useState([]);
   const [selectedInternId, setSelectedInternId] = useState('');
@@ -390,7 +392,7 @@ export default function AdminDTRViewer() {
               Modification History
             </button>
           )}
-          {canManageOverrides && (
+          {canUseBulkDtrOverride && (
             <button
               id="bulk-dtr-override-btn"
               className="btn btn-secondary flex items-center gap-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-50"
@@ -483,6 +485,15 @@ export default function AdminDTRViewer() {
                   <li>Click **Alter Selected Dates** to batch adjust Time In/Out or apply overrides.</li>
                   <li>Every manual correction requires a **reason** and is recorded in the audit trail.</li>
                 </ul>
+              </div>
+            ) : isSupervisor ? (
+              <div className="card p-5 bg-gradient-to-br from-slate-50 to-blue-50 border border-slate-200 space-y-2">
+                <h3 className="font-bold text-sm text-slate-900 flex items-center gap-1.5">
+                  <Calendar className="w-4 h-4 text-blue-700" /> Intern DTR
+                </h3>
+                <p className="text-xs text-slate-700">
+                  View attendance records for interns in your division. DTR changes are managed by administrators.
+                </p>
               </div>
             ) : (
               <div className="card p-5 bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-100 space-y-2">
@@ -631,8 +642,8 @@ export default function AdminDTRViewer() {
                 records={dtrRecords}
                 month={filters.month}
                 year={filters.year}
-                onRowClick={handleRowClick}
-                onDateClick={handleDateClick}
+                onRowClick={canManageOverrides ? handleRowClick : undefined}
+                onDateClick={canManageOverrides ? handleDateClick : undefined}
                 isSelectable={canManageOverrides}
                 selectedDates={selectedDates}
                 onDateToggle={handleDateToggle}
@@ -1203,14 +1214,16 @@ export default function AdminDTRViewer() {
       )}
 
       {/* Enhanced Bulk Override Modal */}
-      <BulkDTROverrideModal
-        isOpen={bulkModalOpen}
-        onClose={() => setBulkModalOpen(false)}
-        initialDates={selectedDates.length > 0 ? selectedDates : undefined}
-        onSuccess={() => {
-          if (selectedInternId) loadDTR();
-        }}
-      />
+      {canUseBulkDtrOverride && (
+        <BulkDTROverrideModal
+          isOpen={bulkModalOpen}
+          onClose={() => setBulkModalOpen(false)}
+          initialDates={selectedDates.length > 0 ? selectedDates : undefined}
+          onSuccess={() => {
+            if (selectedInternId) loadDTR();
+          }}
+        />
+      )}
 
       {/* Superadmin DTR Manual Edit Modal */}
       {isSuperadmin && (

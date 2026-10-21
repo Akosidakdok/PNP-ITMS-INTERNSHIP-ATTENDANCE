@@ -842,7 +842,7 @@ app.get('/admin/dtr/:internId', authMiddleware, adminMiddleware, async (req, res
 });
 
 // Manual DTR override routes - available to Admin and Superadmin
-app.post('/admin/dtr/:internId/override', authMiddleware, adminMiddleware, async (req, res) => {
+app.post('/admin/dtr/:internId/override', authMiddleware, adminOnlyMiddleware, async (req, res) => {
   try {
     const internId = Number(req.params.internId);
     await assertSupervisorCanAccessIntern(req.user, internId, 'DTR records');
@@ -853,7 +853,7 @@ app.post('/admin/dtr/:internId/override', authMiddleware, adminMiddleware, async
   }
 });
 
-app.post('/admin/dtr/bulk-override', authMiddleware, adminMiddleware, async (req, res) => {
+app.post('/admin/dtr/bulk-override', authMiddleware, adminOnlyMiddleware, async (req, res) => {
   try {
     let internIds = Array.isArray(req.body?.internIds)
       ? req.body.internIds.map(Number).filter(Number.isInteger)

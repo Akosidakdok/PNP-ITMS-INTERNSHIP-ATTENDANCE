@@ -92,8 +92,8 @@ function AppRoutes() {
         <Route path="attendance-parameters" element={<Navigate to="/admin/attendance-control" replace />} />
         <Route path="interns" element={<InternManagement />} />
         <Route path="supervisors" element={<ProtectedRoute roles={['superadmin', 'admin']}><SupervisorManagement /></ProtectedRoute>} />
-        <Route path="attendance" element={<AttendanceApproval />} />
-        <Route path="documents" element={<DocumentReview />} />
+        <Route path="attendance" element={<ProtectedRoute roles={['superadmin', 'admin']}><AttendanceApproval /></ProtectedRoute>} />
+        <Route path="documents" element={<ProtectedRoute roles={['superadmin', 'admin']}><DocumentReview /></ProtectedRoute>} />
         <Route path="evaluations" element={<PerformanceEvalWrapper />} />
         <Route path="calendar" element={<AdminCalendar />} />
         <Route path="divisions" element={<ProtectedRoute roles={['superadmin', 'admin']}><Divisions /></ProtectedRoute>} />
