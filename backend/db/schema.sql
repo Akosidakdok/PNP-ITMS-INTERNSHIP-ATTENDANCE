@@ -214,8 +214,15 @@ create table if not exists intern_projects (
   members jsonb default '[]'::jsonb,
   github_repo text,
   demo_url text,
+  project_start_date date,
+  project_target_date date,
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  constraint intern_projects_schedule_dates_check check (
+    project_start_date is null
+    or project_target_date is null
+    or project_start_date <= project_target_date
+  )
 );
 
 -- Enable RLS for intern_projects

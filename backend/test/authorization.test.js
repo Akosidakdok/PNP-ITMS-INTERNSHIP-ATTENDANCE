@@ -222,6 +222,8 @@ test('member project updates cannot change team ownership or division', () => {
   const payload = {
     title: 'Updated title',
     progress: 75,
+    project_start_date: '2026-10-01',
+    project_target_date: '2026-12-31',
     members: [{ id: 999 }],
     leader_id: 999,
     division_id: 99,
@@ -248,6 +250,8 @@ test('member project updates cannot change team ownership or division', () => {
     {
       title: 'Updated title',
       progress: 75,
+      project_start_date: '2026-10-01',
+      project_target_date: '2026-12-31',
       members: [{ id: 999 }],
       division_id: 99,
       leader_id: 999,
@@ -264,6 +268,8 @@ test('member project updates cannot change team ownership or division', () => {
     }),
     {
       title: 'Updated title',
+      project_start_date: '2026-10-01',
+      project_target_date: '2026-12-31',
       progress: 75,
       members: [{ id: 999 }],
     }
