@@ -16,6 +16,7 @@ const validReport = () => ({
 test('normalizes ten weekly entries and preserves blank drafts', () => {
   const report = normalizeWeeklyTimelineReport(validReport());
   assert.equal(report.weeks.length, 10);
+  assert.equal(report.end_date, '2026-10-18');
   assert.deepEqual(report.weeks[0], {
     week: 1,
     focus: '',
@@ -24,10 +25,18 @@ test('normalizes ten weekly entries and preserves blank drafts', () => {
   });
 });
 
-test('rejects missing dates, invalid calendar dates, and reversed date ranges', () => {
+test('calculates the ten-week end date across a calendar year boundary', () => {
+  const report = normalizeWeeklyTimelineReport({ ...validReport(), start_date: '2026-11-20' });
+  assert.equal(report.end_date, '2027-01-28');
+});
+
+test('requires a valid start date and calculates its own end date', () => {
   assert.throws(() => normalizeWeeklyTimelineReport({ ...validReport(), start_date: '' }), /Start date is required/);
   assert.throws(() => normalizeWeeklyTimelineReport({ ...validReport(), start_date: '2026-02-30' }), /valid date/);
-  assert.throws(() => normalizeWeeklyTimelineReport({ ...validReport(), start_date: '2026-10-15' }), /on or before/);
+  assert.equal(
+    normalizeWeeklyTimelineReport({ ...validReport(), start_date: '2026-10-15', end_date: '2026-10-14' }).end_date,
+    '2026-12-23'
+  );
 });
 
 test('rejects incomplete week lists and unsupported statuses', () => {

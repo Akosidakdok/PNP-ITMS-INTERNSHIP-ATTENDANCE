@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { CalendarDays, Download, Loader2, Save } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../utils/api.js';
+import { calculateWeeklyTimelineEndDate } from '../../utils/weeklyTimelineDates.js';
 import { downloadWeeklyTimelinePdf } from '../../utils/weeklyTimelinePdf.js';
 
 const STATUSES = ['Not Started', 'In Progress', 'Completed', 'Blocked'];
@@ -25,7 +26,7 @@ function normalizeReport(report) {
   const defaults = emptyReport();
   return {
     start_date: report.start_date || '',
-    end_date: report.end_date || '',
+    end_date: calculateWeeklyTimelineEndDate(report.start_date),
     revision: Number(report.revision) || 0,
     weeks: defaults.weeks.map((week, index) => ({ ...week, ...(report.weeks?.[index] || {}) })),
   };
@@ -108,7 +109,11 @@ export default function WeeklyTimelineReport({ projectId, projectTitle, canEdit 
     }
   };
 
-  const setDate = (field, value) => setReport(current => ({ ...current, [field]: value }));
+  const setStartDate = value => setReport(current => ({
+    ...current,
+    start_date: value,
+    end_date: calculateWeeklyTimelineEndDate(value),
+  }));
 
   return (
     <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
@@ -180,21 +185,21 @@ export default function WeeklyTimelineReport({ projectId, projectTitle, canEdit 
                 required={canEdit}
                 disabled={!canEdit || saving}
                 value={report.start_date}
-                onChange={event => setDate('start_date', event.target.value)}
+                onChange={event => setStartDate(event.target.value)}
                 className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-normal text-slate-800 disabled:bg-slate-50"
               />
             </label>
             <label className="space-y-1.5 text-xs font-semibold text-slate-600">
-              Reporting end date
+              Reporting end date <span className="font-normal text-slate-400">(auto-calculated)</span>
               <input
                 type="date"
                 required={canEdit}
-                min={report.start_date || undefined}
                 disabled={!canEdit || saving}
+                readOnly={canEdit}
                 value={report.end_date}
-                onChange={event => setDate('end_date', event.target.value)}
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-normal text-slate-800 disabled:bg-slate-50"
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-normal text-slate-800 read-only:bg-slate-50 read-only:text-slate-600 disabled:bg-slate-50"
               />
+              {canEdit && <span className="block font-normal text-slate-400">Calculated as a 10-week window from the start date.</span>}
             </label>
           </div>
 

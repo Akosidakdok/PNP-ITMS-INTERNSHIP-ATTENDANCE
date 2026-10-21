@@ -7,6 +7,7 @@ export const WEEKLY_TIMELINE_STATUSES = Object.freeze([
 
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const MAX_FIELD_LENGTH = 4000;
+const REPORTING_WINDOW_DAYS = 70;
 
 function requireIsoDate(value, label) {
   if (!value) throw new Error(`${label} is required`);
@@ -19,6 +20,12 @@ function requireIsoDate(value, label) {
   return date;
 }
 
+export function calculateWeeklyTimelineEndDate(startDate) {
+  const date = new Date(`${startDate}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + REPORTING_WINDOW_DAYS - 1);
+  return date.toISOString().slice(0, 10);
+}
+
 function cleanField(value, label) {
   const field = value == null ? '' : String(value).trim();
   if (field.length > MAX_FIELD_LENGTH) throw new Error(`${label} is too long`);
@@ -27,8 +34,7 @@ function cleanField(value, label) {
 
 export function normalizeWeeklyTimelineReport(input = {}) {
   const start_date = requireIsoDate(input.start_date, 'Start date');
-  const end_date = requireIsoDate(input.end_date, 'End date');
-  if (start_date > end_date) throw new Error('Start date must be on or before the end date');
+  const end_date = calculateWeeklyTimelineEndDate(start_date);
   if (!Array.isArray(input.weeks) || input.weeks.length !== 10) {
     throw new Error('Weekly timeline must contain exactly 10 weeks');
   }

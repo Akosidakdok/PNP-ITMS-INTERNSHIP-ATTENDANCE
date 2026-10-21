@@ -1,6 +1,7 @@
 import { supabase } from '../supabaseClient.js';
 import { getVerifiedProjectAccess } from '../authorization.js';
 import {
+  calculateWeeklyTimelineEndDate,
   getWeeklyTimelinePermissions,
   normalizeWeeklyTimelineReport,
 } from '../utils/projectWeeklyTimeline.js';
@@ -44,6 +45,7 @@ export async function getProjectWeeklyTimeline(projectId, user, { forExport = fa
   if (!report) return null;
   return {
     ...report,
+    end_date: calculateWeeklyTimelineEndDate(report.start_date),
     project: {
       id: access.project.id,
       title: access.project.title,

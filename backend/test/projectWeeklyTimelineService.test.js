@@ -93,8 +93,10 @@ test('assigned intern can save a shared report and read it back', async () => {
   const loaded = await getProjectWeeklyTimeline(51, { id: 10, role: 'intern' });
   assert.equal(database.read().project_id, 51);
   assert.equal(saved.weeks.length, 10);
+  assert.equal(saved.end_date, '2026-10-18');
   assert.equal(loaded.revision, 1);
   assert.equal(loaded.start_date, '2026-08-10');
+  assert.equal(loaded.end_date, '2026-10-18');
   assert.equal(loaded.weeks[0].focus, 'System analysis');
 });
 
