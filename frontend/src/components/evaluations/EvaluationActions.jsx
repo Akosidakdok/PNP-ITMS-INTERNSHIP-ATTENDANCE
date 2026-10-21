@@ -5,16 +5,26 @@ import { exportEvaluationElementToPdf, printEvaluationElement } from '../../util
 
 export default function EvaluationActions({ elementId, filename }) {
   const [exporting, setExporting] = useState(false);
+  const [printing, setPrinting] = useState(false);
 
   const getSheet = () => document.getElementById(elementId);
 
-  const handlePrint = () => {
+  const handlePrint = async () => {
+    if (printing || exporting) return;
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      toast.error('Allow pop-ups to print this evaluation');
+      return;
+    }
+
+    setPrinting(true);
     try {
-      if (!printEvaluationElement(getSheet(), filename)) {
-        toast.error('Allow pop-ups to print this evaluation');
-      }
+      await printEvaluationElement(getSheet(), filename, printWindow);
     } catch (error) {
+      printWindow.close();
       toast.error(error.message || 'Could not print this evaluation');
+    } finally {
+      setPrinting(false);
     }
   };
 
@@ -37,15 +47,15 @@ export default function EvaluationActions({ elementId, filename }) {
       <button
         type="button"
         onClick={handlePrint}
-        disabled={exporting}
+        disabled={exporting || printing}
         className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
       >
-        <Printer className="h-4 w-4" /> Print
+        <Printer className="h-4 w-4" /> {printing ? 'Preparing...' : 'Print'}
       </button>
       <button
         type="button"
         onClick={handleExport}
-        disabled={exporting}
+        disabled={exporting || printing}
         className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-wait disabled:opacity-60"
       >
         {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}

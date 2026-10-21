@@ -52,44 +52,43 @@ function waitForImages(element) {
   }));
 }
 
-export function printEvaluationElement(element, title = 'Evaluation') {
+export async function printEvaluationElement(element, title = 'Evaluation', printWindow) {
   if (!element) throw new Error('Evaluation sheet is unavailable');
-  const printWindow = window.open('', '_blank');
-  if (!printWindow) return false;
+  if (!printWindow || printWindow.closed) throw new Error('Print window is unavailable');
 
+  const pages = await renderEvaluationPages(element);
   const printDocument = printWindow.document;
   printDocument.open();
   printDocument.write('<!doctype html><html><head><meta charset="utf-8"><title></title></head><body></body></html>');
   printDocument.close();
   printDocument.title = title;
+  const style = printDocument.createElement('style');
+  style.textContent = `
+    @page { size: A4 portrait; margin: ${PAGE_MARGIN_MM}mm; }
+    html, body { margin: 0; padding: 0; background: #fff; }
+    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .evaluation-print-page { display: block; width: ${A4_WIDTH_MM - PAGE_MARGIN_MM * 2}mm; break-after: page; page-break-after: always; }
+    .evaluation-print-page:last-child { break-after: auto; page-break-after: auto; }
+    .evaluation-print-page img { display: block; width: 100%; height: auto; }
+  `;
+  printDocument.head.appendChild(style);
 
-  document.querySelectorAll('link[rel="stylesheet"]').forEach(source => {
-    const link = printDocument.createElement('link');
-    link.rel = 'stylesheet';
-    link.href = source.href;
-    printDocument.head.appendChild(link);
+  pages.forEach(page => {
+    const pageElement = printDocument.createElement('div');
+    pageElement.className = 'evaluation-print-page';
+    const image = printDocument.createElement('img');
+    image.src = page.data;
+    pageElement.appendChild(image);
+    printDocument.body.appendChild(pageElement);
   });
 
-  const style = printDocument.createElement('style');
-  style.textContent = EVALUATION_PRINT_STYLES;
-  printDocument.head.appendChild(style);
-  printDocument.body.appendChild(cloneEvaluationSheet(element));
-
-  let printStarted = false;
-  const startPrint = async () => {
-    if (printStarted || printWindow.closed) return;
-    printStarted = true;
-    await printDocument.fonts?.ready;
-    await waitForImages(printDocument.body);
-    printWindow.focus();
-    printWindow.print();
-  };
-  printWindow.addEventListener('load', () => { startPrint(); }, { once: true });
-  window.setTimeout(() => { if (!printWindow.closed) startPrint(); }, 800);
-  return true;
+  await waitForImages(printDocument.body);
+  await printDocument.fonts?.ready;
+  printWindow.focus();
+  printWindow.print();
 }
 
-export async function exportEvaluationElementToPdf(element, filename = 'evaluation') {
+async function renderEvaluationPages(element) {
   if (!element) throw new Error('Evaluation sheet is unavailable');
 
   const host = document.createElement('div');
@@ -118,7 +117,6 @@ export async function exportEvaluationElementToPdf(element, filename = 'evaluati
     image.src = imageData;
     await image.decode();
 
-    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
     const contentWidth = A4_WIDTH_MM - PAGE_MARGIN_MM * 2;
     const contentHeight = A4_HEIGHT_MM - PAGE_MARGIN_MM * 2;
     const pageSourceHeight = Math.floor((image.width * contentHeight) / contentWidth);
@@ -126,18 +124,30 @@ export async function exportEvaluationElementToPdf(element, filename = 'evaluati
     const context = pageCanvas.getContext('2d');
     pageCanvas.width = image.width;
 
-    for (let sourceY = 0, page = 0; sourceY < image.height; sourceY += pageSourceHeight, page += 1) {
+    const pages = [];
+    for (let sourceY = 0; sourceY < image.height; sourceY += pageSourceHeight) {
       const sliceHeight = Math.min(pageSourceHeight, image.height - sourceY);
       pageCanvas.height = sliceHeight;
       context.clearRect(0, 0, pageCanvas.width, pageCanvas.height);
       context.drawImage(image, 0, sourceY, image.width, sliceHeight, 0, 0, image.width, sliceHeight);
-      if (page > 0) pdf.addPage('a4', 'portrait');
       const renderedHeight = (sliceHeight * contentWidth) / image.width;
-      pdf.addImage(pageCanvas.toDataURL('image/png'), 'PNG', PAGE_MARGIN_MM, PAGE_MARGIN_MM, contentWidth, renderedHeight, undefined, 'FAST');
+      pages.push({ data: pageCanvas.toDataURL('image/png'), renderedHeight });
     }
-
-    pdf.save(`${safeFilename(filename)}.pdf`);
+    return pages;
   } finally {
     host.remove();
   }
+}
+
+export async function exportEvaluationElementToPdf(element, filename = 'evaluation') {
+  const pages = await renderEvaluationPages(element);
+  const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  const contentWidth = A4_WIDTH_MM - PAGE_MARGIN_MM * 2;
+
+  pages.forEach((page, index) => {
+    if (index > 0) pdf.addPage('a4', 'portrait');
+    pdf.addImage(page.data, 'PNG', PAGE_MARGIN_MM, PAGE_MARGIN_MM, contentWidth, page.renderedHeight, undefined, 'FAST');
+  });
+
+  pdf.save(`${safeFilename(filename)}.pdf`);
 }
