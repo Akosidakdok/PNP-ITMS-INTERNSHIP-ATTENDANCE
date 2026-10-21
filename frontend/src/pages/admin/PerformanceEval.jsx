@@ -9,6 +9,7 @@ import Modal from '../../components/common/Modal.jsx';
 import { fetchAllInterns } from '../../utils/interns.js';
 import { divisionLabel } from '../../utils/display.js';
 import toast from 'react-hot-toast';
+import EvaluationActions from '../../components/evaluations/EvaluationActions.jsx';
 import { format } from 'date-fns';
 import { useAuth } from '../../context/AuthContext.jsx';
 
@@ -755,9 +756,17 @@ export default function PerformanceEval() {
             onClose={() => { setModal(null); setViewEval(null); }}
             title="OJT Evaluation Sheet"
             size="lg"
-            footer={<button className="btn btn-secondary" onClick={() => { setModal(null); setViewEval(null); }}>Close</button>}
+            footer={(
+              <>
+                <EvaluationActions
+                  elementId="admin-evaluation-sheet"
+                  filename={`OJT_Evaluation_${viewEval.full_name}_${viewEval.evaluation_date || ''}`}
+                />
+                <button className="btn btn-secondary" onClick={() => { setModal(null); setViewEval(null); }}>Close</button>
+              </>
+            )}
           >
-            <div className="space-y-6 max-h-[75vh] overflow-y-auto pr-2 bg-white text-gray-800 p-4">
+            <div id="admin-evaluation-sheet" className="space-y-6 max-h-[75vh] overflow-y-auto pr-2 bg-white text-gray-800 p-4">
               
               {/* PNP ITMS Official Header */}
               <div className="flex items-center justify-between border-b-2 border-gray-900 pb-4 text-center">

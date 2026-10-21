@@ -3,6 +3,7 @@ import { Award, Star, Lock } from 'lucide-react';
 import api from '../../utils/api.js';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
+import EvaluationActions from '../../components/evaluations/EvaluationActions.jsx';
 
 const PROJECT_CRITERIA = [
   { key: 'project_quality', label: 'Quality of Work', weight: 20 },
@@ -128,9 +129,14 @@ export default function MyEvaluation() {
 
           const finalGrade = projectScore + performanceScore;
           const ratingDetails = getRatingAndLetter(finalGrade);
+          const evaluationElementId = `intern-evaluation-${ev.id}`;
 
           return (
-            <div key={ev.id} className="card p-6 bg-white border border-gray-200 shadow-sm max-w-3xl mx-auto space-y-6">
+            <div key={ev.id} id={evaluationElementId} className="card p-6 bg-white border border-gray-200 shadow-sm max-w-3xl mx-auto space-y-6">
+              <EvaluationActions
+                elementId={evaluationElementId}
+                filename={`OJT_Evaluation_${ev.full_name}_${ev.evaluation_date || ''}`}
+              />
               
               {/* Official Header */}
               <div className="flex items-center justify-between border-b-2 border-gray-900 pb-4 text-center">
