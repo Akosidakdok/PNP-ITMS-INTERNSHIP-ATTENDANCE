@@ -8,6 +8,7 @@ import {
 import api from '../../utils/api.js';
 import { useAuth } from '../../context/AuthContext.jsx';
 import Modal from '../../components/common/Modal.jsx';
+import WeeklyTimelineReport from '../../components/projects/WeeklyTimelineReport.jsx';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
 import { divisionLabel } from '../../utils/display.js';
@@ -682,6 +683,13 @@ export default function MyProjects() {
                 <p className="mt-0.5 font-semibold text-slate-800">{formatProjectDate(quickViewProject.updated_at)}</p>
               </div>
             </div>
+
+            <WeeklyTimelineReport
+              key={quickViewProject.id}
+              projectId={quickViewProject.id}
+              projectTitle={quickViewProject.title}
+              canEdit={Boolean(quickViewProject.permissions?.can_update_progress)}
+            />
 
             {(quickViewProject.github_repo || quickViewProject.demo_url) && (
               <div className="flex flex-wrap gap-3 border-t border-slate-100 pt-4">

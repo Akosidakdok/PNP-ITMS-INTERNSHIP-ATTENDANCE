@@ -113,6 +113,10 @@ import {
   setProjectArchived,
   getProjectAudit,
 } from './services/projectService.js';
+import {
+  getProjectWeeklyTimeline,
+  saveProjectWeeklyTimeline,
+} from './services/projectWeeklyTimelineService.js';
 import { sendWelcomeEmail } from './mailer.js';
 import { supabase } from './supabaseClient.js';
 import {
@@ -1827,6 +1831,34 @@ app.get('/projects/stats', authMiddleware, async (req, res) => {
     return res.json(stats);
   } catch (error) {
     return res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/projects/:id/weekly-timeline', authMiddleware, async (req, res) => {
+  try {
+    const report = await getProjectWeeklyTimeline(Number(req.params.id), req.user);
+    return res.json({ report });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message });
+  }
+});
+
+app.get('/projects/:id/weekly-timeline/export', authMiddleware, async (req, res) => {
+  try {
+    const report = await getProjectWeeklyTimeline(Number(req.params.id), req.user, { forExport: true });
+    if (!report) return res.status(404).json({ error: 'No weekly timeline report has been saved yet' });
+    return res.json({ report });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message });
+  }
+});
+
+app.put('/projects/:id/weekly-timeline', authMiddleware, async (req, res) => {
+  try {
+    const report = await saveProjectWeeklyTimeline(Number(req.params.id), req.user, req.body);
+    return res.json({ report });
+  } catch (error) {
+    return res.status(error.statusCode || 400).json({ error: error.message });
   }
 });
 
