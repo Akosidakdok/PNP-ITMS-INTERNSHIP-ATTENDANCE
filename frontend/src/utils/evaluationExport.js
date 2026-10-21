@@ -1,7 +1,7 @@
 import domtoimage from 'dom-to-image-more';
 import { jsPDF } from 'jspdf';
 
-const EXPORT_WIDTH = 760;
+const EXPORT_WIDTH = 980;
 const A4_WIDTH_MM = 210;
 const A4_HEIGHT_MM = 297;
 const PAGE_MARGIN_MM = 10;
@@ -10,7 +10,7 @@ const EVALUATION_PRINT_STYLES = `
   @page { size: A4 portrait; margin: 10mm; }
   html, body { margin: 0; padding: 0; background: #fff; color: #111827; }
   body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  .evaluation-export-sheet { width: 760px !important; max-width: none !important; max-height: none !important; height: auto !important; margin: 0 auto !important; overflow: visible !important; background: #fff !important; box-shadow: none !important; }
+  .evaluation-export-sheet { width: ${EXPORT_WIDTH}px !important; max-width: none !important; max-height: none !important; height: auto !important; margin: 0 auto !important; overflow: visible !important; background: #fff !important; box-shadow: none !important; }
   .evaluation-export-sheet .no-print, .evaluation-export-actions { display: none !important; }
   .evaluation-export-sheet .table-responsive { overflow: visible !important; }
   .evaluation-export-sheet table { display: table !important; width: 100% !important; table-layout: fixed; }
