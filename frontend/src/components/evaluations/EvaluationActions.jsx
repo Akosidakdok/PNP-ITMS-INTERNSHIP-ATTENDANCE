@@ -17,11 +17,20 @@ export default function EvaluationActions({ elementId, filename }) {
       return;
     }
 
+    const printDocument = printWindow.document;
+    printDocument.open();
+    printDocument.write('<!doctype html><html><head><meta charset="utf-8"><title>Preparing evaluation</title></head><body style="font:16px Arial,sans-serif;padding:32px;color:#334155">Preparing evaluation for print…</body></html>');
+    printDocument.close();
     setPrinting(true);
     try {
       await printEvaluationElement(getSheet(), filename, printWindow);
     } catch (error) {
-      printWindow.close();
+      if (!printWindow.closed) {
+        const message = printWindow.document.createElement('p');
+        message.textContent = error.message || 'Could not prepare this evaluation for printing.';
+        message.style.cssText = 'font:16px Arial,sans-serif;padding:32px;color:#b91c1c';
+        printWindow.document.body.replaceChildren(message);
+      }
       toast.error(error.message || 'Could not print this evaluation');
     } finally {
       setPrinting(false);

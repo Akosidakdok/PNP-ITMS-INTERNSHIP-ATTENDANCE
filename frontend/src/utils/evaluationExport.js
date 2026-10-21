@@ -82,8 +82,9 @@ export async function printEvaluationElement(element, title = 'Evaluation', prin
     printDocument.body.appendChild(pageElement);
   });
 
-  await waitForImages(printDocument.body);
+  await Promise.all(Array.from(printDocument.querySelectorAll('img'), image => image.decode()));
   await printDocument.fonts?.ready;
+  await new Promise(resolve => printWindow.requestAnimationFrame(() => printWindow.requestAnimationFrame(resolve)));
   printWindow.focus();
   printWindow.print();
 }
