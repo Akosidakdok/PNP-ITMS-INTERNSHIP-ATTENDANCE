@@ -1,7 +1,7 @@
 import domtoimage from 'dom-to-image-more';
 import { jsPDF } from 'jspdf';
 
-const EXPORT_WIDTH = 980;
+const EXPORT_WIDTH = 760;
 const A4_WIDTH_MM = 210;
 const A4_HEIGHT_MM = 297;
 const PAGE_MARGIN_MM = 10;
@@ -10,7 +10,7 @@ const EVALUATION_PRINT_STYLES = `
   @page { size: A4 portrait; margin: 10mm; }
   html, body { margin: 0; padding: 0; background: #fff; color: #111827; }
   body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  .evaluation-export-sheet { width: ${EXPORT_WIDTH}px !important; max-width: none !important; max-height: none !important; height: auto !important; margin: 0 auto !important; overflow: visible !important; background: #fff !important; box-shadow: none !important; }
+  .evaluation-export-sheet { width: 760px !important; max-width: none !important; max-height: none !important; height: auto !important; margin: 0 auto !important; overflow: visible !important; background: #fff !important; box-shadow: none !important; }
   .evaluation-export-sheet .no-print, .evaluation-export-actions { display: none !important; }
   .evaluation-export-sheet .table-responsive { overflow: visible !important; }
   .evaluation-export-sheet table { display: table !important; width: 100% !important; table-layout: fixed; }
@@ -141,18 +141,17 @@ async function renderEvaluationPages(element) {
     const pageCanvas = document.createElement('canvas');
     const context = pageCanvas.getContext('2d');
     pageCanvas.width = image.width;
-    pageCanvas.height = pageSourceHeight;
-    context.fillStyle = '#ffffff';
-    context.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
 
-    const scale = Math.min(1, pageSourceHeight / image.height);
-    const renderedWidth = image.width * scale;
-    const renderedHeight = image.height * scale;
-    const x = (pageCanvas.width - renderedWidth) / 2;
-    const y = (pageCanvas.height - renderedHeight) / 2;
-    context.drawImage(image, 0, 0, image.width, image.height, x, y, renderedWidth, renderedHeight);
-
-    return [{ data: pageCanvas.toDataURL('image/png'), renderedHeight: contentHeight }];
+    const pages = [];
+    for (let sourceY = 0; sourceY < image.height; sourceY += pageSourceHeight) {
+      const sliceHeight = Math.min(pageSourceHeight, image.height - sourceY);
+      pageCanvas.height = sliceHeight;
+      context.clearRect(0, 0, pageCanvas.width, pageCanvas.height);
+      context.drawImage(image, 0, sourceY, image.width, sliceHeight, 0, 0, image.width, sliceHeight);
+      const renderedHeight = (sliceHeight * contentWidth) / image.width;
+      pages.push({ data: pageCanvas.toDataURL('image/png'), renderedHeight });
+    }
+    return pages;
   } finally {
     host.remove();
   }
@@ -163,8 +162,10 @@ export async function exportEvaluationElementToPdf(element, filename = 'evaluati
   const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   const contentWidth = A4_WIDTH_MM - PAGE_MARGIN_MM * 2;
 
-  const page = pages[0];
-  pdf.addImage(page.data, 'PNG', PAGE_MARGIN_MM, PAGE_MARGIN_MM, contentWidth, page.renderedHeight, undefined, 'FAST');
+  pages.forEach((page, index) => {
+    if (index > 0) pdf.addPage('a4', 'portrait');
+    pdf.addImage(page.data, 'PNG', PAGE_MARGIN_MM, PAGE_MARGIN_MM, contentWidth, page.renderedHeight, undefined, 'FAST');
+  });
 
   pdf.save(`${safeFilename(filename)}.pdf`);
 }
