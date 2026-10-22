@@ -1,6 +1,7 @@
 import { supabase } from '../supabaseClient.js';
 import {
   compareFacePackages,
+  FACE_COMPARISON_VERSION,
   validateFacePackage,
 } from '../utils/compareFaces.js';
 import {
@@ -109,9 +110,23 @@ export async function registerUserFace(userId, facePackage, photoUrl, {
 
   const validatedPackage = validateFacePackage(facePackage);
   const validatedPhoto = validateFacePhoto(photoUrl);
+  const packageToStore = {
+    ...validatedPackage,
+    comparisonVersion: FACE_COMPARISON_VERSION,
+  };
 
-  const duplicateIdentity = await findCompetingIdentity(validatedPackage, userId);
+  const duplicateIdentity = await findCompetingIdentity(packageToStore, userId);
   if (duplicateIdentity?.isMatch) {
+    console.warn('[FACE ID] Enrollment rejected as duplicate', {
+      candidateAccountId: duplicateIdentity.accountId,
+      templateVersion: duplicateIdentity.enrolledComparisonVersion || 'legacy-unversioned',
+      comparisonVersion: duplicateIdentity.comparisonVersion,
+      similarity: duplicateIdentity.similarity,
+      sampleSimilarities: duplicateIdentity.sampleSimilarities,
+      matchedSamples: duplicateIdentity.matchedSamples,
+      matchThreshold: duplicateIdentity.matchThreshold,
+      averageThreshold: duplicateIdentity.averageThreshold,
+    });
     const duplicateError = new Error(
       'This face is already enrolled to another account. Enrollment was rejected.'
     );
@@ -122,7 +137,7 @@ export async function registerUserFace(userId, facePackage, photoUrl, {
   const { data, error } = await supabase
     .rpc('complete_face_enrollment', {
       p_intern_id: Number(userId),
-      p_embedding: validatedPackage,
+      p_embedding: packageToStore,
       p_photo: validatedPhoto,
       p_actor_id: Number(actorId),
       p_reason: cleanReason,

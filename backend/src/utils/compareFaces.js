@@ -1,4 +1,5 @@
 export const FACE_ID_VERSION = 'human-faceres-v1';
+export const FACE_COMPARISON_VERSION = 'cosine-3sample-v2';
 export const FACE_DESCRIPTOR_LENGTH = 1024;
 export const FACE_SAMPLE_COUNT = 3;
 
@@ -43,6 +44,7 @@ export function validateFacePackage(facePackage) {
 
   return {
     version: FACE_ID_VERSION,
+    comparisonVersion: facePackage.comparisonVersion || null,
     samples,
   };
 }
@@ -104,16 +106,9 @@ export function compareFacePackages(livePackage, enrolledPackage, options = {}) 
     result => result.similarity >= matchThreshold
   ).length;
 
-  // Evidence-based matching:
-  // - High confidence: all 3 samples match individual threshold, OR
-  // - Robust majority: at least 2 of 3 samples match individual threshold AND average meets average threshold, OR
-  // - Strong aggregate: average similarity exceeds 0.62 with at least 1 sample match.
-  // Genuine same-person similarity is 0.65 - 1.00; different persons measure <= 0.4342.
-  const isMatch = (
-    (matchedSamples === FACE_SAMPLE_COUNT && averageSimilarity >= (matchThreshold - 0.02))
-    || (matchedSamples >= 2 && averageSimilarity >= averageThreshold)
-    || (averageSimilarity >= 0.62 && matchedSamples >= 1)
-  );
+  // Require a majority of independently captured samples to match. A high
+  // aggregate alone can be produced by one unusually similar frame.
+  const isMatch = matchedSamples >= 2 && averageSimilarity >= averageThreshold;
 
   return {
     isMatch,
@@ -123,5 +118,7 @@ export function compareFacePackages(livePackage, enrolledPackage, options = {}) 
     sampleSimilarities: sampleResults.map(result => Number(result.similarity.toFixed(4))),
     matchThreshold,
     averageThreshold,
+    comparisonVersion: FACE_COMPARISON_VERSION,
+    enrolledComparisonVersion: enrolled.comparisonVersion,
   };
 }

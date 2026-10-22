@@ -6,6 +6,7 @@ import {
   faceDescriptorSimilarity,
   validateFacePackage,
   FACE_ID_VERSION,
+  FACE_COMPARISON_VERSION,
   FACE_DESCRIPTOR_LENGTH,
   FACE_SAMPLE_COUNT,
 } from '../src/utils/compareFaces.js';
@@ -104,5 +105,30 @@ test('compareFacePackages rejects arbitrary distinct faces and random faces', ()
   assert.equal(res.isMatch, false, 'Arbitrary distinct face must never match');
   assert.equal(res.matchedSamples, 0, 'No samples should match for distinct persons');
   assert.ok(res.similarity < 0.40, `Similarity should be low (got ${res.similarity})`);
+});
+
+test('compareFacePackages rejects a high aggregate supported by only one matching sample', () => {
+  const base = new Array(FACE_DESCRIPTOR_LENGTH).fill(0);
+  base[0] = 1;
+  const near = new Array(FACE_DESCRIPTOR_LENGTH).fill(0);
+  near[0] = 0.56;
+  near[1] = Math.sqrt(1 - 0.56 ** 2);
+  const enrolled = {
+    version: FACE_ID_VERSION,
+    comparisonVersion: 'legacy-distance-v1',
+    samples: [base, base, base],
+  };
+  const live = {
+    version: FACE_ID_VERSION,
+    samples: [base, near, near],
+  };
+
+  const result = compareFacePackages(live, enrolled);
+
+  assert.equal(result.matchedSamples, 1);
+  assert.ok(result.similarity >= 0.62);
+  assert.equal(result.isMatch, false);
+  assert.equal(result.comparisonVersion, FACE_COMPARISON_VERSION);
+  assert.equal(result.enrolledComparisonVersion, 'legacy-distance-v1');
 });
 
