@@ -8,6 +8,7 @@ import {
 import api from '../../utils/api.js';
 import { useAuth } from '../../context/AuthContext.jsx';
 import Modal from '../../components/common/Modal.jsx';
+import WeeklyTimelineReport from '../../components/projects/WeeklyTimelineReport.jsx';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
 import { divisionLabel } from '../../utils/display.js';
@@ -56,6 +57,8 @@ export default function MyProjects() {
     progress: 0,
     github_repo: '',
     demo_url: '',
+    project_start_date: '',
+    project_target_date: '',
     members: []
   });
 
@@ -154,6 +157,8 @@ export default function MyProjects() {
       progress: 0,
       github_repo: '',
       demo_url: '',
+      project_start_date: '',
+      project_target_date: '',
       members: [{ id: user.id, full_name: user.full_name, role: 'Lead Developer', division_name: userDivName }]
     });
     setProjectModalOpen(true);
@@ -170,6 +175,8 @@ export default function MyProjects() {
       progress: proj.progress || 0,
       github_repo: proj.github_repo || '',
       demo_url: proj.demo_url || '',
+      project_start_date: proj.project_start_date || '',
+      project_target_date: proj.project_target_date || '',
       members: proj.members || []
     });
     setProjectModalOpen(true);
@@ -179,6 +186,11 @@ export default function MyProjects() {
     e.preventDefault();
     if (!form.title.trim() || !form.group_name.trim()) {
       toast.error('Project title and group name are required');
+      return;
+    }
+    if (form.project_start_date && form.project_target_date
+      && form.project_start_date > form.project_target_date) {
+      toast.error('Project target date must be on or after the project start date');
       return;
     }
 
@@ -583,13 +595,14 @@ export default function MyProjects() {
             <button
               type="button"
               onClick={() => {
-                setActiveProjectForFiles(quickViewProject);
+                const project = quickViewProject;
                 setQuickViewProject(null);
+                setActiveProjectForFiles(project);
               }}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-sm font-semibold text-white hover:bg-blue-700 transition-colors"
+              className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700"
             >
               <FileText className="w-4 h-4" />
-              Files & Deliverables
+              Files &amp; Deliverables
             </button>
           </>
         )}
@@ -674,6 +687,14 @@ export default function MyProjects() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
               <div className="rounded-xl border border-slate-200 p-3">
+                <span className="text-xs text-slate-500">Project Start Date</span>
+                <p className="mt-0.5 font-semibold text-slate-800">{formatProjectDate(quickViewProject.project_start_date)}</p>
+              </div>
+              <div className="rounded-xl border border-slate-200 p-3">
+                <span className="text-xs text-slate-500">Target End Date</span>
+                <p className="mt-0.5 font-semibold text-slate-800">{formatProjectDate(quickViewProject.project_target_date)}</p>
+              </div>
+              <div className="rounded-xl border border-slate-200 p-3">
                 <span className="text-xs text-slate-500">Created</span>
                 <p className="mt-0.5 font-semibold text-slate-800">{formatProjectDate(quickViewProject.created_at)}</p>
               </div>
@@ -682,6 +703,13 @@ export default function MyProjects() {
                 <p className="mt-0.5 font-semibold text-slate-800">{formatProjectDate(quickViewProject.updated_at)}</p>
               </div>
             </div>
+
+            <WeeklyTimelineReport
+              key={quickViewProject.id}
+              projectId={quickViewProject.id}
+              projectTitle={quickViewProject.title}
+              canEdit={Boolean(quickViewProject.permissions?.can_update_progress)}
+            />
 
             {(quickViewProject.github_repo || quickViewProject.demo_url) && (
               <div className="flex flex-wrap gap-3 border-t border-slate-100 pt-4">
@@ -773,6 +801,31 @@ export default function MyProjects() {
               disabled={!mayEditDetails}
               className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
             />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Project Start Date</label>
+              <input
+                type="date"
+                value={form.project_start_date}
+                max={form.project_target_date || undefined}
+                onChange={e => setForm({ ...form, project_start_date: e.target.value })}
+                disabled={!mayEditDetails}
+                className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Target End Date</label>
+              <input
+                type="date"
+                value={form.project_target_date}
+                min={form.project_start_date || undefined}
+                onChange={e => setForm({ ...form, project_target_date: e.target.value })}
+                disabled={!mayEditDetails}
+                className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
           </div>
 
           {/* Development Progress & Status */}

@@ -3,6 +3,7 @@ import { Award, Star, Lock } from 'lucide-react';
 import api from '../../utils/api.js';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
+import EvaluationActions from '../../components/evaluations/EvaluationActions.jsx';
 
 const PROJECT_CRITERIA = [
   { key: 'project_quality', label: 'Quality of Work', weight: 20 },
@@ -128,9 +129,14 @@ export default function MyEvaluation() {
 
           const finalGrade = projectScore + performanceScore;
           const ratingDetails = getRatingAndLetter(finalGrade);
+          const evaluationElementId = `intern-evaluation-${ev.id}`;
 
           return (
-            <div key={ev.id} className="card p-6 bg-white border border-gray-200 shadow-sm max-w-3xl mx-auto space-y-6">
+            <div key={ev.id} id={evaluationElementId} className="card p-6 bg-white border border-gray-200 shadow-sm max-w-3xl mx-auto space-y-6">
+              <EvaluationActions
+                elementId={evaluationElementId}
+                filename={`OJT_Evaluation_${ev.full_name}_${ev.evaluation_date || ''}`}
+              />
               
               {/* Official Header */}
               <div className="flex items-center justify-between border-b-2 border-gray-900 pb-4 text-center">
@@ -139,7 +145,7 @@ export default function MyEvaluation() {
                   <p className="text-[10px] font-medium leading-tight">Republic of the Philippines</p>
                   <p className="text-[10px] font-semibold leading-tight">NATIONAL POLICE COMMISSION</p>
                   <p className="text-[11px] font-bold leading-tight">PHILIPPINE NATIONAL POLICE</p>
-                  <p className="text-[12px] font-extrabold leading-tight tracking-wider text-blue-900">INFORMATION TECHNOLOGY MANAGEMENT SERVICE</p>
+                  <p className="text-[12px] font-normal leading-tight tracking-wider text-black">INFORMATION TECHNOLOGY MANAGEMENT SERVICE</p>
                   <p className="text-[9px] font-medium text-gray-500 leading-none mt-0.5">Camp BGen Rafael T Crame, Quezon City</p>
                 </div>
                 <img src="/ITMS_LOGO.png" alt="ITMS Logo" className="w-20 h-20 object-contain" />

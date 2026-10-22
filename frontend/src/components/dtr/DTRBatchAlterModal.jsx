@@ -31,6 +31,7 @@ export default function DTRBatchAlterModal({
   selectedDates = [],
   onSaveSuccess,
   existingRecords = [],
+  isSuperadmin = false,
 }) {
   const [activeTab, setActiveTab] = useState('time'); // 'time' | 'override' | 'clear'
   const [timeIn, setTimeIn] = useState('08:00');
@@ -127,7 +128,7 @@ export default function DTRBatchAlterModal({
         payload.clear_target = clearTarget;
       }
 
-      await api.put(`/admin/dtr/${intern.id}/batch-alter`, payload);
+      await api.put(`/admin/dtr/${intern.id}/batch-alter`, payload, { timeout: 60000 });
 
       let successMsg = '';
       if (activeTab === 'clear') {
@@ -172,9 +173,11 @@ export default function DTRBatchAlterModal({
           <span className="font-bold text-gray-800" style={{ fontFamily: 'Outfit, sans-serif' }}>
             {count === 1 ? 'Alter Attendance Record' : `Alter Attendance (${count} Dates Selected)`}
           </span>
-          <span className="bg-blue-100 text-blue-800 text-[11px] font-bold px-2 py-0.5 rounded-full">
-            Superadmin
-          </span>
+          {isSuperadmin && (
+            <span className="bg-blue-100 text-blue-800 text-[11px] font-bold px-2 py-0.5 rounded-full">
+              Superadmin
+            </span>
+          )}
         </div>
       }
       size="lg"
@@ -575,14 +578,15 @@ export default function DTRBatchAlterModal({
           />
         </div>
 
-        {/* Superadmin Audit Trail Assurance */}
-        <div className="bg-slate-50 border border-slate-200 rounded-lg p-2.5 flex items-start gap-2 text-slate-600 text-[11px]">
-          <ShieldCheck className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
-          <div>
-            <span className="font-semibold text-slate-800">Superadmin Audit Trail: </span>
-            Every modification is permanently saved to the DTR Audit History with your admin identity, timestamp, and explanation. Original camera scan timestamps are always preserved.
+        {isSuperadmin && (
+          <div className="bg-slate-50 border border-slate-200 rounded-lg p-2.5 flex items-start gap-2 text-slate-600 text-[11px]">
+            <ShieldCheck className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+            <div>
+              <span className="font-semibold text-slate-800">Superadmin Audit Trail: </span>
+              Every modification is permanently saved to the DTR Audit History with your admin identity, timestamp, and explanation. Original camera scan timestamps are always preserved.
+            </div>
           </div>
-        </div>
+        )}
       </form>
     </Modal>
   );

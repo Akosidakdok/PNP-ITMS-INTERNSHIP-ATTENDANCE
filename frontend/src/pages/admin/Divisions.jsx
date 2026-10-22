@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Building2, PlusCircle, Edit2, Trash2, UserPlus, Users } from 'lucide-react';
+import { Building2, PlusCircle, Edit2, Trash2, UserPlus, Users, Search } from 'lucide-react';
 import api from '../../utils/api.js';
 import Modal from '../../components/common/Modal.jsx';
 import { fetchAllInterns } from '../../utils/interns.js';
@@ -56,6 +56,11 @@ export default function Divisions() {
   // Intern States
   const [interns, setInterns] = useState([]);
   const [internsLoading, setInternsLoading] = useState(false);
+  const [availableInterns, setAvailableInterns] = useState([]);
+  const [availableInternsLoading, setAvailableInternsLoading] = useState(false);
+  const [availableInternsError, setAvailableInternsError] = useState('');
+  const [internSearch, setInternSearch] = useState('');
+  const [assigningInternId, setAssigningInternId] = useState(null);
   const [selectedIntern, setSelectedIntern] = useState(null);
   const [internForm, setInternForm] = useState(INIT_INTERN_FORM);
 
@@ -123,14 +128,44 @@ export default function Divisions() {
     fetchInternsForDiv(d.id);
   };
 
-  const openCreateIntern = () => {
-    setInternForm({
-      ...INIT_INTERN_FORM,
-      division_id: selected.id,
-    });
+  const openCreateIntern = async () => {
+    setAvailableInterns([]);
+    setAvailableInternsError('');
+    setInternSearch('');
+    setAvailableInternsLoading(true);
     setSelectedIntern(null);
-    setModal('intern-form');
+    setModal('intern-select');
+    try {
+      const allInterns = await fetchAllInterns();
+      setAvailableInterns(allInterns.filter(intern => !intern.division_id));
+    } catch {
+      setAvailableInternsError('Failed to load available interns. Please try again.');
+    } finally {
+      setAvailableInternsLoading(false);
+    }
   };
+
+  const assignIntern = async intern => {
+    setAssigningInternId(intern.id);
+    try {
+      await api.put(`/interns/${intern.id}`, { division_id: selected.id });
+      toast.success(`${intern.full_name} assigned to ${selected.name}`);
+      setModal('interns');
+      fetchInternsForDiv(selected.id);
+      fetch(); // Refresh division counts
+    } catch (err) {
+      toast.error(err?.response?.data?.error || 'Could not assign intern');
+    } finally {
+      setAssigningInternId(null);
+    }
+  };
+
+  const filteredAvailableInterns = availableInterns.filter(intern => {
+    const query = internSearch.trim().toLowerCase();
+    if (!query) return true;
+    return [intern.full_name, intern.student_id, intern.school, intern.course]
+      .some(value => String(value || '').toLowerCase().includes(query));
+  });
 
   const openEditIntern = (i) => {
     setSelectedIntern(i);
@@ -344,6 +379,83 @@ export default function Divisions() {
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </Modal>
+
+      {/* Assign Existing Intern Modal */}
+      <Modal
+        isOpen={modal === 'intern-select'}
+        onClose={() => setModal('interns')}
+        title={`Add an intern to ${selected?.name || ''}`}
+        size="lg"
+        footer={<button className="btn btn-secondary" onClick={() => setModal('interns')}>Back</button>}
+      >
+        <div className="space-y-4">
+          <p className="text-xs text-gray-500">
+            Choose an intern without a division assignment. New intern accounts can be created in Intern Management.
+          </p>
+          <div className="relative">
+            <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              className="form-input pl-9"
+              type="search"
+              placeholder="Search by name, student ID, school, or course"
+              value={internSearch}
+              onChange={e => setInternSearch(e.target.value)}
+              aria-label="Search available interns"
+            />
+          </div>
+
+          {availableInternsLoading ? (
+            <div className="space-y-2 py-2" aria-label="Loading available interns">
+              <div className="skeleton h-14 rounded-lg" />
+              <div className="skeleton h-14 rounded-lg" />
+              <div className="skeleton h-14 rounded-lg" />
+            </div>
+          ) : availableInternsError ? (
+            <div className="text-center py-8 text-sm text-red-600">{availableInternsError}</div>
+          ) : filteredAvailableInterns.length === 0 ? (
+            <div className="text-center py-8 text-sm text-gray-400 bg-gray-50 rounded-xl border border-dashed border-gray-200">
+              {availableInterns.length === 0
+                ? 'There are no unassigned interns available.'
+                : 'No interns match your search.'}
+            </div>
+          ) : (
+            <div className="overflow-y-auto max-h-[50vh] border border-gray-100 rounded-xl">
+              <table className="w-full text-left text-xs table-card-mobile">
+                <thead className="sticky top-0 bg-gray-50 text-gray-500">
+                  <tr>
+                    <th className="p-3">Intern</th>
+                    <th className="p-3">School / Course</th>
+                    <th className="p-3 text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {filteredAvailableInterns.map(intern => (
+                    <tr key={intern.id}>
+                      <td className="p-3" data-label="Intern">
+                        <div className="font-medium text-gray-800">{intern.full_name}</div>
+                        <div className="text-[10px] text-gray-400">{intern.student_id || intern.username}</div>
+                      </td>
+                      <td className="p-3 text-gray-500" data-label="School / Course">
+                        <div>{intern.school || '—'}</div>
+                        <div className="text-[10px] text-gray-400">{intern.course || '—'}</div>
+                      </td>
+                      <td className="p-3 text-right" data-label="Action">
+                        <button
+                          className="btn btn-primary btn-sm"
+                          onClick={() => assignIntern(intern)}
+                          disabled={assigningInternId !== null}
+                        >
+                          {assigningInternId === intern.id ? 'Assigning...' : 'Assign'}
+                        </button>
                       </td>
                     </tr>
                   ))}

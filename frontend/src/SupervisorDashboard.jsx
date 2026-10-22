@@ -3,7 +3,6 @@ import { Users, UserCheck, Clock, CheckCircle, TrendingUp, Calendar, AlertCircle
 import { useAuth } from './context/AuthContext.jsx';
 import api from './utils/api.js';
 import { formatDistanceToNow } from 'date-fns';
-import QRDisplay from './components/qr/QRDisplay.jsx';
 import { divisionLabel } from './utils/display.js';
 
 function StatCard({ icon: Icon, label, value, gradient, trend }) {
@@ -75,9 +74,9 @@ export default function SupervisorDashboard() {
         <StatCard icon={CheckCircle} label="Approved Today" value={loading ? '—' : stats.approved_today || 0} gradient="stat-gradient-teal" />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 gap-6">
         {/* Recent Activity */}
-        <div className="lg:col-span-2 card p-5">
+        <div className="card p-5">
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-bold text-gray-800 flex items-center gap-2">
               <Calendar className="w-4 h-4 text-blue-600" /> Recent Attendance Activity
@@ -126,10 +125,6 @@ export default function SupervisorDashboard() {
           </div>
         </div>
 
-        {/* QR Code */}
-        <div className="space-y-4">
-          <QRDisplay />
-        </div>
       </div>
     </div>
   );

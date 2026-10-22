@@ -5,6 +5,7 @@ import {
   getProjectAccessFlags,
   serializeProjectPermissions,
 } from '../authorization.js';
+import { normalizeProjectDateFields } from './projectDateFields.js';
 
 const STORAGE_BUCKET = 'documents';
 const SIGNED_URL_TTL_SECONDS = 15 * 60;
@@ -382,6 +383,7 @@ function normalizeProjectPayload(payload = {}) {
     progress: Math.min(100, Math.max(0, Number(payload.progress || 0))),
     github_repo: cleanText(payload.github_repo, { max: 1000, label: 'Repository URL' }) || null,
     demo_url: cleanText(payload.demo_url, { max: 1000, label: 'Demo URL' }) || null,
+    ...normalizeProjectDateFields(payload),
   };
 }
 
@@ -417,6 +419,7 @@ export async function updateProject(projectId, payload, access) {
   const id = positiveId(projectId, 'project ID');
   const before = access.project;
   const updates = { ...payload, updated_at: new Date().toISOString() };
+  Object.assign(updates, normalizeProjectDateFields(payload, before));
   if (updates.title !== undefined) updates.title = cleanText(updates.title, { required: true, max: 300, label: 'Project title' });
   if (updates.group_name !== undefined) updates.group_name = cleanText(updates.group_name, { required: true, max: 300, label: 'Group name' });
   if (updates.description !== undefined) updates.description = cleanText(updates.description, { max: 5000, label: 'Project description' });

@@ -13,7 +13,7 @@ import { divisionLabel } from '../../utils/display.js';
 const INIT_FORM = {
   username: '', password: '', first_name: '', middle_name: '', last_name: '', name_suffix: '', email: '', phone: '', 
   school_id: '',
-  course: '', year_level: '4th Year', division_id: '',
+  course: '', course_other: '', year_level: '4th Year', division_id: '',
   required_hours: 300, start_date: '', end_date: '', status: 'active',
   student_id: '', home_address: '', emergency_name: '', emergency_relation: '', emergency_phone: ''
 };
@@ -73,6 +73,8 @@ const calculateEstimatedEndDate = (startDateStr, requiredHours) => {
 };
 
 export default function InternManagement() {
+  const { user } = useAuth();
+  const canCreateInterns = user?.role === 'admin' || user?.role === 'superadmin';
   const [interns, setInterns] = useState([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -185,8 +187,12 @@ export default function InternManagement() {
   const openCreate = () => { setForm(INIT_FORM); setNewSchoolName(''); setModal('create'); };
   const openEdit = (i) => {
     setSelected(i);
+    const savedCourse = i.course || '';
+    const isListedCourse = AVAILABLE_COURSES.includes(savedCourse);
     setForm({
       ...i,
+      course: isListedCourse ? savedCourse : (savedCourse ? 'Other' : ''),
+      course_other: isListedCourse ? '' : savedCourse,
       password: '',
       student_id: i.student_id || '',
       home_address: i.home_address || '',
@@ -281,6 +287,10 @@ export default function InternManagement() {
       toast.error('First Name and Last Name are required');
       return;
     }
+    if (form.course === 'Other' && !form.course_other?.trim()) {
+      toast.error('Please specify the course or degree program');
+      return;
+    }
     if (modal === 'create') {
       if (!form.username || !form.username.trim()) {
         toast.error('Username is required');
@@ -325,7 +335,12 @@ export default function InternManagement() {
         }
       }
 
-      const payload = { ...form, school_id: school_id || '' };
+      const { course_other, ...formData } = form;
+      const payload = {
+        ...formData,
+        course: form.course === 'Other' ? course_other.trim() : form.course,
+        school_id: school_id || ''
+      };
 
       if (modal === 'create') {
         await api.post('/interns', payload);
@@ -652,16 +667,32 @@ export default function InternManagement() {
           </div>
           <div className="form-group col-span-2">
             <label className="form-label text-[11px] text-gray-500 uppercase font-bold tracking-wider">Course / Degree Program</label>
-            <select
-              className="form-input form-select bg-gray-50/50"
+            <input
+              list="available-courses"
+              className="form-input bg-gray-50/50"
               value={form.course || ''}
-              onChange={e => setForm(f => ({ ...f, course: e.target.value }))}
-            >
-              <option value="">Select course</option>
+              placeholder="Type to search courses"
+              autoComplete="off"
+              onChange={e => setForm(f => ({
+                ...f,
+                course: e.target.value,
+                course_other: e.target.value === 'Other' ? f.course_other : ''
+              }))}
+            />
+            <datalist id="available-courses">
               {AVAILABLE_COURSES.map(c => (
                 <option key={c} value={c}>{c}</option>
               ))}
-            </select>
+            </datalist>
+            {form.course === 'Other' && (
+              <input
+                className="form-input bg-gray-50/50 mt-2"
+                placeholder="Please specify your course / degree program"
+                aria-label="Please specify your course or degree program"
+                value={form.course_other || ''}
+                onChange={e => setForm(f => ({ ...f, course_other: e.target.value }))}
+              />
+            )}
           </div>
           <div className="form-group col-span-2">
             <label className="form-label text-[11px] text-gray-500 uppercase font-bold tracking-wider">Home Address</label>
@@ -838,9 +869,11 @@ export default function InternManagement() {
           >
             <Calendar className="w-4 h-4 text-blue-600" /> Bulk DTR Override
           </button>
-          <button id="create-intern-btn" className="btn btn-primary" onClick={openCreate}>
-            <UserPlus className="w-4 h-4" /> Add Intern
-          </button>
+          {canCreateInterns && (
+            <button id="create-intern-btn" className="btn btn-primary" onClick={openCreate}>
+              <UserPlus className="w-4 h-4" /> Add Intern
+            </button>
+          )}
         </div>
       </div>
 

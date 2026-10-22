@@ -92,8 +92,8 @@ function AppRoutes() {
         <Route path="attendance-parameters" element={<Navigate to="/admin/attendance-control" replace />} />
         <Route path="interns" element={<InternManagement />} />
         <Route path="supervisors" element={<ProtectedRoute roles={['superadmin', 'admin']}><SupervisorManagement /></ProtectedRoute>} />
-        <Route path="attendance" element={<AttendanceApproval />} />
-        <Route path="documents" element={<DocumentReview />} />
+        <Route path="attendance" element={<ProtectedRoute roles={['superadmin', 'admin']}><AttendanceApproval /></ProtectedRoute>} />
+        <Route path="documents" element={<ProtectedRoute roles={['superadmin', 'admin']}><DocumentReview /></ProtectedRoute>} />
         <Route path="evaluations" element={<PerformanceEvalWrapper />} />
         <Route path="calendar" element={<AdminCalendar />} />
         <Route path="divisions" element={<ProtectedRoute roles={['superadmin', 'admin']}><Divisions /></ProtectedRoute>} />
@@ -156,6 +156,7 @@ function AppShell() {
       <InstallPrompt />
       <Toaster
         position="top-right"
+        containerStyle={{ zIndex: 10001 }}
         toastOptions={{
           duration: 4000,
           style: { borderRadius: '10px', fontFamily: 'Inter, sans-serif', fontSize: '14px' },

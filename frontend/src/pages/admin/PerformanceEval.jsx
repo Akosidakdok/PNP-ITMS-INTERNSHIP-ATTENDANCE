@@ -9,6 +9,7 @@ import Modal from '../../components/common/Modal.jsx';
 import { fetchAllInterns } from '../../utils/interns.js';
 import { divisionLabel } from '../../utils/display.js';
 import toast from 'react-hot-toast';
+import EvaluationActions from '../../components/evaluations/EvaluationActions.jsx';
 import { format } from 'date-fns';
 import { useAuth } from '../../context/AuthContext.jsx';
 
@@ -32,6 +33,7 @@ const PERFORMANCE_CRITERIA = [
 
 const INIT_FORM = {
   intern_id: '',
+  evaluator_name: '',
   project_quality: 80,
   project_timeliness: 80,
   project_problem_solving: 80,
@@ -139,7 +141,10 @@ export default function PerformanceEval() {
   }, [includeArchived]);
 
   const openCreate = () => {
-    setForm(INIT_FORM);
+    setForm({
+      ...INIT_FORM,
+      evaluator_name: user?.full_name || user?.username || '',
+    });
     setEditId(null);
     setModal('form');
   };
@@ -148,6 +153,7 @@ export default function PerformanceEval() {
     const details = parseEvaluationDetails(e);
     setForm({
       intern_id: e.intern_id,
+      evaluator_name: e.evaluator_name || '',
       project_quality: details.project_scores?.project_quality ?? 80,
       project_timeliness: details.project_scores?.project_timeliness ?? 80,
       project_problem_solving: details.project_scores?.project_problem_solving ?? 80,
@@ -247,6 +253,10 @@ export default function PerformanceEval() {
       toast.error('Select an intern');
       return;
     }
+    if (!form.evaluator_name.trim()) {
+      toast.error('Enter the evaluator/supervisor name');
+      return;
+    }
 
     const projectScore = (
       (form.project_quality * 0.20) +
@@ -292,6 +302,7 @@ export default function PerformanceEval() {
     });
 
     const payload = {
+      evaluator_name: form.evaluator_name.trim(),
       overall_score: overallScore,
       overall_rating: rating,
       comments: serializedDetails,
@@ -530,7 +541,13 @@ export default function PerformanceEval() {
 
               <div className="form-group">
                 <label className="form-label">Evaluator/Supervisor</label>
-                <input className="form-input bg-gray-100 font-medium" value={user?.full_name || user?.username || ''} disabled />
+                <input
+                  className="form-input font-medium"
+                  value={form.evaluator_name}
+                  onChange={e => setForm(f => ({ ...f, evaluator_name: e.target.value }))}
+                  maxLength={150}
+                  required
+                />
               </div>
 
               {selectedInternDetails && (
@@ -755,9 +772,17 @@ export default function PerformanceEval() {
             onClose={() => { setModal(null); setViewEval(null); }}
             title="OJT Evaluation Sheet"
             size="lg"
-            footer={<button className="btn btn-secondary" onClick={() => { setModal(null); setViewEval(null); }}>Close</button>}
+            footer={(
+              <>
+                <EvaluationActions
+                  elementId="admin-evaluation-sheet"
+                  filename={`OJT_Evaluation_${viewEval.full_name}_${viewEval.evaluation_date || ''}`}
+                />
+                <button className="btn btn-secondary" onClick={() => { setModal(null); setViewEval(null); }}>Close</button>
+              </>
+            )}
           >
-            <div className="space-y-6 max-h-[75vh] overflow-y-auto pr-2 bg-white text-gray-800 p-4">
+            <div id="admin-evaluation-sheet" className="space-y-6 max-h-[75vh] overflow-y-auto pr-2 bg-white text-gray-800 p-4">
               
               {/* PNP ITMS Official Header */}
               <div className="flex items-center justify-between border-b-2 border-gray-900 pb-4 text-center">
@@ -766,7 +791,7 @@ export default function PerformanceEval() {
                   <p className="text-[10px] font-medium leading-tight">Republic of the Philippines</p>
                   <p className="text-[10px] font-semibold leading-tight">NATIONAL POLICE COMMISSION</p>
                   <p className="text-[11px] font-bold leading-tight">PHILIPPINE NATIONAL POLICE</p>
-                  <p className="text-[12px] font-extrabold leading-tight tracking-wider text-blue-900">INFORMATION TECHNOLOGY MANAGEMENT SERVICE</p>
+                  <p className="text-[12px] font-normal leading-tight tracking-wider text-black">INFORMATION TECHNOLOGY MANAGEMENT SERVICE</p>
                   <p className="text-[9px] font-medium text-gray-500 leading-none mt-0.5">Camp BGen Rafael T Crame, Quezon City</p>
                 </div>
                 <img src="/ITMS_LOGO.png" alt="ITMS Logo" className="w-20 h-20 object-contain" />

@@ -54,10 +54,9 @@ const internNav = [
 const supervisorNav = [
   { to: '/admin', icon: LayoutDashboard, label: 'Dashboard', end: true },
   { to: '/admin/interns', icon: Users, label: 'Interns' },
-  { to: '/admin/attendance', icon: CalendarCheck, label: 'Attendance' },
+  { to: '/admin/dtr', icon: Clock, label: 'Intern DTRs' },
   { to: '/admin/projects', icon: FolderGit2, label: 'Projects Directory' },
   { to: '/admin/calendar', icon: Calendar, label: 'Calendar' },
-  { to: '/admin/documents', icon: FileText, label: 'Documents' },
   { to: '/admin/evaluations', icon: Star, label: 'Evaluations' },
   { to: '/admin/reports', icon: BarChart3, label: 'Reports' },
   { to: '/admin/profile', icon: User, label: 'My Profile' },

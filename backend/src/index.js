@@ -113,6 +113,10 @@ import {
   setProjectArchived,
   getProjectAudit,
 } from './services/projectService.js';
+import {
+  getProjectWeeklyTimeline,
+  saveProjectWeeklyTimeline,
+} from './services/projectWeeklyTimelineService.js';
 import { sendWelcomeEmail } from './mailer.js';
 import { supabase } from './supabaseClient.js';
 import {
@@ -564,7 +568,13 @@ app.get('/admin/reports/attendance', authMiddleware, adminMiddleware, async (req
     if (req.user.role === 'supervisor') {
       divId = await getCurrentSupervisorDivisionId(req.user);
     }
-    const report = await getAttendanceReport({ month: Number(req.query.month), year: Number(req.query.year), division_id: divId });
+    const report = await getAttendanceReport({
+      startDate: req.query.start_date,
+      endDate: req.query.end_date,
+      month: req.query.month ? Number(req.query.month) : undefined,
+      year: req.query.year ? Number(req.query.year) : undefined,
+      division_id: divId,
+    });
     return res.json({ report });
   } catch (error) {
     return res.status(error.statusCode || 500).json({ error: error.message });
@@ -635,25 +645,14 @@ app.put('/interns/me/profile', authMiddleware, async (req, res) => {
   }
 });
 
-app.post('/interns', authMiddleware, adminMiddleware, async (req, res) => {
+app.post('/interns', authMiddleware, adminOnlyMiddleware, async (req, res) => {
   try {
-    let internPayload = req.body;
-    if (req.user.role === 'supervisor') {
-      const supervisorDivisionId = await getCurrentSupervisorDivisionId(req.user);
-      internPayload = {
-        ...req.body,
-        division_id: supervisorDivisionId,
-      };
-      delete internPayload.division_name;
-      delete internPayload.department_id;
-      delete internPayload.department_name;
-    }
-    const intern = await createIntern(internPayload);
+    const intern = await createIntern(req.body);
     
     // Send welcome email asynchronously
     if (intern.email) {
       const name = intern.first_name ? `${intern.first_name} ${intern.last_name}` : intern.full_name;
-      sendWelcomeEmail(intern.email, name, intern.username, internPayload.password);
+      sendWelcomeEmail(intern.email, name, intern.username, req.body.password);
     }
     
     return res.json({ intern });
@@ -843,7 +842,7 @@ app.get('/admin/dtr/:internId', authMiddleware, adminMiddleware, async (req, res
 });
 
 // Manual DTR override routes - available to Admin and Superadmin
-app.post('/admin/dtr/:internId/override', authMiddleware, adminMiddleware, async (req, res) => {
+app.post('/admin/dtr/:internId/override', authMiddleware, adminOnlyMiddleware, async (req, res) => {
   try {
     const internId = Number(req.params.internId);
     await assertSupervisorCanAccessIntern(req.user, internId, 'DTR records');
@@ -854,7 +853,7 @@ app.post('/admin/dtr/:internId/override', authMiddleware, adminMiddleware, async
   }
 });
 
-app.post('/admin/dtr/bulk-override', authMiddleware, adminMiddleware, async (req, res) => {
+app.post('/admin/dtr/bulk-override', authMiddleware, adminOnlyMiddleware, async (req, res) => {
   try {
     let internIds = Array.isArray(req.body?.internIds)
       ? req.body.internIds.map(Number).filter(Number.isInteger)
@@ -910,7 +909,7 @@ app.put('/admin/dtr/:internId/edit', authMiddleware, superadminMiddleware, async
   }
 });
 
-app.put('/admin/dtr/:internId/batch-alter', authMiddleware, superadminMiddleware, async (req, res) => {
+app.put('/admin/dtr/:internId/batch-alter', authMiddleware, adminOnlyMiddleware, async (req, res) => {
   try {
     const internId = Number(req.params.internId);
     const {
@@ -935,36 +934,42 @@ app.put('/admin/dtr/:internId/batch-alter', authMiddleware, superadminMiddleware
 
     const results = [];
     const errors = [];
+    const batchSize = 5;
 
-    for (const d of dates) {
-      try {
-        if (mode === 'override') {
-          const resOverride = await setDtrOverride(internId, {
-            date: d,
-            type: override_type,
-            hours: Number(hours) || 0,
-            remarks: remarks || '',
-          });
-          await supabase.from('dtr_edit_history').insert([{
-            account_id: internId,
-            field_name: 'Schedule Override',
-            original_value: 'N/A',
-            new_value: `${override_type}: ${remarks || ''} (${hours || 0} hrs)`,
-            modified_by: req.user.id,
-            modified_at: new Date().toISOString(),
-            reason: reason.trim(),
-          }]);
-          results.push({ date: d, success: true, result: resOverride });
-        } else if (mode === 'clear' || mode === 'delete') {
-          const resClear = await deleteDtrAttendance({
-            internId,
-            date: d,
-            reason: reason.trim(),
-            modified_by: req.user.id,
-            target: clear_target || 'attendance',
-          });
-          results.push({ date: d, success: true, result: resClear });
-        } else {
+    for (let index = 0; index < dates.length; index += batchSize) {
+      const dateBatch = dates.slice(index, index + batchSize);
+      const batchResults = await Promise.all(dateBatch.map(async d => {
+        try {
+          if (mode === 'override') {
+            const resOverride = await setDtrOverride(internId, {
+              date: d,
+              type: override_type,
+              hours: Number(hours) || 0,
+              remarks: remarks || '',
+            });
+            await supabase.from('dtr_edit_history').insert([{
+              account_id: internId,
+              field_name: 'Schedule Override',
+              original_value: 'N/A',
+              new_value: `${override_type}: ${remarks || ''} (${hours || 0} hrs)`,
+              modified_by: req.user.id,
+              modified_at: new Date().toISOString(),
+              reason: reason.trim(),
+            }]);
+            return { date: d, success: true, result: resOverride };
+          }
+
+          if (mode === 'clear' || mode === 'delete') {
+            const resClear = await deleteDtrAttendance({
+              internId,
+              date: d,
+              reason: reason.trim(),
+              modified_by: req.user.id,
+              target: clear_target || 'attendance',
+            });
+            return { date: d, success: true, result: resClear };
+          }
+
           // mode === 'time'
           const resEdit = await editDtrRecord({
             internId,
@@ -975,10 +980,18 @@ app.put('/admin/dtr/:internId/batch-alter', authMiddleware, superadminMiddleware
             reason: reason.trim(),
             modified_by: req.user.id,
           });
-          results.push({ date: d, success: true, result: resEdit });
+          return { date: d, success: true, result: resEdit };
+        } catch (err) {
+          return { date: d, success: false, error: err.message };
         }
-      } catch (err) {
-        errors.push({ date: d, error: err.message });
+      }));
+
+      for (const result of batchResults) {
+        if (result.success) {
+          results.push(result);
+        } else {
+          errors.push({ date: result.date, error: result.error });
+        }
       }
     }
 
@@ -1807,6 +1820,34 @@ app.get('/projects/stats', authMiddleware, async (req, res) => {
     return res.json(stats);
   } catch (error) {
     return res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/projects/:id/weekly-timeline', authMiddleware, async (req, res) => {
+  try {
+    const report = await getProjectWeeklyTimeline(Number(req.params.id), req.user);
+    return res.json({ report });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message });
+  }
+});
+
+app.get('/projects/:id/weekly-timeline/export', authMiddleware, async (req, res) => {
+  try {
+    const report = await getProjectWeeklyTimeline(Number(req.params.id), req.user, { forExport: true });
+    if (!report) return res.status(404).json({ error: 'No weekly timeline report has been saved yet' });
+    return res.json({ report });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message });
+  }
+});
+
+app.put('/projects/:id/weekly-timeline', authMiddleware, async (req, res) => {
+  try {
+    const report = await saveProjectWeeklyTimeline(Number(req.params.id), req.user, req.body);
+    return res.json({ report });
+  } catch (error) {
+    return res.status(error.statusCode || 400).json({ error: error.message });
   }
 });
 

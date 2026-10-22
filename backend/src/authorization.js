@@ -379,6 +379,8 @@ const PROJECT_DETAIL_FIELDS = new Set([
   'group_name',
   'github_repo',
   'demo_url',
+  'project_start_date',
+  'project_target_date',
 ]);
 
 export function sanitizeProjectUpdatePayload(payload = {}, access = {}) {
