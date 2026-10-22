@@ -10,6 +10,9 @@ import {
   FACE_DESCRIPTOR_LENGTH,
   FACE_SAMPLE_COUNT,
 } from '../src/utils/compareFaces.js';
+import {
+  faceDescriptorSimilarity as frontendFaceDescriptorSimilarity,
+} from '../../frontend/src/utils/faceIdentityService.js';
 
 test('validateFacePackage accepts valid face package and rejects invalid descriptors', () => {
   const validDescriptor = new Array(FACE_DESCRIPTOR_LENGTH).fill(0.1);
@@ -42,6 +45,13 @@ test('faceDescriptorSimilarity and distance are symmetric and identical on ident
   const v1 = new Array(FACE_DESCRIPTOR_LENGTH).fill(0.05);
   assert.equal(faceDescriptorDistance(v1, v1), 0);
   assert.equal(faceDescriptorSimilarity(v1, v1), 1.0);
+});
+
+test('frontend and backend use the same Human FaceRes similarity metric', () => {
+  const first = new Array(FACE_DESCRIPTOR_LENGTH).fill(0.4);
+  const second = new Array(FACE_DESCRIPTOR_LENGTH).fill(0.69);
+
+  assert.equal(frontendFaceDescriptorSimilarity(first, second), faceDescriptorSimilarity(first, second));
 });
 
 test('compareFacePackages matches identical packages with 100% similarity', () => {
@@ -109,13 +119,11 @@ test('compareFacePackages rejects arbitrary distinct faces and random faces', ()
 
 test('compareFacePackages rejects a high aggregate supported by only one matching sample', () => {
   const base = new Array(FACE_DESCRIPTOR_LENGTH).fill(0);
-  base[0] = 1;
-  const near = new Array(FACE_DESCRIPTOR_LENGTH).fill(0);
-  near[0] = 0.56;
-  near[1] = Math.sqrt(1 - 0.56 ** 2);
+  const nearValue = Math.sqrt(86.1184 / FACE_DESCRIPTOR_LENGTH);
+  const near = new Array(FACE_DESCRIPTOR_LENGTH).fill(nearValue);
   const enrolled = {
     version: FACE_ID_VERSION,
-    comparisonVersion: 'legacy-distance-v1',
+    comparisonVersion: 'legacy-cosine-v2',
     samples: [base, base, base],
   };
   const live = {
@@ -129,6 +137,6 @@ test('compareFacePackages rejects a high aggregate supported by only one matchin
   assert.ok(result.similarity >= 0.62);
   assert.equal(result.isMatch, false);
   assert.equal(result.comparisonVersion, FACE_COMPARISON_VERSION);
-  assert.equal(result.enrolledComparisonVersion, 'legacy-distance-v1');
+  assert.equal(result.enrolledComparisonVersion, 'legacy-cosine-v2');
 });
 

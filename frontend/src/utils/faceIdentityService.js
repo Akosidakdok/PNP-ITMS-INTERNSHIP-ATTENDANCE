@@ -245,27 +245,26 @@ function isValidDescriptor(descriptor) {
 export function faceDescriptorSimilarity(first, second) {
   if (!isValidDescriptor(first) || !isValidDescriptor(second)) return 0;
 
-  let dotProduct = 0;
-  let normA = 0;
-  let normB = 0;
+  let sumSquaredDifference = 0;
 
   for (let index = 0; index < first.length; index += 1) {
-    const a = Number(first[index]);
-    const b = Number(second[index]);
-    dotProduct += a * b;
-    normA += a * a;
-    normB += b * b;
+    const difference = Number(first[index]) - Number(second[index]);
+    sumSquaredDifference += difference * difference;
   }
 
-  if (normA <= 0 || normB <= 0) return 0;
-  const cosine = dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
-  return Math.max(0, Math.min(1, cosine));
+  const distance = Math.round(25 * sumSquaredDifference * 100) / 100;
+  const normalized = (1 - (Math.sqrt(distance) / 100) - 0.2) / 0.6;
+  return Math.round(100 * Math.max(0, Math.min(1, normalized))) / 100;
 }
 
 export function faceDescriptorDistance(first, second) {
   if (!isValidDescriptor(first) || !isValidDescriptor(second)) return Number.POSITIVE_INFINITY;
-  const sim = faceDescriptorSimilarity(first, second);
-  return Math.sqrt(Math.max(0, 2 * (1 - sim)));
+  let sumSquaredDifference = 0;
+  for (let index = 0; index < first.length; index += 1) {
+    const difference = Number(first[index]) - Number(second[index]);
+    sumSquaredDifference += difference * difference;
+  }
+  return Math.sqrt(Math.round(25 * sumSquaredDifference * 100) / 100);
 }
 
 function inspectIdentityResult(result) {
@@ -720,8 +719,7 @@ export async function compareLiveFaceToRegistered(liveInput, registeredPackage) 
     const maxSimilarity = Math.max(...similarities);
     const avgSimilarity = similarities.reduce((sum, s) => sum + s, 0) / similarities.length;
 
-    // High-precision Cosine Similarity validation:
-    // Genuine faces measure 0.70 - 0.99; different faces measure -0.10 - 0.35.
+    // Use the same FaceRes distance-based similarity scale as the backend.
     const MATCH_THRESHOLD = 0.58;
     const AVERAGE_THRESHOLD = 0.55;
     const isMatch = maxSimilarity >= MATCH_THRESHOLD && avgSimilarity >= AVERAGE_THRESHOLD;

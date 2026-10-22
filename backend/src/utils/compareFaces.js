@@ -1,5 +1,5 @@
 export const FACE_ID_VERSION = 'human-faceres-v1';
-export const FACE_COMPARISON_VERSION = 'cosine-3sample-v2';
+export const FACE_COMPARISON_VERSION = 'human-faceres-distance-v3';
 export const FACE_DESCRIPTOR_LENGTH = 1024;
 export const FACE_SAMPLE_COUNT = 3;
 
@@ -52,27 +52,28 @@ export function validateFacePackage(facePackage) {
 export function faceDescriptorSimilarity(first, second) {
   if (!finiteDescriptor(first) || !finiteDescriptor(second)) return 0;
 
-  let dotProduct = 0;
-  let normA = 0;
-  let normB = 0;
+  let sumSquaredDifference = 0;
 
   for (let index = 0; index < first.length; index += 1) {
-    const a = Number(first[index]);
-    const b = Number(second[index]);
-    dotProduct += a * b;
-    normA += a * a;
-    normB += b * b;
+    const difference = Number(first[index]) - Number(second[index]);
+    sumSquaredDifference += difference * difference;
   }
 
-  if (normA <= 0 || normB <= 0) return 0;
-  const cosine = dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
-  return Math.max(0, Math.min(1, cosine));
+  // Match Human's FaceRes descriptor metric: Euclidean distance with
+  // multiplier 25, normalized from the 0.2..0.8 similarity range.
+  const distance = Math.round(25 * sumSquaredDifference * 100) / 100;
+  const normalized = (1 - (Math.sqrt(distance) / 100) - 0.2) / 0.6;
+  return Math.round(100 * Math.max(0, Math.min(1, normalized))) / 100;
 }
 
 export function faceDescriptorDistance(first, second) {
   if (!finiteDescriptor(first) || !finiteDescriptor(second)) return Number.POSITIVE_INFINITY;
-  const sim = faceDescriptorSimilarity(first, second);
-  return Math.sqrt(Math.max(0, 2 * (1 - sim)));
+  let sumSquaredDifference = 0;
+  for (let index = 0; index < first.length; index += 1) {
+    const difference = Number(first[index]) - Number(second[index]);
+    sumSquaredDifference += difference * difference;
+  }
+  return Math.sqrt(Math.round(25 * sumSquaredDifference * 100) / 100);
 }
 
 export function compareFacePackages(livePackage, enrolledPackage, options = {}) {
