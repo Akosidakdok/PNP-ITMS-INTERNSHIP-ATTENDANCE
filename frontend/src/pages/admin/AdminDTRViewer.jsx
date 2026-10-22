@@ -4,7 +4,6 @@ import { useAuth } from '../../context/AuthContext.jsx';
 import api from '../../utils/api.js';
 import DTRPrint from '../../components/dtr/DTRPrint.jsx';
 import Modal from '../../components/common/Modal.jsx';
-import DTREditModal from '../../components/dtr/DTREditModal.jsx';
 import DTRHistoryModal from '../../components/dtr/DTRHistoryModal.jsx';
 import DTRBatchAlterModal from '../../components/dtr/DTRBatchAlterModal.jsx';
 import BulkDTROverrideModal from '../../components/dtr/BulkDTROverrideModal.jsx';
@@ -78,9 +77,6 @@ export default function AdminDTRViewer() {
   const [tableRangeExcludeWeekends, setTableRangeExcludeWeekends] = useState(true);
 
   // Superadmin DTR manual edit modal state
-  const [dtrEditModalOpen, setDtrEditModalOpen] = useState(false);
-  const [selectedRecordForEdit, setSelectedRecordForEdit] = useState(null);
-  const [selectedDateForEdit, setSelectedDateForEdit] = useState(null);
 
   // Superadmin modification audit history modal state
   const [historyModalOpen, setHistoryModalOpen] = useState(false);
@@ -1225,18 +1221,6 @@ export default function AdminDTRViewer() {
         />
       )}
 
-      {/* Superadmin DTR Manual Edit Modal */}
-      {isSuperadmin && (
-        <DTREditModal
-          isOpen={dtrEditModalOpen}
-          onClose={() => setDtrEditModalOpen(false)}
-          intern={selectedInternData}
-          date={selectedDateForEdit}
-          record={selectedRecordForEdit}
-          onSaveSuccess={loadDTR}
-        />
-      )}
-
       {/* Superadmin DTR Modification Audit History Modal */}
       {isSuperadmin && (
         <DTRHistoryModal
@@ -1261,7 +1245,7 @@ export default function AdminDTRViewer() {
               <p className="text-[11px] text-slate-400">
                 {isSuperadmin
                   ? 'Set attendance status (Absent, Holiday, Suspended) or alter time logs'
-                  : 'Ready to set attendance status (Absent, Holiday, Suspended)'}
+                  : 'Select one date to edit its times, or several dates to apply changes'}
               </p>
             </div>
           </div>
@@ -1297,7 +1281,7 @@ export default function AdminDTRViewer() {
         </div>
       )}
 
-      {/* Superadmin Batch / Single Date Alteration Modal */}
+      {/* Admin and superadmin batch or single-date alteration modal */}
       {canAlterDtr && batchAlterModalOpen && (
         <DTRBatchAlterModal
           isOpen={batchAlterModalOpen}

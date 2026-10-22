@@ -330,21 +330,21 @@ export default function DTRTable({
                 </div>
               ) : rec ? (
                 <div className="grid grid-cols-3 gap-2 text-[11px] mt-2 dtr-mobile-list__metrics">
-                  <div className="bg-gray-50 p-1.5 rounded">
-                    <span className="text-gray-400 block mb-0.5 text-[9px] uppercase font-bold">In</span>
-                    <span className="font-semibold text-gray-800">{formatTime(rec.time_in) || '--:--'}</span>
+                    <div className="bg-gray-50 p-1.5 rounded">
+                      <span className="text-gray-400 block mb-0.5 text-[9px] uppercase font-bold">In</span>
+                      <span className="font-semibold text-gray-800">{formatTime(rec.time_in) || '--:--'}</span>
+                    </div>
+                    <div className="bg-gray-50 p-1.5 rounded">
+                      <span className="text-gray-400 block mb-0.5 text-[9px] uppercase font-bold">Out</span>
+                      <span className="font-semibold text-gray-800">{formatTime(rec.time_out) || '--:--'}</span>
+                    </div>
+                    <div className="bg-gray-50 p-1.5 rounded text-right">
+                      <span className="text-gray-400 block mb-0.5 text-[9px] uppercase font-bold">Duration</span>
+                      <span className="font-black text-blue-600">
+                        {rec.is_complete ? formatDuration(getRecordMinutes(rec)) : 'Incomplete'}
+                      </span>
+                    </div>
                   </div>
-                  <div className="bg-gray-50 p-1.5 rounded">
-                    <span className="text-gray-400 block mb-0.5 text-[9px] uppercase font-bold">Out</span>
-                    <span className="font-semibold text-gray-800">{formatTime(rec.time_out) || '--:--'}</span>
-                  </div>
-                  <div className="bg-gray-50 p-1.5 rounded text-right">
-                    <span className="text-gray-400 block mb-0.5 text-[9px] uppercase font-bold">Duration</span>
-                    <span className="font-black text-blue-600">
-                      {rec.is_complete ? formatDuration(getRecordMinutes(rec)) : 'Incomplete'}
-                    </span>
-                  </div>
-                </div>
               ) : (
                 <div className="text-xs text-gray-400 italic">No record</div>
               )}

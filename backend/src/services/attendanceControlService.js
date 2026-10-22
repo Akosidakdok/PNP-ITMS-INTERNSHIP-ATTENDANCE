@@ -817,6 +817,7 @@ export async function editDtrRecord({
   time_in,
   time_out,
   status,
+  preserveStatus = false,
   reason,
   modified_by,
 }) {
@@ -906,7 +907,9 @@ export async function editDtrRecord({
   const newTimeOutNormalized = time_out ? normalizeTimeString(time_out) : null;
   const newTimeOutDisplay = newTimeOutNormalized ? newTimeOutNormalized.slice(0, 5) : null;
 
-  const newStatus = status ? status.toLowerCase() : 'approved';
+  const newStatus = preserveStatus
+    ? origStatus
+    : status ? status.toLowerCase() : 'approved';
 
   // Build timestamps for new recorded times (using effectiveDate)
   const newTimeInIso = newTimeInNormalized
@@ -995,7 +998,7 @@ export async function editDtrRecord({
   }
 
   // Audit: Status change
-  if (status && origStatus !== newStatus) {
+  if (!preserveStatus && status && origStatus !== newStatus) {
     historyEntries.push({
       attendance_record_id: recordId,
       account_id: internId,
@@ -1037,7 +1040,7 @@ export async function editDtrRecord({
 
   // Synchronize attendance_logs (keeping actual_scan_time preserved!)
   if (timeInLog) {
-    const logUpdates = { approval_status: newStatus };
+    const logUpdates = preserveStatus ? {} : { approval_status: newStatus };
     if (newTimeInIso) {
       logUpdates.scan_time = newTimeInIso;
       logUpdates.recorded_scan_time = newTimeInIso;
@@ -1067,7 +1070,7 @@ export async function editDtrRecord({
   }
 
   if (timeOutLog) {
-    const logUpdates = { approval_status: newStatus };
+    const logUpdates = preserveStatus ? {} : { approval_status: newStatus };
     if (newTimeOutIso) {
       logUpdates.scan_time = newTimeOutIso;
       logUpdates.recorded_scan_time = newTimeOutIso;

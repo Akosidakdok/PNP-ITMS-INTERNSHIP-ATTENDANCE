@@ -36,6 +36,7 @@ export default function DTRBatchAlterModal({
   const [activeTab, setActiveTab] = useState('time'); // 'time' | 'override' | 'clear'
   const [timeIn, setTimeIn] = useState('08:00');
   const [timeOut, setTimeOut] = useState('17:00');
+  const [originalTimes, setOriginalTimes] = useState({ timeIn: '08:00', timeOut: '17:00' });
   const [status, setStatus] = useState('approved');
 
   // Override options
@@ -48,6 +49,7 @@ export default function DTRBatchAlterModal({
 
   const [reason, setReason] = useState('');
   const [saving, setSaving] = useState(false);
+  const isSingleAdminTimeEdit = selectedDates.length === 1 && !isSuperadmin;
 
   // If 1 date is selected, attempt to pre-populate with existing record
   useEffect(() => {
@@ -65,8 +67,11 @@ export default function DTRBatchAlterModal({
             setClearTarget('override');
           } else {
             setActiveTab('time');
-            setTimeIn(existing.time_in ? existing.time_in.slice(0, 5) : '08:00');
-            setTimeOut(existing.time_out ? existing.time_out.slice(0, 5) : '17:00');
+            const initialTimeIn = existing.time_in ? existing.time_in.slice(0, 5) : '';
+            const initialTimeOut = existing.time_out ? existing.time_out.slice(0, 5) : '';
+            setTimeIn(initialTimeIn);
+            setTimeOut(initialTimeOut);
+            setOriginalTimes({ timeIn: initialTimeIn, timeOut: initialTimeOut });
             setStatus('approved');
             setClearTarget('attendance');
           }
@@ -74,6 +79,7 @@ export default function DTRBatchAlterModal({
           setActiveTab('time');
           setTimeIn('08:00');
           setTimeOut('17:00');
+          setOriginalTimes({ timeIn: '08:00', timeOut: '17:00' });
           setStatus('approved');
           setClearTarget('attendance');
         }
@@ -82,6 +88,7 @@ export default function DTRBatchAlterModal({
         setActiveTab('time');
         setTimeIn('08:00');
         setTimeOut('17:00');
+        setOriginalTimes({ timeIn: '08:00', timeOut: '17:00' });
         setStatus('approved');
         setOverrideType('suspended');
         setOverrideHours(8);
@@ -103,6 +110,12 @@ export default function DTRBatchAlterModal({
     }
     if (selectedDates.length === 0) {
       toast.error('No dates selected.');
+      return;
+    }
+    const timeInChanged = timeIn !== originalTimes.timeIn;
+    const timeOutChanged = timeOut !== originalTimes.timeOut;
+    if (isSingleAdminTimeEdit && activeTab === 'time' && !timeInChanged && !timeOutChanged) {
+      toast.error('Change Time In or Time Out before saving.');
       return;
     }
 
@@ -128,7 +141,16 @@ export default function DTRBatchAlterModal({
         payload.clear_target = clearTarget;
       }
 
-      await api.put(`/admin/dtr/${intern.id}/batch-alter`, payload, { timeout: 60000 });
+      if (isSingleAdminTimeEdit && activeTab === 'time') {
+        await api.put(`/admin/dtr/${intern.id}/edit-times`, {
+          date: selectedDates[0],
+          time_in: timeInChanged ? timeIn : null,
+          time_out: timeOutChanged ? timeOut : null,
+          reason: reason.trim(),
+        }, { timeout: 60000 });
+      } else {
+        await api.put(`/admin/dtr/${intern.id}/batch-alter`, payload, { timeout: 60000 });
+      }
 
       let successMsg = '';
       if (activeTab === 'clear') {
@@ -146,7 +168,9 @@ export default function DTRBatchAlterModal({
             : `Attendance and overrides cleared for ${selectedDates.length} dates.`;
         }
       } else {
-        successMsg = selectedDates.length === 1
+        successMsg = isSingleAdminTimeEdit && activeTab === 'time'
+          ? `DTR times updated for ${selectedDates[0]}.`
+          : selectedDates.length === 1
           ? `DTR updated for ${selectedDates[0]} with audit log.`
           : `Successfully altered ${selectedDates.length} attendance dates!`;
       }
@@ -171,7 +195,7 @@ export default function DTRBatchAlterModal({
       title={
         <div className="flex items-center gap-2">
           <span className="font-bold text-gray-800" style={{ fontFamily: 'Outfit, sans-serif' }}>
-            {count === 1 ? 'Alter Attendance Record' : `Alter Attendance (${count} Dates Selected)`}
+            {isSingleAdminTimeEdit && activeTab === 'time' ? 'Edit DTR Times' : count === 1 ? 'Alter Attendance Record' : `Alter Attendance (${count} Dates Selected)`}
           </span>
           {isSuperadmin && (
             <span className="bg-blue-100 text-blue-800 text-[11px] font-bold px-2 py-0.5 rounded-full">
@@ -218,7 +242,7 @@ export default function DTRBatchAlterModal({
             ) : (
               <>
                 <Check className="w-3.5 h-3.5" />
-                {saving ? 'Applying Changes...' : `Apply to ${count} Date${count > 1 ? 's' : ''}`}
+                {saving ? 'Applying Changes...' : isSingleAdminTimeEdit && activeTab === 'time' ? 'Save Time Changes' : `Apply to ${count} Date${count > 1 ? 's' : ''}`}
               </>
             )}
           </button>
@@ -290,9 +314,9 @@ export default function DTRBatchAlterModal({
         {/* Tab 1: Official Time */}
         {activeTab === 'time' && (
           <div className="space-y-3 bg-white p-3 rounded-xl border border-slate-200">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="font-semibold text-slate-700">Quick Presets:</span>
-              <div className="flex gap-1.5">
+              <div className="flex flex-wrap justify-end gap-1.5">
                 <button
                   type="button"
                   className="px-2 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-[11px] font-medium"
@@ -317,7 +341,7 @@ export default function DTRBatchAlterModal({
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className={`grid grid-cols-1 ${isSingleAdminTimeEdit ? 'sm:grid-cols-2' : 'sm:grid-cols-3'} gap-3`}>
               <div className="form-group">
                 <label className="form-label font-bold text-slate-700">Official Time In</label>
                 <input
@@ -325,7 +349,7 @@ export default function DTRBatchAlterModal({
                   className="form-input text-xs font-semibold"
                   value={timeIn}
                   onChange={e => setTimeIn(e.target.value)}
-                  required
+                  required={!isSingleAdminTimeEdit}
                 />
               </div>
 
@@ -336,11 +360,11 @@ export default function DTRBatchAlterModal({
                   className="form-input text-xs font-semibold"
                   value={timeOut}
                   onChange={e => setTimeOut(e.target.value)}
-                  required
+                  required={!isSingleAdminTimeEdit}
                 />
               </div>
 
-              <div className="form-group">
+              {!isSingleAdminTimeEdit && <div className="form-group">
                 <label className="form-label font-bold text-slate-700">Approval Status</label>
                 <select
                   className="form-input form-select text-xs font-semibold"
@@ -351,8 +375,11 @@ export default function DTRBatchAlterModal({
                   <option value="pending">Pending</option>
                   <option value="rejected">Rejected</option>
                 </select>
-              </div>
+              </div>}
             </div>
+            {isSingleAdminTimeEdit && (
+              <p className="text-[11px] text-slate-500">Only changed times are saved. Approval status remains unchanged; add a reason below for the audit history.</p>
+            )}
           </div>
         )}
 

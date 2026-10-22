@@ -887,8 +887,26 @@ app.post('/admin/dtr/bulk-override', authMiddleware, adminOnlyMiddleware, async 
 });
 
 // ─────────────────────────────────────────────────────────────
-// SUPERADMIN-ONLY: DTR MANUAL EDITING & AUDIT HISTORY
+// Admin time corrections; superadmin full DTR correction and audit history.
 // ─────────────────────────────────────────────────────────────
+
+app.put('/admin/dtr/:internId/edit-times', authMiddleware, adminOnlyMiddleware, async (req, res) => {
+  try {
+    const internId = Number(req.params.internId);
+    const result = await editDtrRecord({
+      internId,
+      date: req.body.date,
+      time_in: req.body.time_in,
+      time_out: req.body.time_out,
+      preserveStatus: true,
+      reason: req.body.reason,
+      modified_by: req.user.id,
+    });
+    return res.json(result);
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message });
+  }
+});
 
 app.put('/admin/dtr/:internId/edit', authMiddleware, superadminMiddleware, async (req, res) => {
   try {
