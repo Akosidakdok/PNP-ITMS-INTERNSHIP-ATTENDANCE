@@ -1,3 +1,4 @@
+import useDeleteConfirmation from '../../components/common/useDeleteConfirmation.jsx';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   FolderKanban, Plus, Search, Upload, Download, Trash2, Edit3,
@@ -38,6 +39,7 @@ const formatProjectDate = value => {
 export default function MyProjects() {
   const { user } = useAuth();
   const [projects, setProjects] = useState([]);
+  const { confirmDelete, deleteConfirmation } = useDeleteConfirmation();
   const [divisions, setDivisions] = useState([]);
   const [internList, setInternList] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -212,16 +214,22 @@ export default function MyProjects() {
     }
   };
 
-  const handleDeleteProject = async (id) => {
-    if (!confirm('Are you sure you want to delete this project and all its deliverables?')) return;
-    try {
-      await api.delete(`/projects/${id}`);
-      toast.success('Project deleted');
-      fetchData();
-    } catch (err) {
-      toast.error(err.response?.data?.error || 'Failed to delete project');
-    }
-  };
+  const handleDeleteProject = (project) => confirmDelete({
+    title: 'Permanently Delete Project',
+    itemName: project.title,
+    warning: 'This permanently removes the project and all its deliverables and cannot be undone.',
+    onConfirm: async () => {
+      const id = project.id;
+      try {
+        await api.delete(`/projects/${id}`);
+        toast.success('Project deleted');
+        fetchData();
+      } catch (err) {
+        toast.error(err.response?.data?.error || 'Failed to delete project');
+        return false;
+      }
+    },
+  });
 
   const handleArchiveProject = async (project) => {
     if (!confirm(`Archive "${project.title}"? It will be hidden from interns until assigned staff restores it.`)) return;
@@ -332,21 +340,37 @@ export default function MyProjects() {
     }
   };
 
-  const handleDeleteFile = async (fileId) => {
-    if (!confirm('Remove this deliverable file?')) return;
-    try {
-      await api.delete(`/projects/${activeProjectForFiles.id}/files/${fileId}`);
-      toast.success('File removed');
-      const updated = await api.get(`/projects/${activeProjectForFiles.id}`);
-      setActiveProjectForFiles(updated.data);
-      fetchData();
-    } catch (err) {
-      toast.error(err.response?.data?.error || 'Failed to remove file');
-    }
-  };
+  const handleDeleteFile = (file) => confirmDelete({
+    title: 'Permanently Delete Deliverable',
+    itemName: file.original_name,
+    warning: 'This permanently removes the deliverable file and cannot be undone.',
+    onConfirm: async () => {
+      const fileId = file.id;
+      try {
+        await api.delete(`/projects/${activeProjectForFiles.id}/files/${fileId}`);
+        toast.success('File removed');
+        setActiveProjectForFiles(project => project ? {
+          ...project,
+          files: (project.files || []).filter(item => item.id !== fileId),
+        } : project);
+        // A refresh failure must not offer to delete an already removed file again.
+        try {
+          const updated = await api.get(`/projects/${activeProjectForFiles.id}`);
+          setActiveProjectForFiles(updated.data);
+        } catch {
+          toast.error('File removed, but project details could not be refreshed.');
+        }
+        fetchData();
+      } catch (err) {
+        toast.error(err.response?.data?.error || 'Failed to remove file');
+        return false;
+      }
+    },
+  });
 
   return (
     <div className="intern-mobile-page p-0 sm:p-6 space-y-6 max-w-7xl mx-auto">
+      {deleteConfirmation}
       {/* Header */}
       <div className="intern-projects-hero flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-gradient-to-r from-slate-900 via-blue-900 to-slate-900 p-6 rounded-2xl text-white shadow-xl">
         <div>
@@ -539,7 +563,7 @@ export default function MyProjects() {
                     )}
                     {canDeleteProject(proj) && (
                       <button
-                        onClick={() => handleDeleteProject(proj.id)}
+                        onClick={() => handleDeleteProject(proj)}
                         className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-white rounded-lg transition-colors border border-transparent hover:border-slate-200"
                         title="Delete Project"
                       >
@@ -1094,7 +1118,7 @@ export default function MyProjects() {
                         </a>
                         {canDeleteProjectFile(activeProjectForFiles, file) && (
                           <button
-                            onClick={() => handleDeleteFile(file.id)}
+                            onClick={() => handleDeleteFile(file)}
                             className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg"
                             title="Delete file"
                           >

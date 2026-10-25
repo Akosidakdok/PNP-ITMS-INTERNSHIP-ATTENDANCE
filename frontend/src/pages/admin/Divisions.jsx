@@ -1,3 +1,4 @@
+import DeleteConfirmationModal from '../../components/common/DeleteConfirmationModal.jsx';
 import { useState, useEffect } from 'react';
 import { Building2, PlusCircle, Edit2, Trash2, UserPlus, Users, Search } from 'lucide-react';
 import api from '../../utils/api.js';
@@ -307,16 +308,16 @@ export default function Divisions() {
       </Modal>
 
       {/* Delete Division Modal */}
-      <Modal isOpen={modal === 'delete'} onClose={() => setModal(null)} title="Delete Division" size="sm"
-        footer={
-          <>
-            <button className="btn btn-secondary" onClick={() => setModal(null)}>Cancel</button>
-            <button id="confirm-delete-division-btn" className="btn btn-danger" onClick={handleDelete} disabled={saving}>{saving ? 'Deleting...' : 'Delete'}</button>
-          </>
-        }
-      >
-        <p className="text-gray-600">Delete <strong>{selected?.name}</strong>? This cannot be undone if no interns are assigned.</p>
-      </Modal>
+      <DeleteConfirmationModal
+        isOpen={modal === 'delete'}
+        onClose={() => setModal(null)}
+        title="Permanently Delete Division"
+        itemName={selected?.name || 'Selected division'}
+        warning="This permanently removes the division and cannot be undone. Divisions with assigned interns cannot be deleted."
+        onConfirm={handleDelete}
+        busy={saving}
+        confirmId="confirm-delete-division-btn"
+      />
 
       {/* Interns List Modal */}
       <Modal
@@ -656,22 +657,15 @@ export default function Divisions() {
       </Modal>
 
       {/* Delete Intern Modal */}
-      <Modal
+      <DeleteConfirmationModal
         isOpen={modal === 'intern-delete'}
         onClose={() => setModal('interns')}
-        title="Delete Intern"
-        size="sm"
-        footer={
-          <>
-            <button className="btn btn-secondary" onClick={() => setModal('interns')}>Cancel</button>
-            <button className="btn btn-danger" onClick={handleInternDelete} disabled={saving}>
-              {saving ? 'Deleting...' : 'Delete'}
-            </button>
-          </>
-        }
-      >
-        <p className="text-gray-600">Delete <strong>{selectedIntern?.full_name}</strong> permanently? This cannot be undone.</p>
-      </Modal>
+        title="Permanently Delete Intern"
+        itemName={selectedIntern?.full_name || 'Selected intern'}
+        warning="This permanently removes the intern account and associated records and cannot be undone."
+        onConfirm={handleInternDelete}
+        busy={saving}
+      />
     </div>
   );
 }

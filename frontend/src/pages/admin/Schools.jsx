@@ -1,3 +1,4 @@
+import DeleteConfirmationModal from '../../components/common/DeleteConfirmationModal.jsx';
 import { useState, useEffect } from 'react';
 import { GraduationCap, PlusCircle, Edit2, Trash2, Users } from 'lucide-react';
 import api from '../../utils/api.js';
@@ -143,16 +144,16 @@ export default function Schools() {
       </Modal>
 
       {/* Delete School Modal */}
-      <Modal isOpen={modal === 'delete'} onClose={() => setModal(null)} title="Delete School" size="sm"
-        footer={
-          <>
-            <button className="btn btn-secondary" onClick={() => setModal(null)}>Cancel</button>
-            <button id="confirm-delete-school-btn" className="btn btn-danger" onClick={handleDelete} disabled={saving}>{saving ? 'Deleting...' : 'Delete'}</button>
-          </>
-        }
-      >
-        <p className="text-gray-600">Delete <strong>{selected?.name}</strong>? This cannot be undone if no interns are assigned.</p>
-      </Modal>
+      <DeleteConfirmationModal
+        isOpen={modal === 'delete'}
+        onClose={() => setModal(null)}
+        title="Permanently Delete School"
+        itemName={selected?.name || 'Selected school'}
+        warning="This permanently removes the school and cannot be undone. Schools with assigned interns cannot be deleted."
+        onConfirm={handleDelete}
+        busy={saving}
+        confirmId="confirm-delete-school-btn"
+      />
 
       {/* Interns List Modal */}
       <Modal

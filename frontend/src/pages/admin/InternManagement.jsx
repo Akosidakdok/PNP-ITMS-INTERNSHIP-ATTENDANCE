@@ -1,3 +1,4 @@
+import DeleteConfirmationModal from '../../components/common/DeleteConfirmationModal.jsx';
 import { useState, useEffect, useCallback } from 'react';
 import { UserPlus, Edit2, Trash2, Key, Archive, ShieldCheck, ClipboardList, Check, XCircle, History, RefreshCw, Eraser, Undo2, Calendar } from 'lucide-react';
 import api from '../../utils/api.js';
@@ -1084,16 +1085,16 @@ export default function InternManagement() {
       </Modal>
 
       {/* Delete Modal */}
-      <Modal isOpen={modal === 'delete'} onClose={() => setModal(null)} title="Delete Intern" size="sm"
-        footer={
-          <>
-            <button className="btn btn-secondary" onClick={() => setModal(null)}>Cancel</button>
-            <button id="confirm-delete-btn" className="btn btn-danger" onClick={handleDelete} disabled={saving}>{saving ? 'Deleting...' : 'Delete'}</button>
-          </>
-        }
-      >
-        <p className="text-gray-600">Are you sure you want to delete <strong>{selected?.full_name}</strong>? This action cannot be undone.</p>
-      </Modal>
+      <DeleteConfirmationModal
+        isOpen={modal === 'delete'}
+        onClose={() => setModal(null)}
+        title="Permanently Delete Intern"
+        itemName={selected?.full_name || 'Selected intern'}
+        warning="This permanently removes the intern account and associated records and cannot be undone."
+        onConfirm={handleDelete}
+        busy={saving}
+        confirmId="confirm-delete-btn"
+      />
 
       {/* Reset Password Modal */}
       <Modal isOpen={modal === 'reset'} onClose={() => setModal(null)} title="Reset Password" size="sm"

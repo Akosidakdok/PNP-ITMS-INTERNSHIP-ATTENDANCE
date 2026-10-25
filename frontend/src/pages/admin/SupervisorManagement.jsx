@@ -1,3 +1,4 @@
+import DeleteConfirmationModal from '../../components/common/DeleteConfirmationModal.jsx';
 import { useState, useEffect, useCallback } from 'react';
 import { UserPlus, Edit2, Trash2, Key } from 'lucide-react';
 import api from '../../utils/api.js';
@@ -339,16 +340,16 @@ export default function SupervisorManagement() {
       </Modal>
 
       {/* Delete Modal */}
-      <Modal isOpen={modal === 'delete'} onClose={() => setModal(null)} title="Delete Supervisor" size="sm"
-        footer={
-          <>
-            <button className="btn btn-secondary" onClick={() => setModal(null)}>Cancel</button>
-            <button id="confirm-delete-btn" className="btn btn-danger" onClick={handleDelete} disabled={saving}>{saving ? 'Deleting...' : 'Delete'}</button>
-          </>
-        }
-      >
-        <p className="text-gray-600">Are you sure you want to delete <strong>{selected?.full_name}</strong>? This action cannot be undone.</p>
-      </Modal>
+      <DeleteConfirmationModal
+        isOpen={modal === 'delete'}
+        onClose={() => setModal(null)}
+        title="Permanently Delete Supervisor"
+        itemName={selected?.full_name || 'Selected supervisor'}
+        warning="This permanently removes the supervisor account and cannot be undone."
+        onConfirm={handleDelete}
+        busy={saving}
+        confirmId="confirm-delete-btn"
+      />
 
       {/* Reset Password Modal */}
       <Modal isOpen={modal === 'reset'} onClose={() => setModal(null)} title="Reset Password" size="sm"

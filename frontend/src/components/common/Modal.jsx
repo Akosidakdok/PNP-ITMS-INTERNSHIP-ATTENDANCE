@@ -1,10 +1,14 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useId, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 
-export default function Modal({ isOpen, onClose, title, children, size = 'md', footer }) {
+let openModalCount = 0;
+let previousBodyOverflow = '';
+
+export default function Modal({ isOpen, onClose, title, children, size = 'md', footer, role = 'dialog', describedBy, zIndex = 9999 }) {
   const overlayRef = useRef(null);
   const onCloseRef = useRef(onClose);
+  const titleId = useId();
 
   // Parent components commonly pass an inline onClose callback. Keep the
   // latest callback without making the keyboard listener churn on every
@@ -14,12 +18,14 @@ export default function Modal({ isOpen, onClose, title, children, size = 'md', f
   }, [onClose]);
 
   useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = '';
-    }
-    return () => { document.body.style.overflow = ''; };
+    if (!isOpen) return;
+    if (openModalCount === 0) previousBodyOverflow = document.body.style.overflow;
+    openModalCount += 1;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      openModalCount -= 1;
+      if (openModalCount === 0) document.body.style.overflow = previousBodyOverflow;
+    };
   }, [isOpen]);
 
   useEffect(() => {
@@ -44,7 +50,7 @@ export default function Modal({ isOpen, onClose, title, children, size = 'md', f
       style={{
         position: 'fixed',
         inset: 0,
-        zIndex: 9999,
+        zIndex,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -56,13 +62,17 @@ export default function Modal({ isOpen, onClose, title, children, size = 'md', f
       onClick={e => { if (e.target === overlayRef.current) onClose(); }}
     >
       <div
+        role={role}
+        aria-modal="true"
+        aria-labelledby={titleId}
+        aria-describedby={describedBy}
         className={`card w-full ${sizeClass} animate-scale-in flex flex-col modal-panel`}
         style={{ maxHeight: 'calc(100vh - 2rem)' }}
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
         <div className="flex items-center justify-between p-4 sm:p-5 border-b border-gray-100 flex-shrink-0">
-          <h2 className="text-lg font-bold text-gray-800" style={{ fontFamily: 'Outfit, sans-serif' }}>
+          <h2 id={titleId} className="text-lg font-bold text-gray-800" style={{ fontFamily: 'Outfit, sans-serif' }}>
             {title}
           </h2>
           <button

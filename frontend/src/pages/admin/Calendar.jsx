@@ -1,3 +1,4 @@
+import DeleteConfirmationModal from '../../components/common/DeleteConfirmationModal.jsx';
 import { useState, useRef, useEffect } from 'react';
 import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
@@ -310,13 +311,15 @@ export default function AdminCalendar() {
       </Modal>
 
       {/* Delete Modal */}
-      <Modal isOpen={modal === 'delete'} onClose={() => setModal(null)} title="Delete Event" size="sm"
-        footer={<>
-          <button className="btn btn-secondary" onClick={() => setModal(null)}>Cancel</button>
-          <button className="btn btn-danger" onClick={handleDelete} disabled={saving}>{saving ? 'Deleting...' : 'Delete'}</button>
-        </>}>
-        <p>Are you sure you want to delete the event "<strong>{selectedEvent?.title}</strong>"?</p>
-      </Modal>
+      <DeleteConfirmationModal
+        isOpen={modal === 'delete'}
+        onClose={() => setModal(null)}
+        title="Permanently Delete Event"
+        itemName={selectedEvent?.title || 'Selected event'}
+        warning="This permanently removes the calendar event and cannot be undone."
+        onConfirm={handleDelete}
+        busy={saving}
+      />
     </div>
   );
 }

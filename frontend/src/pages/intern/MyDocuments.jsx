@@ -1,3 +1,4 @@
+import DeleteConfirmationModal from '../../components/common/DeleteConfirmationModal.jsx';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Upload, Eye, Trash2, FileText, CheckCircle, AlertCircle, Clock, Download, ListChecks, X, AlertTriangle } from 'lucide-react';
 import api from '../../utils/api.js';
@@ -295,22 +296,16 @@ export default function MyDocuments() {
       </Modal>
 
       {/* 2. Delete Confirmation Modal */}
-      <Modal
+      <DeleteConfirmationModal
         isOpen={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}
-        title="Delete Document"
-        size="sm"
-        footer={
-          <>
-            <button className="btn btn-secondary" onClick={() => setDeleteTarget(null)}>Cancel</button>
-            <button id="confirm-delete-btn" className="btn btn-danger" onClick={handleDelete} disabled={deleting}>
-              {deleting ? 'Deleting...' : 'Delete'}
-            </button>
-          </>
-        }
-      >
-        {deleteTarget && <p>Are you sure you want to delete "<strong>{deleteTarget.original_name}</strong>"? This action cannot be undone.</p>}
-      </Modal>
+        title="Permanently Delete Document"
+        itemName={deleteTarget?.original_name || 'Selected document'}
+        warning="This permanently removes the uploaded document and cannot be undone."
+        onConfirm={handleDelete}
+        busy={deleting}
+        confirmId="confirm-delete-btn"
+      />
 
       {/* 4. Duplicate Upload Confirmation Modal */}
       <Modal

@@ -1,3 +1,4 @@
+import useDeleteConfirmation from '../../components/common/useDeleteConfirmation.jsx';
 import { useState, useEffect, useCallback } from 'react';
 import {
   FolderGit2, Search, Filter, Download, FileText, Users, Code,
@@ -38,6 +39,7 @@ const formatProjectDate = value => {
 export default function ProjectDirectory() {
   const { user } = useAuth();
   const [projects, setProjects] = useState([]);
+  const { confirmDelete, deleteConfirmation } = useDeleteConfirmation();
   const [divisions, setDivisions] = useState([]);
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -110,17 +112,22 @@ export default function ProjectDirectory() {
     }
   };
 
-  const permanentlyDeleteProject = async project => {
-    if (!confirm(`Permanently delete "${project.title}" and all its files? This cannot be undone.`)) return;
-    try {
-      await api.delete(`/projects/${project.id}`);
-      toast.success('Project permanently deleted');
-      setQuickViewProject(null);
-      fetchData();
-    } catch (error) {
-      toast.error(error.response?.data?.error || 'Could not delete project');
-    }
-  };
+  const permanentlyDeleteProject = project => confirmDelete({
+    title: 'Permanently Delete Project',
+    itemName: project.title,
+    warning: 'This permanently removes the project and all its files and cannot be undone. Archive it instead if it may be needed later.',
+    onConfirm: async () => {
+      try {
+        await api.delete(`/projects/${project.id}`);
+        toast.success('Project permanently deleted');
+        setQuickViewProject(null);
+        fetchData();
+      } catch (error) {
+        toast.error(error.response?.data?.error || 'Could not delete project');
+        return false;
+      }
+    },
+  });
 
   const openAuditHistory = async project => {
     setAuditProject(project);
@@ -205,6 +212,7 @@ export default function ProjectDirectory() {
 
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto admin-project-directory">
+      {deleteConfirmation}
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-900 p-6 rounded-2xl text-white shadow-xl">
         <div>

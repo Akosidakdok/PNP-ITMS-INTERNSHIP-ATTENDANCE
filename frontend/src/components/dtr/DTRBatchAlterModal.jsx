@@ -1,3 +1,4 @@
+import useDeleteConfirmation from '../common/useDeleteConfirmation.jsx';
 import { useState, useEffect } from 'react';
 import { Clock, Calendar, RotateCcw, ShieldCheck, AlertCircle, Check, Info, Trash2, AlertTriangle } from 'lucide-react';
 import Modal from '../common/Modal.jsx';
@@ -49,6 +50,7 @@ export default function DTRBatchAlterModal({
 
   const [reason, setReason] = useState('');
   const [saving, setSaving] = useState(false);
+  const { confirmDelete, deleteConfirmation } = useDeleteConfirmation();
   const isSingleAdminTimeEdit = selectedDates.length === 1 && !isSuperadmin;
 
   // If 1 date is selected, attempt to pre-populate with existing record
@@ -98,8 +100,8 @@ export default function DTRBatchAlterModal({
     }
   }, [isOpen, selectedDates, existingRecords]);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const handleSubmit = async (e, confirmed = false) => {
+    e?.preventDefault();
     if (!reason.trim()) {
       toast.error('A modification reason is required for audit history.');
       return;
@@ -116,6 +118,20 @@ export default function DTRBatchAlterModal({
     const timeOutChanged = timeOut !== originalTimes.timeOut;
     if (isSingleAdminTimeEdit && activeTab === 'time' && !timeInChanged && !timeOutChanged) {
       toast.error('Change Time In or Time Out before saving.');
+      return;
+    }
+
+    if (activeTab === 'clear' && !confirmed) {
+      confirmDelete({
+        title: clearTarget === 'override' ? 'Permanently Clear Overrides' : 'Permanently Delete Attendance',
+        itemName: `${intern.full_name || 'Selected intern'} — ${selectedDates.length} date(s): ${selectedDates.join(', ')}`,
+        warning: clearTarget === 'override'
+          ? 'This permanently removes schedule overrides for the selected dates and cannot be undone.'
+          : clearTarget === 'all'
+            ? 'This permanently removes attendance records and schedule overrides for the selected dates and cannot be undone.'
+            : 'This permanently removes attendance records for the selected dates and cannot be undone.',
+        onConfirm: () => handleSubmit(null, true),
+      });
       return;
     }
 
@@ -181,6 +197,7 @@ export default function DTRBatchAlterModal({
     } catch (err) {
       const msg = err.response?.data?.error || err.message || 'Failed to alter attendance';
       toast.error(msg);
+      return false;
     } finally {
       setSaving(false);
     }
@@ -189,6 +206,8 @@ export default function DTRBatchAlterModal({
   const count = selectedDates.length;
 
   return (
+    <>
+      {deleteConfirmation}
     <Modal
       isOpen={isOpen}
       onClose={onClose}
@@ -616,5 +635,6 @@ export default function DTRBatchAlterModal({
         )}
       </form>
     </Modal>
+    </>
   );
 }

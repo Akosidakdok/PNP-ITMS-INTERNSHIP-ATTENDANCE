@@ -65,8 +65,6 @@ export default function InternDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [selectedNotification, setSelectedNotification] = useState(null);
-  const [confirmClearOpen, setConfirmClearOpen] = useState(false);
-  const [clearing, setClearing] = useState(false);
   const navigate = useNavigate();
 
   const handleNotificationClick = (n) => {
@@ -76,17 +74,6 @@ export default function InternDashboard() {
     }
   };
 
-  const handleConfirmClear = async () => {
-    try {
-      setClearing(true);
-      await clearAllNotifications();
-      setConfirmClearOpen(false);
-    } catch (err) {
-      console.error('Failed to clear notifications:', err);
-    } finally {
-      setClearing(false);
-    }
-  };
 
   useEffect(() => {
     setLoading(true);
@@ -266,7 +253,7 @@ export default function InternDashboard() {
               {notifications.length > 0 && (
                 <button
                   type="button"
-                  onClick={() => setConfirmClearOpen(true)}
+                  onClick={clearAllNotifications}
                   className="text-xs text-gray-400 hover:text-red-600 flex items-center gap-1 transition-colors px-2 py-1 rounded hover:bg-red-50 border border-transparent hover:border-red-100"
                   title="Clear all notifications"
                 >
@@ -456,43 +443,7 @@ export default function InternDashboard() {
         )}
       </Modal>
 
-      {/* Clear Notifications Confirmation Modal */}
-      <Modal
-        isOpen={confirmClearOpen}
-        onClose={() => setConfirmClearOpen(false)}
-        title="Clear Notifications"
-        size="sm"
-        footer={
-          <>
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={() => setConfirmClearOpen(false)}
-              disabled={clearing}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              className="btn btn-danger flex items-center gap-1.5"
-              onClick={handleConfirmClear}
-              disabled={clearing}
-            >
-              <Trash2 className="w-4 h-4" />
-              {clearing ? 'Clearing...' : 'Clear All'}
-            </button>
-          </>
-        }
-      >
-        <div className="space-y-2 py-2">
-          <p className="text-sm text-gray-700">
-            Are you sure you want to clear all your notifications?
-          </p>
-          <p className="text-xs text-gray-400">
-            This will remove all current notifications and announcements from your notifications list.
-          </p>
-        </div>
-      </Modal>
+
 
     </div>
   );

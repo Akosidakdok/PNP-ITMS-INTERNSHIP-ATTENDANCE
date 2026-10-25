@@ -1,3 +1,4 @@
+import DeleteConfirmationModal from '../../components/common/DeleteConfirmationModal.jsx';
 import { useState, useEffect, useCallback } from 'react';
 import {
   PlusCircle, Edit2, Eye, Lock, Unlock,
@@ -110,7 +111,6 @@ export default function PerformanceEval() {
   const [lifecycleTarget, setLifecycleTarget] = useState(null);
   const [lifecycleReason, setLifecycleReason] = useState('');
   const [deleteTarget, setDeleteTarget] = useState(null);
-  const [deleteConfirmation, setDeleteConfirmation] = useState('');
   const [lifecycleSaving, setLifecycleSaving] = useState(false);
 
   const fetchEvals = useCallback(async () => {
@@ -214,18 +214,16 @@ export default function PerformanceEval() {
 
   const openDeleteConfirmation = (row) => {
     setDeleteTarget(row);
-    setDeleteConfirmation('');
   };
 
   const handleDelete = async () => {
-    if (!deleteTarget || deleteConfirmation !== 'DELETE') return;
+    if (!deleteTarget) return;
 
     setLifecycleSaving(true);
     try {
       await api.delete(`/evaluations/${deleteTarget.id}`);
       toast.success('Evaluation permanently deleted');
       setDeleteTarget(null);
-      setDeleteConfirmation('');
       fetchEvals();
     } catch (err) {
       toast.error(err.response?.data?.error || 'Failed to delete evaluation');
@@ -1006,54 +1004,15 @@ export default function PerformanceEval() {
       )}
 
       {/* Permanent deletion confirmation (admins only) */}
-      {deleteTarget && (
-        <Modal
-          isOpen={Boolean(deleteTarget)}
-          onClose={() => setDeleteTarget(null)}
-          title="Permanently Delete Evaluation"
-          size="sm"
-          footer={
-            <>
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={() => setDeleteTarget(null)}
-                disabled={lifecycleSaving}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="btn btn-primary bg-red-600 hover:bg-red-700"
-                onClick={handleDelete}
-                disabled={lifecycleSaving || deleteConfirmation !== 'DELETE'}
-              >
-                {lifecycleSaving ? 'Deleting...' : 'Delete Permanently'}
-              </button>
-            </>
-          }
-        >
-          <div className="space-y-4 text-sm">
-            <div className="flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 p-3 text-red-900">
-              <AlertTriangle className="mt-0.5 h-5 w-5 flex-shrink-0 text-red-600" />
-              <p>This permanently removes the evaluation and cannot be undone. Archive it instead if it may be needed later.</p>
-            </div>
-            <p className="font-semibold text-gray-800">
-              {deleteTarget.full_name || 'Selected intern'}
-            </p>
-            <div className="form-group">
-              <label className="form-label">Type DELETE to confirm</label>
-              <input
-                className="form-input font-semibold"
-                value={deleteConfirmation}
-                onChange={e => setDeleteConfirmation(e.target.value)}
-                placeholder="DELETE"
-                autoComplete="off"
-              />
-            </div>
-          </div>
-        </Modal>
-      )}
+      <DeleteConfirmationModal
+        isOpen={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        title="Permanently Delete Evaluation"
+        itemName={deleteTarget?.full_name || 'Selected intern'}
+        warning="This permanently removes the evaluation and cannot be undone. Archive it instead if it may be needed later."
+        onConfirm={handleDelete}
+        busy={lifecycleSaving}
+      />
     </div>
   );
 }

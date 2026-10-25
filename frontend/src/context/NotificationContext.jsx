@@ -1,3 +1,5 @@
+import useDeleteConfirmation from '../components/common/useDeleteConfirmation.jsx';
+import toast from 'react-hot-toast';
 import { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from './AuthContext.jsx';
 import api from '../utils/api.js';
@@ -9,6 +11,7 @@ export function NotificationProvider({ children }) {
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const eventSourceRef = useRef(null);
+  const { confirmDelete, deleteConfirmation } = useDeleteConfirmation();
 
   const fetchNotifications = useCallback(async () => {
     if (!user || legalStatus?.required) return;
@@ -53,19 +56,27 @@ export function NotificationProvider({ children }) {
     }
   };
 
-  const clearAllNotifications = async () => {
-    try {
-      await api.delete('/notifications/clear');
-      setNotifications([]);
-      setUnreadCount(0);
-    } catch (error) {
-      console.error('Failed to clear notifications:', error);
-    }
-  };
+  const clearAllNotifications = () => confirmDelete({
+    title: 'Permanently Delete Notifications',
+    itemName: `All ${notifications.length} notifications`,
+    warning: 'This permanently removes your current notifications and announcements from your notifications list and cannot be undone.',
+    onConfirm: async () => {
+      try {
+        await api.delete('/notifications/clear');
+        setNotifications([]);
+        setUnreadCount(0);
+      } catch (error) {
+        console.error('Failed to clear notifications:', error);
+        toast.error('Failed to clear notifications. Please try again.');
+        return false;
+      }
+    },
+  });
 
   return (
     <NotificationContext.Provider value={{ notifications, unreadCount, markAsRead, markAllRead, clearAllNotifications, fetchNotifications }}>
       {children}
+      {deleteConfirmation}
     </NotificationContext.Provider>
   );
 }

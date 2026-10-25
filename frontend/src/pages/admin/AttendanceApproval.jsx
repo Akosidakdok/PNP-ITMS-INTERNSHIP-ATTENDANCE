@@ -1,3 +1,4 @@
+import DeleteConfirmationModal from '../../components/common/DeleteConfirmationModal.jsx';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   CheckCircle,
@@ -921,7 +922,7 @@ export default function AttendanceApproval() {
 
       {/* Attendance action menu and confirmations */}
       <Modal
-        isOpen={!!modal}
+        isOpen={!!modal && modal !== 'delete' && modal !== 'remove'}
         onClose={closeModal}
         title={modal === 'menu' ? 'Attendance Details' : ACTION_DETAILS[modal]?.title || 'Review Attendance'}
         size={modal === 'menu' ? 'md' : 'sm'}
@@ -1418,16 +1419,6 @@ export default function AttendanceApproval() {
                   </button>
                 </div>
               </>
-            ) : modal === 'remove' ? (
-              <div className="attendance-action-warning attendance-action-warning--rescan">
-                <AlertTriangle />
-                <div><strong>Reopen this scan slot?</strong><p>This removes the rejected entry and selfie. It is allowed only for today&apos;s latest scan.</p></div>
-              </div>
-            ) : modal === 'delete' ? (
-              <div className="attendance-action-warning attendance-action-warning--delete">
-                <AlertTriangle />
-                <div><strong>Delete this entry permanently?</strong><p>The attendance record and its selfie will be removed. This cannot be undone.</p></div>
-              </div>
             ) : (
               <div className="form-group">
                 <label className="form-label">Remarks (optional)</label>
@@ -1437,6 +1428,19 @@ export default function AttendanceApproval() {
           </div>
         )}
       </Modal>
+
+      <DeleteConfirmationModal
+        isOpen={modal === 'delete' || modal === 'remove'}
+        onClose={() => setModal('menu')}
+        title={modal === 'remove' ? 'Permanently Delete Rejected Scan' : 'Permanently Delete Attendance Entry'}
+        itemName={`${selected?.full_name || 'Selected intern'} — ${selected?.scan_time ? `${formatPhtDate(selected.scan_time)} ${formatPhtTime(selected.scan_time)}` : 'Selected attendance entry'}`}
+        warning={modal === 'remove'
+          ? "This permanently removes the rejected entry and selfie so the intern can scan again. This is allowed only for today's latest scan and cannot be undone."
+          : 'This permanently removes the attendance record and its selfie and cannot be undone.'}
+        onConfirm={() => handleAction(modal)}
+        busy={saving}
+        confirmId={`confirm-${modal}-btn`}
+      />
 
       {/* Full Image Preview Modal */}
       <Modal
@@ -1486,44 +1490,15 @@ export default function AttendanceApproval() {
       </Modal>
 
       {/* Remove Attendance Image Confirmation Modal */}
-      <Modal
+      <DeleteConfirmationModal
         isOpen={removeConfirmOpen}
-        onClose={() => !removingImage && setRemoveConfirmOpen(false)}
-        title="Remove Attendance Image?"
-        size="sm"
-        footer={
-          <div className="flex items-center justify-end gap-2 w-full">
-            <button
-              type="button"
-              className="btn btn-secondary btn-sm"
-              onClick={() => setRemoveConfirmOpen(false)}
-              disabled={removingImage}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              className="btn btn-danger btn-sm flex items-center gap-1.5"
-              onClick={handleRemoveImage}
-              disabled={removingImage}
-            >
-              {removingImage ? 'Removing...' : 'Remove'}
-            </button>
-          </div>
-        }
-      >
-        <div className="space-y-2 text-sm text-slate-600 dark:text-slate-300 p-1">
-          <div className="flex items-start gap-3">
-            <div className="p-2 rounded-full bg-rose-100 dark:bg-rose-950 text-rose-600 dark:text-rose-400 shrink-0">
-              <AlertTriangle className="w-5 h-5" />
-            </div>
-            <div>
-              <p className="font-semibold text-slate-800 dark:text-slate-100">Remove Attendance Image?</p>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">This image will no longer be visible to admins.</p>
-            </div>
-          </div>
-        </div>
-      </Modal>
+        onClose={() => setRemoveConfirmOpen(false)}
+        title="Permanently Delete Attendance Image"
+        itemName={selected?.full_name || 'Selected attendance image'}
+        warning="This permanently removes the attached attendance image and cannot be undone."
+        onConfirm={handleRemoveImage}
+        busy={removingImage}
+      />
 
 
       {/* Selfie Verification Preview Modal */}
