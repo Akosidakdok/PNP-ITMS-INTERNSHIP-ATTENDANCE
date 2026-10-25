@@ -10,6 +10,7 @@ import { AVAILABLE_COURSES } from '../../utils/constants.js';
 import FaceRegistrationModal from '../../components/face/FaceRegistrationModal.jsx';
 import BulkDTROverrideModal from '../../components/dtr/BulkDTROverrideModal.jsx';
 import { divisionLabel } from '../../utils/display.js';
+import { createInternFormValues } from '../../utils/internForm.js';
 
 const INIT_FORM = {
   username: '', password: '', first_name: '', middle_name: '', last_name: '', name_suffix: '', email: '', phone: '', 
@@ -191,7 +192,7 @@ export default function InternManagement() {
     const savedCourse = i.course || '';
     const isListedCourse = AVAILABLE_COURSES.includes(savedCourse);
     setForm({
-      ...i,
+      ...createInternFormValues(i, INIT_FORM),
       course: isListedCourse ? savedCourse : (savedCourse ? 'Other' : ''),
       course_other: isListedCourse ? '' : savedCourse,
       password: '',

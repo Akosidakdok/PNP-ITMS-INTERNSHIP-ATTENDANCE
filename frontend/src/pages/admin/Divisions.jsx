@@ -6,6 +6,7 @@ import Modal from '../../components/common/Modal.jsx';
 import { fetchAllInterns } from '../../utils/interns.js';
 import toast from 'react-hot-toast';
 import { AVAILABLE_COURSES } from '../../utils/constants.js';
+import { createInternFormValues } from '../../utils/internForm.js';
 
 const INIT_INTERN_FORM = {
   username: '',
@@ -171,7 +172,7 @@ export default function Divisions() {
   const openEditIntern = (i) => {
     setSelectedIntern(i);
     setInternForm({
-      ...i,
+      ...createInternFormValues(i, INIT_INTERN_FORM),
       password: '',
       student_id: i.student_id || '',
       home_address: i.home_address || '',
