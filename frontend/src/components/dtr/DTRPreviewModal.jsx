@@ -10,6 +10,7 @@ import domtoimage from 'dom-to-image-more';
 import DTRHistoryModal from './DTRHistoryModal.jsx';
 import { divisionLabel } from '../../utils/display.js';
 import { DIVISION_SUPERVISORS } from '../../utils/constants.js';
+import { formatDtrTime } from '../../utils/dtrTime.js';
 
 // Month names helper
 const MONTH_NAMES = [
@@ -30,21 +31,7 @@ function formatOfficialDate(dateStr) {
 
 /** Formats time string (HH:MM or HH:MM:SS) into "08:00 AM" */
 function format12Hour(timeStr) {
-  if (!timeStr) return '--:--';
-  try {
-    const trimmed = timeStr.trim();
-    // Already in 12-hour AM/PM format
-    if (/AM|PM/i.test(trimmed)) return trimmed.toUpperCase();
-    const [hStr, mStr] = trimmed.split(':');
-    let h = parseInt(hStr, 10);
-    const m = parseInt(mStr, 10);
-    if (isNaN(h) || isNaN(m)) return timeStr;
-    const ampm = h >= 12 ? 'PM' : 'AM';
-    h = h % 12 || 12;
-    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')} ${ampm}`;
-  } catch {
-    return timeStr;
-  }
+  return formatDtrTime(timeStr) || '--:--';
 }
 
 export default function DTRPreviewModal({
@@ -324,6 +311,7 @@ export default function DTRPreviewModal({
                       <label className="font-semibold text-gray-700 block mb-1">Official Time In</label>
                       <input
                         type="time"
+                        step="0.001"
                         className="form-input text-xs w-full font-medium"
                         value={editTimeIn}
                         onChange={(e) => setEditTimeIn(e.target.value)}
@@ -334,6 +322,7 @@ export default function DTRPreviewModal({
                       <label className="font-semibold text-gray-700 block mb-1">Official Time Out</label>
                       <input
                         type="time"
+                        step="0.001"
                         className="form-input text-xs w-full font-medium"
                         value={editTimeOut}
                         onChange={(e) => setEditTimeOut(e.target.value)}

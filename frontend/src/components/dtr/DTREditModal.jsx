@@ -172,6 +172,7 @@ export default function DTREditModal({
             <label className="form-label font-semibold text-gray-700">New Time In (HH:MM)</label>
             <input
               type="time"
+              step="0.001"
               className="form-input text-sm"
               value={timeIn}
               onChange={(e) => setTimeIn(e.target.value)}
@@ -182,6 +183,7 @@ export default function DTREditModal({
             <label className="form-label font-semibold text-gray-700">New Time Out (HH:MM)</label>
             <input
               type="time"
+              step="0.001"
               className="form-input text-sm"
               value={timeOut}
               onChange={(e) => setTimeOut(e.target.value)}

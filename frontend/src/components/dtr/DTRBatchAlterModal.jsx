@@ -69,8 +69,8 @@ export default function DTRBatchAlterModal({
             setClearTarget('override');
           } else {
             setActiveTab('time');
-            const initialTimeIn = existing.time_in ? existing.time_in.slice(0, 5) : '';
-            const initialTimeOut = existing.time_out ? existing.time_out.slice(0, 5) : '';
+            const initialTimeIn = existing.time_in || '';
+            const initialTimeOut = existing.time_out || '';
             setTimeIn(initialTimeIn);
             setTimeOut(initialTimeOut);
             setOriginalTimes({ timeIn: initialTimeIn, timeOut: initialTimeOut });
@@ -365,6 +365,7 @@ export default function DTRBatchAlterModal({
                 <label className="form-label font-bold text-slate-700">Official Time In</label>
                 <input
                   type="time"
+                  step="0.001"
                   className="form-input text-xs font-semibold"
                   value={timeIn}
                   onChange={e => setTimeIn(e.target.value)}
@@ -376,6 +377,7 @@ export default function DTRBatchAlterModal({
                 <label className="form-label font-bold text-slate-700">Official Time Out</label>
                 <input
                   type="time"
+                  step="0.001"
                   className="form-input text-xs font-semibold"
                   value={timeOut}
                   onChange={e => setTimeOut(e.target.value)}

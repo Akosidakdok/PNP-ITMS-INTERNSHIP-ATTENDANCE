@@ -1,5 +1,5 @@
 import { supabase } from '../supabaseClient.js';
-import { getPhtDateKey, getPhtDayBoundsUtc, PHT_UTC_OFFSET_MS } from '../utils/attendanceTime.js';
+import { getPhtDateKey, getPhtDayBoundsUtc, PHT_UTC_OFFSET_MS, formatPhtClockTime, getRecordedScanTime } from '../utils/attendanceTime.js';
 
 /**
  * Normalizes time string to HH:MM:SS (24-hour)
@@ -9,11 +9,11 @@ export function normalizeTimeString(timeStr) {
   const trimmed = timeStr.trim();
   
   // Match 12-hour format e.g. "8:00 AM", "08:15 PM"
-  const ampmMatch = trimmed.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)$/i);
+  const ampmMatch = trimmed.match(/^(\d{1,2}):(\d{2})(?::(\d{2}(?:\.\d{1,3})?))?\s*(AM|PM)$/i);
   if (ampmMatch) {
     let hours = parseInt(ampmMatch[1], 10);
     const minutes = parseInt(ampmMatch[2], 10);
-    const seconds = ampmMatch[3] ? parseInt(ampmMatch[3], 10) : 0;
+    const seconds = ampmMatch[3] || '00';
     const isPm = ampmMatch[4].toUpperCase() === 'PM';
     if (isPm && hours < 12) hours += 12;
     if (!isPm && hours === 12) hours = 0;
@@ -21,11 +21,11 @@ export function normalizeTimeString(timeStr) {
   }
 
   // Match 24-hour format e.g. "08:00", "17:00:00"
-  const standardMatch = trimmed.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+  const standardMatch = trimmed.match(/^(\d{1,2}):(\d{2})(?::(\d{2}(?:\.\d{1,3})?))?$/);
   if (standardMatch) {
     const hours = parseInt(standardMatch[1], 10);
     const minutes = parseInt(standardMatch[2], 10);
-    const seconds = standardMatch[3] ? parseInt(standardMatch[3], 10) : 0;
+    const seconds = standardMatch[3] || '00';
     return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
   }
 
@@ -42,7 +42,8 @@ export function buildPhtTimestamp(dateStr, timeStr) {
   
   const [year, month, day] = dateStr.split('-').map(Number);
   // Date.UTC in UTC, minus PHT offset (+8h)
-  const utcMs = Date.UTC(year, month - 1, day, hours, minutes, seconds) - PHT_UTC_OFFSET_MS;
+  const utcMs = Date.UTC(year, month - 1, day, hours, minutes, 0)
+    + Math.round(seconds * 1000) - PHT_UTC_OFFSET_MS;
   return new Date(utcMs).toISOString();
 }
 
@@ -54,9 +55,11 @@ export function format12HourTime(timeStr) {
   const normalized = normalizeTimeString(timeStr);
   if (!normalized) return timeStr;
   const [h, m] = normalized.split(':').map(Number);
+  const seconds = normalized.split(':')[2];
+  const secondsSuffix = Number(seconds) > 0 ? `:${seconds}` : '';
   const ampm = h >= 12 ? 'PM' : 'AM';
   const displayHours = h % 12 || 12;
-  return `${String(displayHours).padStart(2, '0')}:${String(m).padStart(2, '0')} ${ampm}`;
+  return `${String(displayHours).padStart(2, '0')}:${String(m).padStart(2, '0')}${secondsSuffix} ${ampm}`;
 }
 
 /**
@@ -80,11 +83,7 @@ export function formatDateDisplay(dateStr) {
  * Formats a timestamp into PHT HH:MM (e.g. "08:00")
  */
 export function formatPhtTime(timestamp) {
-  if (!timestamp) return '';
-  const d = new Date(timestamp);
-  if (isNaN(d.getTime())) return '';
-  const phtDate = new Date(d.getTime() + PHT_UTC_OFFSET_MS);
-  return phtDate.toISOString().slice(11, 16);
+  return formatPhtClockTime(timestamp) || '';
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -663,17 +662,23 @@ export async function setIndividualAttendanceControl(
             .eq('id', todayRec.id);
         }
 
-        // Also update today's attendance_logs
-        if (first_scan_enabled) {
+        // Keep both official log times in sync without touching original scans.
+        const { startIso, endExclusiveIso } = getPhtDayBoundsUtc(todayKey);
+        for (const [scanType, enabled, time] of [
+          ['time_in', first_scan_enabled, normalizedIn],
+          ['time_out', second_scan_enabled, normalizedOut],
+        ]) {
+          if (!enabled) continue;
           await supabase
             .from('attendance_logs')
             .update({
               attendance_profile_id: targetProfileId,
-              recorded_scan_time: buildPhtTimestamp(todayKey, normalizedIn),
+              recorded_scan_time: buildPhtTimestamp(todayKey, time),
             })
             .eq('intern_id', numericAccountId)
-            .eq('scan_type', 'time_in')
-            .gte('actual_scan_time', `${todayKey}T00:00:00+08:00`);
+            .eq('scan_type', scanType)
+            .gte('scan_time', startIso)
+            .lt('scan_time', endExclusiveIso);
         }
       } catch (syncErr) {
         console.warn('Could not sync today attendance record with individual control:', syncErr?.message);
@@ -892,20 +897,20 @@ export async function editDtrRecord({
   // Determine original values
   const origTimeInStr = record?.recorded_time_in
     ? formatPhtTime(record.recorded_time_in)
-    : timeInLog ? formatPhtTime(timeInLog.scan_time) : null;
+    : timeInLog ? formatPhtTime(getRecordedScanTime(timeInLog)) : null;
 
   const origTimeOutStr = record?.recorded_time_out
     ? formatPhtTime(record.recorded_time_out)
-    : timeOutLog ? formatPhtTime(timeOutLog.scan_time) : null;
+    : timeOutLog ? formatPhtTime(getRecordedScanTime(timeOutLog)) : null;
 
   const origStatus = record?.status || timeInLog?.approval_status || 'pending';
 
   // Normalize incoming values
   const newTimeInNormalized = time_in ? normalizeTimeString(time_in) : null;
-  const newTimeInDisplay = newTimeInNormalized ? newTimeInNormalized.slice(0, 5) : null;
+  const newTimeInDisplay = newTimeInNormalized ? formatPhtTime(buildPhtTimestamp(effectiveDate, newTimeInNormalized)) : null;
 
   const newTimeOutNormalized = time_out ? normalizeTimeString(time_out) : null;
-  const newTimeOutDisplay = newTimeOutNormalized ? newTimeOutNormalized.slice(0, 5) : null;
+  const newTimeOutDisplay = newTimeOutNormalized ? formatPhtTime(buildPhtTimestamp(effectiveDate, newTimeOutNormalized)) : null;
 
   const newStatus = preserveStatus
     ? origStatus
@@ -929,9 +934,9 @@ export async function editDtrRecord({
           account_id: internId,
           attendance_date: effectiveDate,
           actual_time_in: timeInLog?.actual_scan_time || timeInLog?.scan_time || null,
-          recorded_time_in: newTimeInIso || timeInLog?.scan_time || null,
+          recorded_time_in: newTimeInIso || getRecordedScanTime(timeInLog),
           actual_time_out: timeOutLog?.actual_scan_time || timeOutLog?.scan_time || null,
-          recorded_time_out: newTimeOutIso || timeOutLog?.scan_time || null,
+          recorded_time_out: newTimeOutIso || getRecordedScanTime(timeOutLog),
           status: newStatus,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
@@ -1042,7 +1047,8 @@ export async function editDtrRecord({
   if (timeInLog) {
     const logUpdates = preserveStatus ? {} : { approval_status: newStatus };
     if (newTimeInIso) {
-      logUpdates.scan_time = newTimeInIso;
+      // A date correction moves the DTR bucket; same-day edits keep scan order.
+      if (dateChanged) logUpdates.scan_time = newTimeInIso;
       logUpdates.recorded_scan_time = newTimeInIso;
     } else if (dateChanged && origTimeInStr) {
       const shiftedInIso = buildPhtTimestamp(effectiveDate, origTimeInStr);
@@ -1072,7 +1078,7 @@ export async function editDtrRecord({
   if (timeOutLog) {
     const logUpdates = preserveStatus ? {} : { approval_status: newStatus };
     if (newTimeOutIso) {
-      logUpdates.scan_time = newTimeOutIso;
+      if (dateChanged) logUpdates.scan_time = newTimeOutIso;
       logUpdates.recorded_scan_time = newTimeOutIso;
     } else if (dateChanged && origTimeOutStr) {
       const shiftedOutIso = buildPhtTimestamp(effectiveDate, origTimeOutStr);

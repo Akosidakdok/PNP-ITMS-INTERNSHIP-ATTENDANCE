@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 import { supabase } from './supabaseClient.js';
 import { revokeAccountSessions } from './services/sessionService.js';
-import { getPhtDateKey, getPhtDayBoundsUtc } from './utils/attendanceTime.js';
+import { getPhtDateKey, getPhtDayBoundsUtc, toOfficialAttendanceLog } from './utils/attendanceTime.js';
 import { buildDtrRecords, summarizeDtrRecords } from './utils/dtrRecords.js';
 import { getAssignedProfileForAccount } from './services/attendanceControlService.js';
 import { validateUploadFile } from './utils/fileValidation.js';
@@ -290,7 +290,7 @@ async function addCalculatedRenderedHours(interns = []) {
 
   const { data: logs, error } = await supabase
     .from('attendance_logs')
-    .select('id, intern_id, scan_time, scan_type, approval_status, remarks')
+    .select('id, intern_id, scan_time, actual_scan_time, recorded_scan_time, scan_type, approval_status, remarks')
     .in('intern_id', internIds)
     .order('scan_time', { ascending: true });
 
@@ -1101,7 +1101,7 @@ export async function getAttendanceLogs({ status, date, page = 1, limit = 15, di
     const attachment = attachmentsMap[log.id] || null;
     const photo = attachment?.image_url || originalPhoto;
     return {
-      ...log,
+      ...toOfficialAttendanceLog(log),
       photo,
       original_photo: originalPhoto,
       attachment,
@@ -1124,7 +1124,7 @@ export async function setAttendanceApproval(attendanceId, status, remarks) {
     .single();
 
   if (error) throw error;
-  return data;
+  return toOfficialAttendanceLog(data);
 }
 
 export async function removeRejectedAttendanceForRescan(attendanceId) {
@@ -1296,7 +1296,7 @@ export async function getAdminDashboardStats() {
   const mappedRecent = (recentAttendance || []).map(log => {
     const accObj = accountsMap[log.intern_id];
     return {
-      ...log,
+      ...toOfficialAttendanceLog(log),
       full_name: accObj?.full_name || log.intern_name,
       division_name: accObj?.division_name,
       department_name: accObj?.division_name
@@ -1417,7 +1417,7 @@ export async function getSupervisorDashboardStats(user) {
   const mappedRecent = (recentAttendance || []).map(log => {
     const accObj = accountsMap[log.intern_id];
     return {
-      ...log,
+      ...toOfficialAttendanceLog(log),
       full_name: accObj?.full_name || log.intern_name,
       division_name: accObj?.division_name,
       department_name: accObj?.division_name
@@ -1555,7 +1555,7 @@ export async function getDtrRecords(userId, { month, year, startDate, endDate, l
     return q;
   };
 
-  let { data: logs, error } = await buildQuery('id, intern_id, scan_time, actual_scan_time, scan_type, approval_status, remarks');
+  let { data: logs, error } = await buildQuery('id, intern_id, scan_time, actual_scan_time, recorded_scan_time, scan_type, approval_status, remarks');
   if (error) {
     const fallback = await buildQuery('id, intern_id, scan_time, scan_type, approval_status, remarks');
     if (fallback.error) throw fallback.error;

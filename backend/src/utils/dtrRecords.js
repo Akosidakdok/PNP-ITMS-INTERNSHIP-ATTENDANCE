@@ -1,22 +1,19 @@
 import {
   MAX_RENDERED_MINUTES,
-  PHT_UTC_OFFSET_MS,
   calculateRenderedMinutes,
   getPhtDateKey,
+  getPhtDayBoundsUtc,
+  getRecordedScanTime,
+  formatPhtClockTime,
 } from './attendanceTime.js';
 
 const VALID_APPROVAL_STATUSES = new Set(['pending', 'approved', 'rejected']);
 const VALID_OVERRIDE_TYPES = new Set(['SUSPENDED', 'EXCUSED', 'HOURS', 'OTHERS', 'ABSENT', 'HOLIDAY', 'SCHOOL']);
 
 function timestampOf(value) {
+  if (value === null || value === undefined || value === '') return null;
   const timestamp = value instanceof Date ? value.getTime() : new Date(value).getTime();
   return Number.isFinite(timestamp) ? timestamp : null;
-}
-
-function phtTimeString(value) {
-  const timestamp = timestampOf(value);
-  if (timestamp === null) return null;
-  return new Date(timestamp + PHT_UTC_OFFSET_MS).toISOString().slice(11, 16);
 }
 
 function normalizeStatus(value) {
@@ -71,7 +68,13 @@ export function parseDtrOverride(remarks) {
 export function buildStandardDtrRecord(date, entries = []) {
   const sorted = entries
     .filter(entry => entry && !parseDtrOverride(entry.remarks))
-    .map(entry => ({ ...entry, _timestamp: timestampOf(entry.scan_time) }))
+    .map(entry => {
+      const timestamp = timestampOf(entry.actual_scan_time) ?? timestampOf(entry.scan_time);
+      // All entries belong to this DTR date. Compare original Philippine clocks
+      // so moving dates also works when only one side was an actual scan.
+      const dayStart = timestamp === null ? null : timestampOf(getPhtDayBoundsUtc(timestamp).startIso);
+      return { ...entry, _timestamp: timestamp === null ? null : timestamp - dayStart };
+    })
     .filter(entry => entry._timestamp !== null)
     .sort((a, b) => a._timestamp - b._timestamp);
 
@@ -81,8 +84,10 @@ export function buildStandardDtrRecord(date, entries = []) {
     : sorted.find(entry => entry.scan_type === 'time_out') || null;
 
   const isComplete = Boolean(timeInEntry && timeOutEntry);
+  const recordedTimeIn = getRecordedScanTime(timeInEntry);
+  const recordedTimeOut = getRecordedScanTime(timeOutEntry);
   const totalMinutes = isComplete
-    ? calculateRenderedMinutes(timeInEntry.scan_time, timeOutEntry.scan_time)
+    ? calculateRenderedMinutes(recordedTimeIn, recordedTimeOut)
     : 0;
 
   const relevantEntries = [timeInEntry, timeOutEntry].filter(Boolean);
@@ -98,10 +103,10 @@ export function buildStandardDtrRecord(date, entries = []) {
     approvalStatus = 'approved';
   }
 
-  const timeIn = phtTimeString(timeInEntry?.scan_time);
-  const timeOut = phtTimeString(timeOutEntry?.scan_time);
-  const actualTimeIn = phtTimeString(timeInEntry?.actual_scan_time);
-  const actualTimeOut = phtTimeString(timeOutEntry?.actual_scan_time);
+  const timeIn = formatPhtClockTime(recordedTimeIn);
+  const timeOut = formatPhtClockTime(recordedTimeOut);
+  const actualTimeIn = formatPhtClockTime(timeInEntry?.actual_scan_time);
+  const actualTimeOut = formatPhtClockTime(timeOutEntry?.actual_scan_time);
   const remarks = relevantEntries.map(entry => entry.remarks).find(Boolean) || null;
 
   return {

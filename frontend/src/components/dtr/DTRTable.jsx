@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { format, getDaysInMonth, parseISO } from 'date-fns';
 import { divisionLabel } from '../../utils/display.js';
 import { DIVISION_SUPERVISORS } from '../../utils/constants.js';
+import { formatDtrTime } from '../../utils/dtrTime.js';
 
 const MONTH_NAMES = [
   'January','February','March','April','May','June',
@@ -209,13 +210,7 @@ export default function DTRTable({
     setSupervisorDate(defaultSubmissionDate);
   }, [defaultSubmissionDate]);
 
-  // Times come from backend already in Manila HH:MM — just pretty-print them
-  const formatTime = (timeStr) => {
-    if (!timeStr) return '';
-    try {
-      return format(new Date(`2000-01-01T${timeStr}`), 'h:mm a');
-    } catch { return timeStr; }
-  };
+  const formatTime = formatDtrTime;
 
   const renderStatus = (status) => (
     exportMode ? <>&nbsp;</> : <StatusBadge status={status} />

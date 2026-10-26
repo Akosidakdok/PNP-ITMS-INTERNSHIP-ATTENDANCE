@@ -82,6 +82,47 @@ function phtLocalMinuteTimestamp(dateKey, minuteOfDay) {
   return Date.UTC(year, month - 1, day) - PHT_UTC_OFFSET_MS + minuteOfDay * MINUTE_MS;
 }
 
+/** Apply the regular DTR rule to the full scan instant, before display rounding. */
+export function processDtrScanTime(value, scanType) {
+  const timestamp = validTimestamp(value);
+  if (timestamp === null || !['time_in', 'time_out'].includes(scanType)) return null;
+  const boundary = phtLocalMinuteTimestamp(
+    getPhtDateKey(timestamp),
+    scanType === 'time_in' ? WORKDAY_START_MINUTE : WORKDAY_END_MINUTE
+  );
+  return new Date(scanType === 'time_in'
+    ? Math.max(timestamp, boundary)
+    : Math.min(timestamp, boundary)).toISOString();
+}
+
+/** Explicit recorded values (including custom schedules and corrections) win. */
+export function getRecordedScanTime(log) {
+  if (!log) return null;
+  if (validTimestamp(log.recorded_scan_time) !== null) return log.recorded_scan_time;
+  // Older corrections stored their official value in scan_time only.
+  const actual = validTimestamp(log.actual_scan_time);
+  const scan = validTimestamp(log.scan_time);
+  if (actual !== null && scan !== null && actual !== scan) return log.scan_time;
+  return processDtrScanTime(log.scan_time, log.scan_type);
+}
+
+/** Keep the API's existing scan_time display contract, without mutating stored data. */
+export function toOfficialAttendanceLog(log) {
+  return {
+    ...log,
+    scan_time: getRecordedScanTime(log),
+    actual_scan_time: log.actual_scan_time === undefined ? log.scan_time : log.actual_scan_time,
+  };
+}
+
+/** Philippine HH:MM, retaining nonzero seconds/fractions for DTRs and corrections. */
+export function formatPhtClockTime(value) {
+  const timestamp = validTimestamp(value);
+  if (timestamp === null) return null;
+  const time = new Date(timestamp + PHT_UTC_OFFSET_MS).toISOString().slice(11, 23);
+  return time.endsWith(':00.000') ? time.slice(0, 5) : time.replace(/\.000$/, '');
+}
+
 /**
  * Calculates creditable attendance time for a single two-scan Philippine day.
  * Workday starts crediting at 08:00; time before 08:00 is ignored and actual overlap

@@ -33,25 +33,97 @@ test('a two-scan afternoon day produces one complete approved DTR record', () =>
   assert.equal(record.is_complete, true);
 });
 
-test('an 08:00 to 18:00 day renders 9 hours (540 minutes) after lunch deduction', () => {
+test('an ordinary 08:00 to 18:00 scan pair uses the official 17:00 departure', () => {
   const record = buildStandardDtrRecord('2026-08-27', [
     scan(1, '08:00:00', 'time_in'),
     scan(2, '18:00:00', 'time_out'),
   ]);
 
-  assert.equal(record.total_minutes, 540);
-  assert.equal(record.total_hours, 9);
+  assert.equal(record.time_out, '17:00');
+  assert.equal(record.total_minutes, 480);
+  assert.equal(record.total_hours, 8);
 });
 
-test('a full day with overtime renders actual minutes excluding lunch', () => {
+test('an ordinary early arrival and late departure use the official workday', () => {
   const record = buildStandardDtrRecord('2026-08-27', [
     scan(1, '07:10:00', 'time_in'),
     scan(2, '18:30:00', 'time_out'),
   ]);
 
-  assert.equal(record.total_minutes, 570);
-  assert.equal(record.total_hours, 9.5);
+  assert.equal(record.time_in, '08:00');
+  assert.equal(record.time_out, '17:00');
+  assert.equal(record.total_minutes, 480);
+  assert.equal(record.total_hours, 8);
 });
+
+test('DTR output and totals use recorded times while audit times keep the original scans', () => {
+  const entries = [
+    { ...scan(1, '07:30:12', 'time_in'), actual_scan_time: '2026-08-27T07:30:12+08:00', recorded_scan_time: '2026-08-27T08:00:00+08:00' },
+    { ...scan(2, '18:00:25', 'time_out'), actual_scan_time: '2026-08-27T18:00:25+08:00', recorded_scan_time: '2026-08-27T17:00:00+08:00' },
+  ];
+  const originals = structuredClone(entries);
+  const [record] = buildDtrRecords(entries);
+  assert.equal(record.time_in, '08:00');
+  assert.equal(record.am_time_in, '08:00');
+  assert.equal(record.time_out, '17:00');
+  assert.equal(record.pm_time_out, '17:00');
+  assert.equal(record.actual_time_in, '07:30:12');
+  assert.equal(record.actual_time_out, '18:00:25');
+  assert.equal(record.approved_minutes, 480);
+  assert.deepEqual(entries, originals);
+});
+
+test('seconds on late arrivals and early departures survive DTR aggregation', () => {
+  const [record] = buildDtrRecords([scan(1, '08:00:01', 'time_in'), scan(2, '16:59:59', 'time_out')]);
+  assert.equal(record.time_in, '08:00:01');
+  assert.equal(record.time_out, '16:59:59');
+  assert.equal(record.total_minutes, 479);
+});
+
+test('explicit custom or manually recorded times remain authoritative', () => {
+  const [record] = buildDtrRecords([
+    { ...scan(1, '08:20:00', 'time_in'), recorded_scan_time: '2026-08-27T08:30:00+08:00' },
+    { ...scan(2, '19:00:00', 'time_out'), recorded_scan_time: '2026-08-27T18:30:00+08:00' },
+  ]);
+  assert.equal(record.time_in, '08:30');
+  assert.equal(record.time_out, '18:30');
+  assert.equal(record.total_minutes, 540);
+});
+
+test('two scans before 08:00 remain a complete pair with zero credited minutes', () => {
+  const [record] = buildDtrRecords([scan(1, '07:30:00', 'time_in'), scan(2, '07:45:00', 'time_out')]);
+  assert.equal(record.time_in, '08:00');
+  assert.equal(record.time_out, '07:45');
+  assert.equal(record.is_complete, true);
+  assert.equal(record.total_minutes, 0);
+});
+
+test('a date-corrected early pair groups by its edited date and pairs by original scans', () => {
+  const [record] = buildDtrRecords([
+    { ...scan(1, '08:00:00', 'time_in'), actual_scan_time: '2026-08-26T07:30:00+08:00', recorded_scan_time: '2026-08-27T08:00:00+08:00' },
+    { ...scan(2, '07:45:00', 'time_out'), actual_scan_time: '2026-08-26T07:45:00+08:00', recorded_scan_time: '2026-08-27T07:45:00+08:00' },
+  ]);
+  assert.equal(record.date, '2026-08-27');
+  assert.equal(record.time_out, '07:45');
+  assert.equal(record.is_complete, true);
+  assert.equal(record.total_minutes, 0);
+});
+
+for (const [direction, actualIn, actualOut] of [
+  ['backward', '2026-08-28T08:00:00+08:00', null],
+  ['forward', null, '2026-08-26T17:00:00+08:00'],
+]) {
+  test(`a date correction ${direction} preserves a mixed real/manual scan pair`, () => {
+    const [record] = buildDtrRecords([
+      { ...scan(1, '08:00:00', 'time_in'), actual_scan_time: actualIn, recorded_scan_time: '2026-08-27T08:00:00+08:00' },
+      { ...scan(2, '17:00:00', 'time_out'), actual_scan_time: actualOut, recorded_scan_time: '2026-08-27T17:00:00+08:00' },
+    ]);
+    assert.equal(record.date, '2026-08-27');
+    assert.equal(record.time_in, '08:00');
+    assert.equal(record.time_out, '17:00');
+    assert.equal(record.approved_minutes, 480);
+  });
+}
 
 test('an approved time-in without a time-out remains incomplete and uncredited', () => {
   const record = buildStandardDtrRecord('2026-08-27', [scan(1, '08:36:00', 'time_in')]);

@@ -41,6 +41,14 @@ test('normalizeTimeString handles 12-hour and 24-hour formats', () => {
   assert.equal(normalizeTimeString(''), null);
   assert.equal(normalizeTimeString(null), null);
 });
+
+test('DTR correction helpers preserve seconds and milliseconds', () => {
+  assert.equal(normalizeTimeString('08:00:01.123'), '08:00:01.123');
+  assert.equal(buildPhtTimestamp('2026-10-26', '08:00:01.123'), '2026-10-26T00:00:01.123Z');
+  assert.equal(formatPhtTime('2026-10-26T00:00:01.123Z'), '08:00:01.123');
+  assert.equal(formatPhtTime('2026-10-26T08:59:59Z'), '16:59:59');
+  assert.equal(format12HourTime('08:00:01.123'), '08:00:01.123 AM');
+});
 test('buildPhtTimestamp creates valid UTC ISO instant for Philippine local time', () => {
   // Manila is UTC+8. So 08:00 Manila is 00:00 UTC.
   const isoIn = buildPhtTimestamp('2026-09-21', '08:00');

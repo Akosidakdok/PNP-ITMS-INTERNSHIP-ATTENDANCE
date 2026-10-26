@@ -1,4 +1,5 @@
 import DeleteConfirmationModal from '../../components/common/DeleteConfirmationModal.jsx';
+import { getPhtDtrTime } from '../../utils/dtrTime.js';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   CheckCircle,
@@ -225,13 +226,7 @@ const getPhtDateStr = (value) => {
 };
 
 const getPht24HourTime = (value) => {
-  if (!value) return '';
-  return new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'Asia/Manila',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false
-  }).format(new Date(value));
+  return getPhtDtrTime(value);
 };
 
 const formatPhtDateTime = (value) => {
@@ -248,6 +243,7 @@ const formatPhtDateTime = (value) => {
       timeZone: 'Asia/Manila',
       hour: '2-digit',
       minute: '2-digit',
+      second: '2-digit',
       hour12: true,
     }).format(d);
     return `${datePart} • ${timePart}`;

@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import { supabase } from './supabaseClient.js';
-import { getPhtDayBoundsUtc } from './utils/attendanceTime.js';
+import { getPhtDayBoundsUtc, processDtrScanTime } from './utils/attendanceTime.js';
 import { getAssignedProfileForAccount, buildPhtTimestamp } from './services/attendanceControlService.js';
 
 const QR_EXPIRY_MINUTES = 60;
@@ -188,20 +188,27 @@ export async function scanAttendance({ qr_code, user, photo, face_embedding } = 
   }
 
   const actualScanTime = new Date().toISOString();
-  let recordedScanTime = actualScanTime;
+  let recordedScanTime = processDtrScanTime(actualScanTime, scanType);
   let assignedProfile = null;
   let attendanceRecordId = null;
 
   if (internId) {
     try {
-      const { dateKey } = getPhtDayBoundsUtc();
+      const { dateKey } = getPhtDayBoundsUtc(actualScanTime);
       assignedProfile = await getAssignedProfileForAccount(internId, dateKey);
 
-      if (scanType === 'time_in') {
+      // Individual schedules and nonstandard shared schedules remain explicit overrides.
+      const isCustomSchedule = assignedProfile && (
+        !/^Regular 8AM[–-]5PM$/i.test(assignedProfile.profile_name || '')
+        || assignedProfile.time_in !== '08:00:00'
+        || assignedProfile.time_out !== '17:00:00'
+      );
+      if (isCustomSchedule) recordedScanTime = actualScanTime;
+      if (isCustomSchedule && scanType === 'time_in') {
         if (assignedProfile && assignedProfile.first_scan_enabled && assignedProfile.time_in) {
           recordedScanTime = buildPhtTimestamp(dateKey, assignedProfile.time_in) || actualScanTime;
         }
-      } else if (scanType === 'time_out') {
+      } else if (isCustomSchedule && scanType === 'time_out') {
         if (assignedProfile && assignedProfile.second_scan_enabled && assignedProfile.time_out) {
           recordedScanTime = buildPhtTimestamp(dateKey, assignedProfile.time_out) || actualScanTime;
         }
@@ -250,16 +257,13 @@ export async function scanAttendance({ qr_code, user, photo, face_embedding } = 
     }
   }
 
-  const scanTime = recordedScanTime;
-  let record = null;
-  let insertError = null;
-
-  // Attempt insert with all columns
+  // scan_time remains the actual scan for ordering and duplicate prevention.
+  // Official display paths read recorded_scan_time instead.
   const fullInsertPayload = {
     intern_id: internId,
     intern_name: internName,
     scan_type: scanType,
-    scan_time: scanTime,
+    scan_time: actualScanTime,
     actual_scan_time: actualScanTime,
     recorded_scan_time: recordedScanTime,
     attendance_profile_id: assignedProfile?.id || null,
@@ -269,27 +273,9 @@ export async function scanAttendance({ qr_code, user, photo, face_embedding } = 
     verification_status: verificationStatus,
   };
 
-  const res1 = await supabase.from('attendance_logs').insert([fullInsertPayload]).select().single();
-  if (res1.error) {
-    // If table does not yet have newly migrated columns, fallback gracefully
-    const basePayload = {
-      intern_id: internId,
-      intern_name: internName,
-      scan_type: scanType,
-      scan_time: scanTime,
-      qr_code_id: qrData.id,
-      verification_score: verificationScore,
-      verification_status: verificationStatus,
-    };
-    const res2 = await supabase.from('attendance_logs').insert([basePayload]).select().single();
-    if (res2.error) {
-      insertError = res2.error;
-    } else {
-      record = res2.data;
-    }
-  } else {
-    record = res1.data;
-  }
+  // Never retry without audit/processed columns: that would silently lose data.
+  const { data: record, error: insertError } = await supabase
+    .from('attendance_logs').insert([fullInsertPayload]).select().single();
 
   if (insertError || !record) {
     console.error('Database insert error:', insertError);
@@ -322,7 +308,7 @@ export async function scanAttendance({ qr_code, user, photo, face_embedding } = 
     has_timed_out: isNowTimedOut,
     can_scan: !isNowTimedOut,
     intern_name: internName,
-    scan_time: scanTime,
+    scan_time: recordedScanTime,
     photo_saved: !photoError,
   };
 }
