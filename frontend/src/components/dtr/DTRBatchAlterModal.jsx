@@ -64,7 +64,7 @@ export default function DTRBatchAlterModal({
           if (existing.is_override) {
             setActiveTab('override');
             setOverrideType(existing.override_type || 'suspended');
-            setOverrideHours(existing.total_hours || 8);
+            setOverrideHours(existing.total_hours ?? 8);
             setOverrideRemarks(existing.remarks || '');
             setClearTarget('override');
           } else {

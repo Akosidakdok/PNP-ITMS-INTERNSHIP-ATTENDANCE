@@ -77,17 +77,44 @@ export function getPhtDayBoundsUtc(value = new Date()) {
   };
 }
 
-function phtLocalMinuteTimestamp(dateKey, minuteOfDay) {
+export function phtLocalMinuteTimestamp(dateKey, minuteOfDay) {
   const { year, month, day } = validateDateKey(dateKey);
   return Date.UTC(year, month - 1, day) - PHT_UTC_OFFSET_MS + minuteOfDay * MINUTE_MS;
+}
+
+/**
+ * Scans between 12:00 PM and 12:59 PM (inclusive of seconds/fractions) are
+ * normalized to 1:00 PM (13:00:00). Scans before 12:00 PM or at/after 1:00 PM
+ * retain their actual scan time.
+ */
+export function normalizeLunchBreakScan(value) {
+  const timestamp = validTimestamp(value);
+  if (timestamp === null) return null;
+  const dateKey = getPhtDateKey(timestamp);
+  const lunchStart = phtLocalMinuteTimestamp(dateKey, LUNCH_START_MINUTE);
+  const lunchEnd = phtLocalMinuteTimestamp(dateKey, LUNCH_END_MINUTE);
+  if (timestamp >= lunchStart && timestamp < lunchEnd) {
+    return new Date(lunchEnd).toISOString();
+  }
+  return value instanceof Date ? value.toISOString() : value;
 }
 
 /** Apply the regular DTR rule to the full scan instant, before display rounding. */
 export function processDtrScanTime(value, scanType) {
   const timestamp = validTimestamp(value);
   if (timestamp === null || !['time_in', 'time_out'].includes(scanType)) return null;
+
+  const dateKey = getPhtDateKey(timestamp);
+  const lunchStart = phtLocalMinuteTimestamp(dateKey, LUNCH_START_MINUTE);
+  const lunchEnd = phtLocalMinuteTimestamp(dateKey, LUNCH_END_MINUTE);
+
+  // Scans between 12:00 PM and 12:59 PM are automatically treated as 1:00 PM
+  if (timestamp >= lunchStart && timestamp < lunchEnd) {
+    return new Date(lunchEnd).toISOString();
+  }
+
   const boundary = phtLocalMinuteTimestamp(
-    getPhtDateKey(timestamp),
+    dateKey,
     scanType === 'time_in' ? WORKDAY_START_MINUTE : WORKDAY_END_MINUTE
   );
   return new Date(scanType === 'time_in'
@@ -98,12 +125,27 @@ export function processDtrScanTime(value, scanType) {
 /** Explicit recorded values (including custom schedules and corrections) win. */
 export function getRecordedScanTime(log) {
   if (!log) return null;
-  if (validTimestamp(log.recorded_scan_time) !== null) return log.recorded_scan_time;
-  // Older corrections stored their official value in scan_time only.
-  const actual = validTimestamp(log.actual_scan_time);
-  const scan = validTimestamp(log.scan_time);
-  if (actual !== null && scan !== null && actual !== scan) return log.scan_time;
-  return processDtrScanTime(log.scan_time, log.scan_type);
+  let candidate = null;
+  const recordedTs = validTimestamp(log.recorded_scan_time);
+  const actualTs = validTimestamp(log.actual_scan_time);
+  const scanTs = validTimestamp(log.scan_time);
+
+  if (recordedTs !== null) {
+    const rawTs = actualTs !== null ? actualTs : scanTs;
+    const isRawRecordedScan = rawTs !== null && recordedTs === rawTs;
+    candidate = isRawRecordedScan
+      ? processDtrScanTime(log.recorded_scan_time, log.scan_type)
+      : log.recorded_scan_time;
+  } else {
+    // Older corrections stored their official value in scan_time only.
+    if (actualTs !== null && scanTs !== null && actualTs !== scanTs) {
+      candidate = log.scan_time;
+    } else {
+      candidate = processDtrScanTime(log.scan_time, log.scan_type);
+    }
+  }
+
+  return normalizeLunchBreakScan(candidate);
 }
 
 /** Keep the API's existing scan_time display contract, without mutating stored data. */
@@ -127,6 +169,8 @@ export function formatPhtClockTime(value) {
  * Calculates creditable attendance time for a single two-scan Philippine day.
  * Workday starts crediting at 08:00; time before 08:00 is ignored and actual overlap
  * with 12:00-13:00 lunch is deducted. Invalid, incomplete, reversed, and cross-date pairs earn zero.
+ * Morning hours run from Time In up to 12:00 PM; afternoon hours run from 1:00 PM up to Time Out.
+ * The 12:00 PM to 1:00 PM interval strictly contributes 0 hours.
  */
 export function calculateRenderedMilliseconds(timeIn, timeOut) {
   const timeInTimestamp = validTimestamp(timeIn);
@@ -146,16 +190,17 @@ export function calculateRenderedMilliseconds(timeIn, timeOut) {
   const workdayStart = phtLocalMinuteTimestamp(timeInDateKey, WORKDAY_START_MINUTE);
   const lunchStart = phtLocalMinuteTimestamp(timeInDateKey, LUNCH_START_MINUTE);
   const lunchEnd = phtLocalMinuteTimestamp(timeInDateKey, LUNCH_END_MINUTE);
+  const workdayEnd = phtLocalMinuteTimestamp(timeInDateKey, WORKDAY_END_MINUTE);
 
   const creditedStart = Math.max(timeInTimestamp, workdayStart);
-  const creditedEnd = timeOutTimestamp;
+  const creditedEnd = Math.min(timeOutTimestamp, workdayEnd);
   if (creditedEnd <= creditedStart) return 0;
 
-  const lunchOverlap = Math.max(
-    0,
-    Math.min(creditedEnd, lunchEnd) - Math.max(creditedStart, lunchStart)
-  );
-  const renderedMilliseconds = creditedEnd - creditedStart - lunchOverlap;
+  // Morning Hours = Time In → 12:00 PM; Afternoon Hours = 1:00 PM → Time Out.
+  // The 12:00 PM to 1:00 PM interval strictly contributes 0 hours.
+  const morningMs = Math.max(0, Math.min(creditedEnd, lunchStart) - creditedStart);
+  const afternoonMs = Math.max(0, creditedEnd - Math.max(creditedStart, lunchEnd));
+  const renderedMilliseconds = morningMs + afternoonMs;
 
   return Math.max(0, renderedMilliseconds);
 }

@@ -105,8 +105,8 @@ export function buildStandardDtrRecord(date, entries = []) {
 
   const timeIn = formatPhtClockTime(recordedTimeIn);
   const timeOut = formatPhtClockTime(recordedTimeOut);
-  const actualTimeIn = formatPhtClockTime(timeInEntry?.actual_scan_time);
-  const actualTimeOut = formatPhtClockTime(timeOutEntry?.actual_scan_time);
+  const actualTimeIn = formatPhtClockTime(timeInEntry?.actual_scan_time ?? timeInEntry?.scan_time);
+  const actualTimeOut = formatPhtClockTime(timeOutEntry?.actual_scan_time ?? timeOutEntry?.scan_time);
   const remarks = relevantEntries.map(entry => entry.remarks).find(Boolean) || null;
 
   return {

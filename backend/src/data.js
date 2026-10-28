@@ -890,6 +890,24 @@ export async function updateCurrentUserUsername(id, username) {
 
 export async function deleteIntern(id) {
   const normalizedId = positiveId(id, 'intern ID');
+
+  // Cascade clean-up of associated intern data
+  const { data: logs } = await supabase
+    .from('attendance_logs')
+    .select('id')
+    .eq('intern_id', normalizedId);
+
+  const logIds = (logs || []).map(l => l.id);
+  if (logIds.length > 0) {
+    await supabase.from('attendance_photos').delete().in('attendance_log_id', logIds);
+    await supabase.from('attendance_logs').delete().eq('intern_id', normalizedId);
+  }
+
+  await supabase.from('attendance_records').delete().eq('account_id', normalizedId);
+  await supabase.from('account_attendance_profiles').delete().eq('account_id', normalizedId);
+  await supabase.from('dtr_edit_history').delete().eq('account_id', normalizedId);
+  await supabase.from('documents').delete().eq('intern_id', normalizedId);
+
   const { error } = await supabase
     .from('accounts')
     .delete()

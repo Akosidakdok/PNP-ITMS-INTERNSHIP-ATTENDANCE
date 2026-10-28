@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import { supabase } from './supabaseClient.js';
-import { getPhtDayBoundsUtc, processDtrScanTime } from './utils/attendanceTime.js';
+import { getPhtDayBoundsUtc, processDtrScanTime, normalizeLunchBreakScan } from './utils/attendanceTime.js';
 import { getAssignedProfileForAccount, buildPhtTimestamp } from './services/attendanceControlService.js';
 
 const QR_EXPIRY_MINUTES = 60;
@@ -203,14 +203,19 @@ export async function scanAttendance({ qr_code, user, photo, face_embedding } = 
         || assignedProfile.time_in !== '08:00:00'
         || assignedProfile.time_out !== '17:00:00'
       );
-      if (isCustomSchedule) recordedScanTime = actualScanTime;
-      if (isCustomSchedule && scanType === 'time_in') {
-        if (assignedProfile && assignedProfile.first_scan_enabled && assignedProfile.time_in) {
-          recordedScanTime = buildPhtTimestamp(dateKey, assignedProfile.time_in) || actualScanTime;
+      if (isCustomSchedule) {
+        let customTime = null;
+        if (scanType === 'time_in') {
+          if (assignedProfile && assignedProfile.first_scan_enabled && assignedProfile.time_in) {
+            customTime = buildPhtTimestamp(dateKey, assignedProfile.time_in);
+          }
+        } else if (scanType === 'time_out') {
+          if (assignedProfile && assignedProfile.second_scan_enabled && assignedProfile.time_out) {
+            customTime = buildPhtTimestamp(dateKey, assignedProfile.time_out);
+          }
         }
-      } else if (isCustomSchedule && scanType === 'time_out') {
-        if (assignedProfile && assignedProfile.second_scan_enabled && assignedProfile.time_out) {
-          recordedScanTime = buildPhtTimestamp(dateKey, assignedProfile.time_out) || actualScanTime;
+        if (customTime) {
+          recordedScanTime = normalizeLunchBreakScan(customTime);
         }
       }
 

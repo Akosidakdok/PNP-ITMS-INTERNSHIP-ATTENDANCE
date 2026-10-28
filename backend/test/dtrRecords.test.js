@@ -87,7 +87,7 @@ test('explicit custom or manually recorded times remain authoritative', () => {
   ]);
   assert.equal(record.time_in, '08:30');
   assert.equal(record.time_out, '18:30');
-  assert.equal(record.total_minutes, 540);
+  assert.equal(record.total_minutes, 450);
 });
 
 test('two scans before 08:00 remain a complete pair with zero credited minutes', () => {
@@ -267,5 +267,51 @@ test('school override synonyms (school_class, school_f2f, f2f) normalize to SCHO
   });
 });
 
+test('an 08:30 to 16:30 scan pair renders exactly 7 hours excluding lunch break', () => {
+  const [record] = buildDtrRecords([
+    scan(1, '08:30:00', 'time_in'),
+    scan(2, '16:30:00', 'time_out'),
+  ]);
 
+  assert.equal(record.time_in, '08:30');
+  assert.equal(record.time_out, '16:30');
+  assert.equal(record.total_minutes, 420);
+  assert.equal(record.total_hours, 7);
+  assert.equal(record.worked_minutes, 420);
+  assert.equal(record.is_complete, true);
+});
 
+test('a scan between 12:00 PM and 12:59 PM normalizes to 1:00 PM in DTR records and calculation', () => {
+  // Morning arrival, lunch departure
+  const [morningRec] = buildDtrRecords([
+    scan(1, '08:00:00', 'time_in'),
+    scan(2, '12:30:00', 'time_out'),
+  ]);
+  assert.equal(morningRec.time_in, '08:00');
+  assert.equal(morningRec.time_out, '13:00');
+  assert.equal(morningRec.actual_time_out, '12:30');
+  assert.equal(morningRec.total_minutes, 240);
+  assert.equal(morningRec.total_hours, 4);
+
+  // Lunch arrival, afternoon departure
+  const [afternoonRec] = buildDtrRecords([
+    scan(3, '12:15:00', 'time_in'),
+    scan(4, '17:00:00', 'time_out'),
+  ]);
+  assert.equal(afternoonRec.time_in, '13:00');
+  assert.equal(afternoonRec.actual_time_in, '12:15');
+  assert.equal(afternoonRec.time_out, '17:00');
+  assert.equal(afternoonRec.total_minutes, 240);
+  assert.equal(afternoonRec.total_hours, 4);
+});
+
+test('scans entirely inside 12:00-12:59 PM lunch interval render zero hours', () => {
+  const [record] = buildDtrRecords([
+    scan(1, '12:10:00', 'time_in'),
+    scan(2, '12:50:00', 'time_out'),
+  ]);
+  assert.equal(record.time_in, '13:00');
+  assert.equal(record.time_out, '13:00');
+  assert.equal(record.total_minutes, 0);
+  assert.equal(record.total_hours, 0);
+});

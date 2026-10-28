@@ -29,6 +29,26 @@ function formatOfficialDate(dateStr) {
   return `${MONTH_NAMES[monthIndex] || ''} ${day}, ${year}`;
 }
 
+const toNonNegativeMinutes = (value) => {
+  const minutes = Number(value);
+  return Number.isFinite(minutes) ? Math.max(0, Math.round(minutes)) : null;
+};
+
+const getRecordMinutes = (record) => {
+  const fallbackMinutes = record?.total_hours === null
+    || record?.total_hours === undefined
+    || record?.total_hours === ''
+    ? null
+    : toNonNegativeMinutes(Number(record.total_hours) * 60);
+
+  return toNonNegativeMinutes(record?.total_minutes) ?? fallbackMinutes ?? 0;
+};
+
+const formatDuration = (value) => {
+  const minutes = toNonNegativeMinutes(value) ?? 0;
+  return `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, '0')}m`;
+};
+
 /** Formats time string (HH:MM or HH:MM:SS) into "08:00 AM" */
 function format12Hour(timeStr) {
   return formatDtrTime(timeStr) || '--:--';
@@ -535,7 +555,7 @@ export default function DTRPreviewModal({
                   <div>
                     <span style={{ color: '#64748b' }}>Rendered Hours: </span>
                     <span style={{ fontWeight: 'bold', color: '#0f172a' }}>
-                      {activeRecord.is_complete ? `${activeRecord.total_hours || 8} hrs` : (activeRecord.total_hours ? `${activeRecord.total_hours} hrs` : 'Pending completion')}
+                      {activeRecord.is_complete ? formatDuration(getRecordMinutes(activeRecord)) : (getRecordMinutes(activeRecord) > 0 ? formatDuration(getRecordMinutes(activeRecord)) : 'Pending completion')}
                     </span>
                   </div>
                   <div>

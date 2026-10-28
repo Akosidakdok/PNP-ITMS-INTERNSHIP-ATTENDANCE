@@ -56,6 +56,18 @@ for (const [scanType, localTime, expected] of [
   ['time_in', '07:30:00', '08:00:00'],
   ['time_in', '08:00:01', '08:00:01'],
   ['time_in', '08:15:00', '08:15:00'],
+  ['time_in', '11:59:00', '11:59:00'],
+  ['time_in', '12:00:00', '13:00:00'],
+  ['time_in', '12:30:00', '13:00:00'],
+  ['time_in', '12:59:00', '13:00:00'],
+  ['time_in', '13:00:00', '13:00:00'],
+  ['time_in', '13:01:00', '13:01:00'],
+  ['time_out', '11:59:00', '11:59:00'],
+  ['time_out', '12:00:00', '13:00:00'],
+  ['time_out', '12:30:00', '13:00:00'],
+  ['time_out', '12:59:00', '13:00:00'],
+  ['time_out', '13:00:00', '13:00:00'],
+  ['time_out', '13:01:00', '13:01:00'],
   ['time_out', '16:59:59', '16:59:59'],
   ['time_out', '17:00:01', '17:00:00'],
   ['time_out', '18:00:00', '17:00:00'],
@@ -97,11 +109,19 @@ test('an explicit custom profile retains its existing recording behavior', async
   assert.equal(writes.find(write => write.table === 'attendance_logs').payload[0].recorded_scan_time, '2026-10-26T01:00:00.000Z');
 });
 
-test('a disabled custom schedule scan keeps its actual time', async t => {
+test('a disabled custom schedule scan applies standard DTR rules (8:00 AM floor)', async t => {
   t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-10-26T07:30:00+08:00') });
   const writes = mockDatabase({ profile: { ...regularProfile, profile_name: 'Individual: Test [Ongoing]', first_scan_enabled: false } });
   await scanAttendance({ qr_code: 'VALID', user, photo, face_embedding: face });
-  assert.equal(writes.find(write => write.table === 'attendance_logs').payload[0].recorded_scan_time, '2026-10-25T23:30:00.000Z');
+  assert.equal(writes.find(write => write.table === 'attendance_logs').payload[0].recorded_scan_time, '2026-10-26T00:00:00.000Z');
+  assert.equal(writes.find(write => write.table === 'attendance_logs').payload[0].actual_scan_time, '2026-10-25T23:30:00.000Z');
+});
+
+test('a disabled custom schedule scan during lunch normalizes to 1:00 PM', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-10-26T12:30:00+08:00') });
+  const writes = mockDatabase({ profile: { ...regularProfile, profile_name: 'Individual: Test [Ongoing]', first_scan_enabled: false } });
+  await scanAttendance({ qr_code: 'VALID', user, photo, face_embedding: face });
+  assert.equal(writes.find(write => write.table === 'attendance_logs').payload[0].recorded_scan_time, '2026-10-26T05:00:00.000Z');
 });
 
 test('a named shared custom schedule still overrides scans even with regular hours', async t => {
