@@ -118,7 +118,8 @@ export default function DTRHistoryModal({
                       </span>
                       {entry.adjustment_mode && (
                         <p className="mt-1 text-[11px] text-gray-600">
-                          {entry.event_type === 'control_assigned' ? 'Control assigned · DTR unchanged'
+                          {entry.event_type === 'attendance_deleted' ? 'Deleted · scan evidence retained'
+                            : entry.event_type === 'control_assigned' ? 'Control assigned · DTR unchanged'
                             : entry.adjustment_mode === 'automatic' ? 'Automatic · approved policy' : 'Manually approved'}
                         </p>
                       )}
@@ -129,7 +130,11 @@ export default function DTRHistoryModal({
                         : <span className="line-through">{entry.original_value || 'None'}</span>}
                     </td>
                     <td data-label={entry.dtr_time ? 'DTR Time' : 'Modified Value'} className="px-3 py-2.5 whitespace-nowrap text-green-700 font-bold">
-                      {entry.dtr_time ? formatTimestamp(entry.dtr_time) : entry.new_value || 'None'}
+                      {entry.event_type === 'attendance_deleted' ? 'Deleted'
+                        : entry.dtr_time ? formatTimestamp(entry.dtr_time) : entry.new_value || 'None'}
+                      {entry.event_type === 'attendance_deleted' && entry.dtr_time && (
+                        <p className="text-[11px] font-normal text-gray-600 mt-1">Previous DTR: {formatTimestamp(entry.dtr_time)}</p>
+                      )}
                       {entry.stored_scan_time && (
                         <p className="text-[11px] font-normal text-gray-600 mt-1">Stored scan: {formatTimestamp(entry.stored_scan_time)}</p>
                       )}

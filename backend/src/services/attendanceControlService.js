@@ -1328,15 +1328,18 @@ export async function getDtrEditHistory({ internId, date, limit = 100 } = {}) {
   const scans = (audit.data || []).map(entry => ({
     ...entry,
     id: `scan-${entry.id}`,
-    field_name: entry.event_type === 'control_assigned' ? 'Scan evidence preserved'
+    field_name: entry.event_type === 'attendance_deleted' ? 'Attendance entry deleted'
+      : entry.event_type === 'control_assigned' ? 'Scan evidence preserved'
       : entry.event_type === 'scan_time_adjustment' ? 'Morning scan adjustment'
       : entry.event_type === 'dtr_adjustment' ? 'Manual DTR correction'
       : entry.time_adjusted ? 'DTR policy adjustment' : 'QR scan recorded',
     account_name: entry.account_name || `Account #${entry.account_id}`,
     original_value: entry.actual_scan_time,
-    new_value: entry.dtr_time,
-    modified_by_name: `Superadmin #${entry.approved_by}`,
-    modified_by_role: 'superadmin',
+    new_value: entry.event_type === 'attendance_deleted' ? 'Deleted · scan evidence retained' : entry.dtr_time,
+    modified_by_name: entry.event_type === 'attendance_deleted'
+      ? entry.policy_snapshot?.deleted_by_name || `Administrator #${entry.approved_by}`
+      : `Superadmin #${entry.approved_by}`,
+    modified_by_role: entry.event_type === 'attendance_deleted' ? entry.policy_snapshot?.deleted_by_role || 'admin' : 'superadmin',
     modified_at: entry.created_at,
   }));
   return [...manual, ...scans]

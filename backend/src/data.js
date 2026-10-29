@@ -8,7 +8,7 @@ import { buildDtrRecords, summarizeDtrRecords } from './utils/dtrRecords.js';
 import { getAssignedProfileForAccount } from './services/attendanceControlService.js';
 import { validateUploadFile } from './utils/fileValidation.js';
 import { getAttachmentsForLogs, deleteAttendanceAttachment } from './services/attendanceAttachmentService.js';
-import { assertScansDeletable } from './services/scanAuditService.js';
+import { assertScansDeletable, deleteProtectedScan } from './services/scanAuditService.js';
 
 
 const INTERN_ROLE = 'intern';
@@ -1149,7 +1149,7 @@ export async function setAttendanceApproval(attendanceId, status, remarks) {
   return toOfficialAttendanceLog(data);
 }
 
-export async function removeRejectedAttendanceForRescan(attendanceId) {
+export async function removeRejectedAttendanceForRescan(attendanceId, user) {
   const { data: attendance, error: attendanceError } = await supabase
     .from('attendance_logs')
     .select('id, intern_id, scan_type, scan_time, approval_status, superadmin_controlled')
@@ -1162,7 +1162,6 @@ export async function removeRejectedAttendanceForRescan(attendanceId) {
     throw notFoundError;
   }
 
-  await assertScansDeletable([attendance]);
   if (attendance.approval_status !== 'rejected') {
     const stateError = new Error('Only rejected attendance records can be removed for rescanning');
     stateError.statusCode = 409;
@@ -1195,6 +1194,16 @@ export async function removeRejectedAttendanceForRescan(attendanceId) {
     throw orderError;
   }
 
+  const auditedDeletion = await deleteProtectedScan(attendance, user, { rescan: true });
+  if (auditedDeletion) {
+    try {
+      await deleteAttendanceAttachment({ attendanceId: attendance.id, user: null, skipAudit: true });
+    } catch (error) {
+      console.warn('Failed to clean up attachment after audited rescan removal:', error?.message);
+    }
+    return auditedDeletion;
+  }
+
   const { error: photoDeleteError } = await supabase
     .from('attendance_photos')
     .delete()
@@ -1220,7 +1229,7 @@ export async function removeRejectedAttendanceForRescan(attendanceId) {
   return { removed };
 }
 
-export async function deleteAttendanceEntry(attendanceId) {
+export async function deleteAttendanceEntry(attendanceId, user) {
   const normalizedId = Number(attendanceId);
   if (!Number.isInteger(normalizedId) || normalizedId <= 0) {
     const validationError = new Error('Invalid attendance entry');
@@ -1241,7 +1250,15 @@ export async function deleteAttendanceEntry(attendanceId) {
     throw notFoundError;
   }
 
-  await assertScansDeletable([attendance]);
+  const auditedDeletion = await deleteProtectedScan(attendance, user);
+  if (auditedDeletion) {
+    try {
+      await deleteAttendanceAttachment({ attendanceId: normalizedId, user: null, skipAudit: true });
+    } catch (error) {
+      console.warn('Failed to clean up attachment after audited attendance deletion:', error?.message);
+    }
+    return auditedDeletion;
+  }
 
   const { error: photoDeleteError } = await supabase
     .from('attendance_photos')

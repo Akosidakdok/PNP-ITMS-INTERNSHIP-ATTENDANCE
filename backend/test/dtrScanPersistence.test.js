@@ -13,6 +13,19 @@ const originalFrom = supabase.from;
 const originalRpc = supabase.rpc;
 afterEach(() => { supabase.from = originalFrom; supabase.rpc = originalRpc; });
 
+test('deleted QR entries remain in DTR history with the actual administrator identity', async () => {
+  mockDatabase({ scanAudits: [{ id: 81, attendance_log_id: 41, account_id: 7,
+    event_type: 'attendance_deleted', actual_scan_time: '2026-10-29T01:20:51Z',
+    dtr_time: '2026-10-29T00:00:00Z', approved_by: 10, adjustment_mode: 'manual',
+    created_at: '2026-10-29T04:00:00Z', policy_snapshot: { deleted_by_name: 'Demo Admin', deleted_by_role: 'admin' } }] });
+  const history = await getDtrEditHistory({ internId: 7 });
+  const deletion = history.find(entry => entry.id === 'scan-81');
+  assert.equal(deletion.field_name, 'Attendance entry deleted');
+  assert.equal(deletion.new_value, 'Deleted · scan evidence retained');
+  assert.equal(deletion.modified_by_role, 'admin');
+  assert.equal(deletion.modified_by_name, 'Demo Admin');
+});
+
 const descriptor = Array.from({ length: FACE_DESCRIPTOR_LENGTH }, (_, i) => Math.sin(i * 0.1) * 0.4);
 const face = { version: FACE_ID_VERSION, samples: [descriptor, descriptor, descriptor] };
 const photo = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=';

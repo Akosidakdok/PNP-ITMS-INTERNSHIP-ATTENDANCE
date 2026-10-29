@@ -1584,7 +1584,7 @@ app.delete('/attendance/:id/rescan', authMiddleware, adminMiddleware, async (req
       attendanceId,
       'attendance records'
     );
-    const result = await removeRejectedAttendanceForRescan(attendanceId);
+    const result = await removeRejectedAttendanceForRescan(attendanceId, req.user);
     return res.json({
       success: true,
       message: 'Rejected attendance removed. The intern can scan again.',
@@ -1604,7 +1604,7 @@ app.delete('/attendance/:id', authMiddleware, adminMiddleware, async (req, res) 
       attendanceId,
       'attendance records'
     );
-    const result = await deleteAttendanceEntry(attendanceId);
+    const result = await deleteAttendanceEntry(attendanceId, req.user);
     return res.json({
       success: true,
       message: 'Attendance entry permanently deleted.',
