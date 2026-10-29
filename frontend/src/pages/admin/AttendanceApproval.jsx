@@ -1,5 +1,5 @@
 import DeleteConfirmationModal from '../../components/common/DeleteConfirmationModal.jsx';
-import { getPhtDtrTime } from '../../utils/dtrTime.js';
+import { getActualScanTime, getOriginalScanTime, getPhtDtrTime } from '../../utils/dtrTime.js';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   CheckCircle,
@@ -32,7 +32,7 @@ import DTREditModal from '../../components/dtr/DTREditModal.jsx';
 import BulkDTROverrideModal from '../../components/dtr/BulkDTROverrideModal.jsx';
 import { divisionLabel } from '../../utils/display.js';
 
-function WatermarkedSelfie({ photoUrl, recordDate, recordTime, isSuperadmin }) {
+function WatermarkedSelfie({ photoUrl, recordDate, recordTime, isSuperadmin, isAdjusted = false }) {
   const [mode, setMode] = useState('official'); // 'official' | 'audit'
   const [renderedImage, setRenderedImage] = useState({ photoUrl: '', stamp: '', url: '' });
   const [renderError, setRenderError] = useState('');
@@ -160,7 +160,7 @@ function WatermarkedSelfie({ photoUrl, recordDate, recordTime, isSuperadmin }) {
               }`}
               onClick={() => setMode('official')}
             >
-              Official Watermark
+              Scan Watermark
             </button>
             <button
               type="button"
@@ -175,7 +175,7 @@ function WatermarkedSelfie({ photoUrl, recordDate, recordTime, isSuperadmin }) {
             </button>
           </div>
         ) : (
-          <span className="text-xs font-semibold text-slate-700">Official Attendance Watermark</span>
+          <span className="text-xs font-semibold text-slate-700">{isAdjusted ? 'Adjusted Scan Watermark' : 'Actual Scan Watermark'}</span>
         )}
 
         <button
@@ -301,10 +301,12 @@ export default function AttendanceApproval() {
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
   const [selected, setSelected] = useState(null);
+  const selectedScanTime = getActualScanTime(selected);
   const [remarks, setRemarks] = useState('');
   const [saving, setSaving] = useState(false);
   const [selectedAttendanceIds, setSelectedAttendanceIds] = useState(() => new Set());
   const [previewRecord, setPreviewRecord] = useState(null);
+  const previewScanTime = getActualScanTime(previewRecord);
   const [dtrEditOpen, setDtrEditOpen] = useState(false);
   const [bulkModalOpen, setBulkModalOpen] = useState(false);
 
@@ -589,7 +591,8 @@ export default function AttendanceApproval() {
     const imageUrl = attachment?.image_url;
     if (!imageUrl) return;
 
-    const dateStr = record?.scan_time ? formatPhtDate(record.scan_time) : '';
+    const scanTime = getActualScanTime(record);
+    const dateStr = scanTime ? formatPhtDate(scanTime) : '';
     const typeStr = record?.scan_type === 'time_in' ? 'Time In' : 'Time Out';
     const subtitle = record?.full_name ? `${record.full_name} • ${dateStr} • ${typeStr}` : `${dateStr} • ${typeStr}`;
 
@@ -756,12 +759,15 @@ export default function AttendanceApproval() {
     },
     {
       key: 'scan_time', label: 'Date & Time',
-      render: v => (
-        <div className="cursor-pointer group">
-          <p className="text-sm font-medium text-gray-800 group-hover:text-blue-600 transition-colors">{formatPhtDate(v)}</p>
-          <p className="text-xs text-gray-400">{formatPhtTime(v, true)}</p>
-        </div>
-      )
+      render: (_, row) => {
+        const scanTime = getActualScanTime(row);
+        return (
+          <div className="cursor-pointer group">
+            <p className="text-sm font-medium text-gray-800 group-hover:text-blue-600 transition-colors">{scanTime ? formatPhtDate(scanTime) : '—'}</p>
+            <p className="text-xs text-gray-400">{scanTime ? formatPhtTime(scanTime, true) : '—'}</p>
+          </div>
+        );
+      }
     },
     {
       key: 'approval_status', label: 'Status',
@@ -963,7 +969,7 @@ export default function AttendanceApproval() {
                 </div>
                 <div>
                   <span>Date &amp; time</span>
-                  <strong>{selected.scan_time ? `${formatPhtDate(selected.scan_time)} · ${formatPhtTime(selected.scan_time)}` : '—'}</strong>
+                  <strong>{selectedScanTime ? `${formatPhtDate(selectedScanTime)} · ${formatPhtTime(selectedScanTime, true)}` : '—'}</strong>
                 </div>
               </div>
               {selected.remarks && (
@@ -1429,7 +1435,7 @@ export default function AttendanceApproval() {
         isOpen={modal === 'delete' || modal === 'remove'}
         onClose={() => setModal('menu')}
         title={modal === 'remove' ? 'Permanently Delete Rejected Scan' : 'Permanently Delete Attendance Entry'}
-        itemName={`${selected?.full_name || 'Selected intern'} — ${selected?.scan_time ? `${formatPhtDate(selected.scan_time)} ${formatPhtTime(selected.scan_time)}` : 'Selected attendance entry'}`}
+        itemName={`${selected?.full_name || 'Selected intern'} — ${selectedScanTime ? `${formatPhtDate(selectedScanTime)} ${formatPhtTime(selectedScanTime, true)}` : 'Selected attendance entry'}`}
         warning={modal === 'remove'
           ? "This permanently removes the rejected entry and selfie so the intern can scan again. This is allowed only for today's latest scan and cannot be undone."
           : 'This permanently removes the attendance record and its selfie and cannot be undone.'}
@@ -1525,9 +1531,10 @@ export default function AttendanceApproval() {
           {previewRecord?.photo ? (
             <WatermarkedSelfie
               photoUrl={previewRecord.photo}
-              recordDate={getPhtDateStr(previewRecord.scan_time)}
-              recordTime={formatPhtTime(previewRecord.scan_time, false)}
+              recordDate={getPhtDateStr(previewScanTime)}
+              recordTime={formatPhtTime(previewScanTime, true)}
               isSuperadmin={isSuperadmin}
+              isAdjusted={Boolean(previewRecord.scan_time_adjusted)}
             />
           ) : (
             <p className="text-gray-500 text-center py-6">No photo available</p>
@@ -1547,12 +1554,12 @@ export default function AttendanceApproval() {
 
               <div className="grid grid-cols-2 gap-2">
                 <div className="bg-white p-2 rounded border border-slate-100">
-                  <span className="text-gray-500 block font-medium">Official Date</span>
-                  <span className="font-semibold text-gray-800 text-sm">{formatPhtDate(previewRecord.scan_time)}</span>
+                  <span className="text-gray-500 block font-medium">Scan Date</span>
+                  <span className="font-semibold text-gray-800 text-sm">{formatPhtDate(previewScanTime)}</span>
                 </div>
                 <div className="bg-white p-2 rounded border border-slate-100">
-                  <span className="text-gray-500 block font-medium">Official Recorded Time</span>
-                  <span className="font-semibold text-blue-700 text-sm">{formatPhtTime(previewRecord.scan_time, false)}</span>
+                  <span className="text-gray-500 block font-medium">{previewRecord.scan_time_adjusted ? 'Adjusted Scan Time' : 'Actual Scan Time'}</span>
+                  <span className="font-semibold text-blue-700 text-sm">{formatPhtTime(previewScanTime, true)}</span>
                 </div>
               </div>
 
@@ -1560,10 +1567,26 @@ export default function AttendanceApproval() {
                 <div className="bg-amber-50 border border-amber-200 rounded p-2 text-amber-900 flex items-start gap-1.5">
                   <ShieldCheck className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                   <div>
-                    <span className="font-semibold">Camera Biometric Scan (Audit): </span>
-                    <span className="font-mono font-medium">{previewRecord.actual_scan_time ? formatPhtTime(previewRecord.actual_scan_time, true) : formatPhtTime(previewRecord.scan_time, true)}</span>
+                    {previewRecord.original_scan_time && (
+                      <p className="mb-1">
+                        <span className="font-semibold">Original QR Scan: </span>
+                        <span className="font-mono font-medium">{formatPhtDate(getOriginalScanTime(previewRecord))} {formatPhtTime(getOriginalScanTime(previewRecord), true)}</span>
+                      </p>
+                    )}
+                    <span className="font-semibold">Official DTR Time: </span>
+                    <span className="font-mono font-medium">{formatPhtDate(previewRecord.scan_time)} {formatPhtTime(previewRecord.scan_time, true)}</span>
+                    {previewRecord.superadmin_controlled && (
+                      <div className="text-[11px] mt-1 space-y-0.5">
+                        <p className="font-semibold">
+                          {previewRecord.time_adjusted ? 'Time adjusted' : 'No time adjustment'}
+                          {' · '}{previewRecord.adjustment_mode === 'manual' ? 'Manually approved' : 'Automatic · approved policy'}
+                        </p>
+                        <p>{previewRecord.adjustment_reason}</p>
+                        <p>Approved by Superadmin #{previewRecord.adjustment_approved_by}</p>
+                      </div>
+                    )}
                     <p className="text-[11px] text-amber-700 mt-0.5">
-                      The camera watermark timestamp is permanently retained for biometric audit integrity. Superadmins can modify the official DTR Date and Time above at any time without rescanning.
+                      Original QR timestamps and camera watermarks remain preserved in the permanent audit trail. Adjusted morning scan values are chosen once between 7:45 AM and 8:00 AM.
                     </p>
                   </div>
                 </div>

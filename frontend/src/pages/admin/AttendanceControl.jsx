@@ -1414,6 +1414,7 @@ export default function AttendanceControl() {
               <p className="font-semibold text-blue-900">Per-Intern Attendance Control</p>
               <p className="text-blue-800 text-[11px] mt-0.5">
                 Any changes saved here will <strong>strictly and exclusively apply to {selectedAccountForControl?.full_name}</strong>. Other personnel will remain unaffected.
+                {' '}Controls apply to future scans. Existing DTR records stay unchanged, and actual QR scan times are preserved.
               </p>
             </div>
           </div>

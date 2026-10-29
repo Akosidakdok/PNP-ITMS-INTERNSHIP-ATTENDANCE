@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import { supabase } from './supabaseClient.js';
-import { getPhtDayBoundsUtc, processDtrScanTime, normalizeLunchBreakScan } from './utils/attendanceTime.js';
+import { getPhtDayBoundsUtc, processDtrScanTime, normalizeLunchBreakScan, PHT_UTC_OFFSET_MS } from './utils/attendanceTime.js';
 import { getAssignedProfileForAccount, buildPhtTimestamp } from './services/attendanceControlService.js';
 
 const QR_EXPIRY_MINUTES = 60;
@@ -203,7 +203,10 @@ export async function scanAttendance({ qr_code, user, photo, face_embedding } = 
         || assignedProfile.time_in !== '08:00:00'
         || assignedProfile.time_out !== '17:00:00'
       );
-      if (isCustomSchedule) {
+      const isApprovedMorningPolicy = assignedProfile?.superadmin_controlled
+        && scanType === 'time_in'
+        && new Date(new Date(actualScanTime).getTime() + PHT_UTC_OFFSET_MS).getUTCHours() < 12;
+      if (isCustomSchedule || isApprovedMorningPolicy) {
         let customTime = null;
         if (scanType === 'time_in') {
           if (assignedProfile && assignedProfile.first_scan_enabled && assignedProfile.time_in) {

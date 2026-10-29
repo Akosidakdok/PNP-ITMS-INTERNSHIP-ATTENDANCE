@@ -8,6 +8,7 @@ import { buildDtrRecords, summarizeDtrRecords } from './utils/dtrRecords.js';
 import { getAssignedProfileForAccount } from './services/attendanceControlService.js';
 import { validateUploadFile } from './utils/fileValidation.js';
 import { getAttachmentsForLogs, deleteAttendanceAttachment } from './services/attendanceAttachmentService.js';
+import { assertScansDeletable } from './services/scanAuditService.js';
 
 
 const INTERN_ROLE = 'intern';
@@ -290,7 +291,7 @@ async function addCalculatedRenderedHours(interns = []) {
 
   const { data: logs, error } = await supabase
     .from('attendance_logs')
-    .select('id, intern_id, scan_time, actual_scan_time, recorded_scan_time, scan_type, approval_status, remarks')
+    .select('id, intern_id, scan_time, actual_scan_time, original_scan_time, recorded_scan_time, scan_type, approval_status, remarks')
     .in('intern_id', internIds)
     .order('scan_time', { ascending: true });
 
@@ -892,10 +893,13 @@ export async function deleteIntern(id) {
   const normalizedId = positiveId(id, 'intern ID');
 
   // Cascade clean-up of associated intern data
-  const { data: logs } = await supabase
+  const { data: logs, error: logsError } = await supabase
     .from('attendance_logs')
-    .select('id')
+    .select('id, superadmin_controlled')
     .eq('intern_id', normalizedId);
+  if (logsError) throw logsError;
+
+  await assertScansDeletable(logs || []);
 
   const logIds = (logs || []).map(l => l.id);
   if (logIds.length > 0) {
@@ -1148,7 +1152,7 @@ export async function setAttendanceApproval(attendanceId, status, remarks) {
 export async function removeRejectedAttendanceForRescan(attendanceId) {
   const { data: attendance, error: attendanceError } = await supabase
     .from('attendance_logs')
-    .select('id, intern_id, scan_type, scan_time, approval_status')
+    .select('id, intern_id, scan_type, scan_time, approval_status, superadmin_controlled')
     .eq('id', attendanceId)
     .single();
 
@@ -1158,6 +1162,7 @@ export async function removeRejectedAttendanceForRescan(attendanceId) {
     throw notFoundError;
   }
 
+  await assertScansDeletable([attendance]);
   if (attendance.approval_status !== 'rejected') {
     const stateError = new Error('Only rejected attendance records can be removed for rescanning');
     stateError.statusCode = 409;
@@ -1225,7 +1230,7 @@ export async function deleteAttendanceEntry(attendanceId) {
 
   const { data: attendance, error: attendanceError } = await supabase
     .from('attendance_logs')
-    .select('id')
+    .select('id, superadmin_controlled')
     .eq('id', normalizedId)
     .maybeSingle();
 
@@ -1235,6 +1240,8 @@ export async function deleteAttendanceEntry(attendanceId) {
     notFoundError.statusCode = 404;
     throw notFoundError;
   }
+
+  await assertScansDeletable([attendance]);
 
   const { error: photoDeleteError } = await supabase
     .from('attendance_photos')
@@ -1573,7 +1580,7 @@ export async function getDtrRecords(userId, { month, year, startDate, endDate, l
     return q;
   };
 
-  let { data: logs, error } = await buildQuery('id, intern_id, scan_time, actual_scan_time, recorded_scan_time, scan_type, approval_status, remarks');
+  let { data: logs, error } = await buildQuery('id, intern_id, scan_time, actual_scan_time, original_scan_time, recorded_scan_time, scan_type, approval_status, remarks');
   if (error) {
     const fallback = await buildQuery('id, intern_id, scan_time, scan_type, approval_status, remarks');
     if (fallback.error) throw fallback.error;

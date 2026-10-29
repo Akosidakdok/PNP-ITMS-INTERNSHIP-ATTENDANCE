@@ -41,6 +41,7 @@ export default function DTRHistoryModal({
         day: 'numeric',
         hour: '2-digit',
         minute: '2-digit',
+        second: '2-digit',
       });
     } catch {
       return ts;
@@ -74,7 +75,7 @@ export default function DTRHistoryModal({
           <Shield className="w-4 h-4 text-blue-700 flex-shrink-0 mt-0.5" />
           <div>
             <p className="font-bold">Authorized Superadmin Audit Trail</p>
-            <p>Every manual correction and parameter change is recorded permanently for accountability and compliance.</p>
+            <p>Controlled-account scans retain the actual QR timestamp alongside the DTR time, approved policy, and automatic or manual adjustment.</p>
           </div>
         </div>
 
@@ -87,7 +88,7 @@ export default function DTRHistoryModal({
           <div className="py-12 text-center text-gray-400 text-sm">
             <History className="w-12 h-12 mx-auto text-gray-300 mb-2" />
             <p className="font-semibold text-gray-600">No modification records found</p>
-            <p className="text-xs text-gray-400 mt-1">No manual DTR adjustments have been recorded for this criteria.</p>
+            <p className="text-xs text-gray-400 mt-1">No controlled scans or manual DTR adjustments have been recorded for these criteria.</p>
           </div>
         ) : (
           <div className="overflow-x-auto border border-gray-200 rounded-lg dtr-history-table">
@@ -96,8 +97,8 @@ export default function DTRHistoryModal({
                 <tr>
                   <th className="px-3 py-2.5 text-left">Date / Account</th>
                   <th className="px-3 py-2.5 text-left">Field</th>
-                  <th className="px-3 py-2.5 text-left">Original Value</th>
-                  <th className="px-3 py-2.5 text-left">Modified Value</th>
+                  <th className="px-3 py-2.5 text-left">Original Value / Actual Scan</th>
+                  <th className="px-3 py-2.5 text-left">Modified Value / DTR Time</th>
                   <th className="px-3 py-2.5 text-left">Modified By</th>
                   <th className="px-3 py-2.5 text-left">Modified At</th>
                   <th className="px-3 py-2.5 text-left">Reason</th>
@@ -109,17 +110,29 @@ export default function DTRHistoryModal({
                     <td data-label="Date / Account" className="px-3 py-2.5 whitespace-nowrap">
                       <p className="font-bold text-gray-800">{entry.attendance_date || 'N/A'}</p>
                       <p className="text-[11px] text-gray-500">{entry.account_name}</p>
+                      {entry.actual_scan_time && <p className="text-[11px] text-gray-500">Account #{entry.account_id}</p>}
                     </td>
                     <td data-label="Field" className="px-3 py-2.5 whitespace-nowrap">
                       <span className="inline-block px-2 py-0.5 font-medium rounded bg-slate-100 text-slate-700">
                         {entry.field_name}
                       </span>
+                      {entry.adjustment_mode && (
+                        <p className="mt-1 text-[11px] text-gray-600">
+                          {entry.event_type === 'control_assigned' ? 'Control assigned · DTR unchanged'
+                            : entry.adjustment_mode === 'automatic' ? 'Automatic · approved policy' : 'Manually approved'}
+                        </p>
+                      )}
                     </td>
-                    <td data-label="Original Value" className="px-3 py-2.5 whitespace-nowrap text-red-600 font-medium">
-                      <span className="line-through">{entry.original_value || 'None'}</span>
+                    <td data-label={entry.actual_scan_time ? 'Actual Scan' : 'Original Value'} className="px-3 py-2.5 whitespace-nowrap text-red-600 font-medium">
+                      {entry.actual_scan_time
+                        ? <span className="text-gray-800">{formatTimestamp(entry.actual_scan_time)}</span>
+                        : <span className="line-through">{entry.original_value || 'None'}</span>}
                     </td>
-                    <td data-label="Modified Value" className="px-3 py-2.5 whitespace-nowrap text-green-700 font-bold">
-                      {entry.new_value || 'None'}
+                    <td data-label={entry.dtr_time ? 'DTR Time' : 'Modified Value'} className="px-3 py-2.5 whitespace-nowrap text-green-700 font-bold">
+                      {entry.dtr_time ? formatTimestamp(entry.dtr_time) : entry.new_value || 'None'}
+                      {entry.stored_scan_time && (
+                        <p className="text-[11px] font-normal text-gray-600 mt-1">Stored scan: {formatTimestamp(entry.stored_scan_time)}</p>
+                      )}
                     </td>
                     <td data-label="Modified By" className="px-3 py-2.5 whitespace-nowrap text-gray-700">
                       <p className="font-semibold">{entry.modified_by_name || 'Superadmin'}</p>

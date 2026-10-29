@@ -1,4 +1,5 @@
 import { supabase } from '../supabaseClient.js';
+import { assertScansDeletable, hasProtectedScans } from './scanAuditService.js';
 import { getPhtDateKey, getPhtDayBoundsUtc, PHT_UTC_OFFSET_MS, formatPhtClockTime, getRecordedScanTime } from '../utils/attendanceTime.js';
 
 /**
@@ -334,7 +335,7 @@ export async function getAssignedProfileForAccount(accountId, dateKey = null) {
 
   const { data: assignment, error: assignError } = await supabase
     .from('account_attendance_profiles')
-    .select('attendance_profile_id')
+    .select('attendance_profile_id, assigned_by, approver:accounts!account_attendance_profiles_assigned_by_fkey(role)')
     .eq('account_id', accountId)
     .maybeSingle();
 
@@ -348,7 +349,10 @@ export async function getAssignedProfileForAccount(accountId, dateKey = null) {
 
     if (!profError && profile) {
       if (isProfileEffectiveOnDate(profile, targetDate)) {
-        return profile;
+        return {
+          ...profile,
+          superadmin_controlled: assignment.approver?.role === 'superadmin',
+        };
       }
       // If it's an individual profile that has expired, do NOT use it for targetDate; fallback to standard profile below
     }
@@ -634,56 +638,8 @@ export async function setIndividualAttendanceControl(
       throw new Error('Failed to assign individual profile');
     }
 
-    // ── SYNC TODAY'S RECORD IF ACTIVE TODAY ─────────────────────────
-    // If this schedule is effective today, update today's existing attendance_records and logs
-    if (durationType === 'ongoing' || (todayKey >= effStartDate && todayKey <= effEndDate)) {
-      try {
-        const { data: todayRec } = await supabase
-          .from('attendance_records')
-          .select('id, actual_time_in, actual_time_out, recorded_time_in, recorded_time_out')
-          .eq('account_id', numericAccountId)
-          .eq('attendance_date', todayKey)
-          .maybeSingle();
-
-        if (todayRec) {
-          const recUpdates = {
-            attendance_profile_id: targetProfileId,
-            updated_at: new Date().toISOString(),
-          };
-          if (first_scan_enabled) {
-            recUpdates.recorded_time_in = buildPhtTimestamp(todayKey, normalizedIn);
-          }
-          if (second_scan_enabled && todayRec.actual_time_out) {
-            recUpdates.recorded_time_out = buildPhtTimestamp(todayKey, normalizedOut);
-          }
-          await supabase
-            .from('attendance_records')
-            .update(recUpdates)
-            .eq('id', todayRec.id);
-        }
-
-        // Keep both official log times in sync without touching original scans.
-        const { startIso, endExclusiveIso } = getPhtDayBoundsUtc(todayKey);
-        for (const [scanType, enabled, time] of [
-          ['time_in', first_scan_enabled, normalizedIn],
-          ['time_out', second_scan_enabled, normalizedOut],
-        ]) {
-          if (!enabled) continue;
-          await supabase
-            .from('attendance_logs')
-            .update({
-              attendance_profile_id: targetProfileId,
-              recorded_scan_time: buildPhtTimestamp(todayKey, time),
-            })
-            .eq('intern_id', numericAccountId)
-            .eq('scan_type', scanType)
-            .gte('scan_time', startIso)
-            .lt('scan_time', endExclusiveIso);
-        }
-      } catch (syncErr) {
-        console.warn('Could not sync today attendance record with individual control:', syncErr?.message);
-      }
-    }
+    // Assignment changes apply to future scans. Existing DTRs require a
+    // separate, explicitly requested correction with its own reason/audit.
 
     const eff = parseProfileEffectivity(individualProfileName);
 
@@ -875,24 +831,27 @@ export async function editDtrRecord({
   const { startIso, endExclusiveIso } = getPhtDayBoundsUtc(date);
 
   // 1. Fetch existing attendance_records row if it exists
-  let { data: record } = await supabase
+  let { data: record, error: recordReadError } = await supabase
     .from('attendance_records')
     .select('*')
     .eq('account_id', internId)
     .eq('attendance_date', date)
     .maybeSingle();
+  if (recordReadError) throw new Error(`Failed to retrieve DTR record: ${recordReadError.message}`);
 
   // 2. Fetch existing attendance_logs for this date
-  const { data: logs } = await supabase
+  const { data: logs, error: logsReadError } = await supabase
     .from('attendance_logs')
     .select('*')
     .eq('intern_id', internId)
     .gte('scan_time', startIso)
     .lt('scan_time', endExclusiveIso)
     .order('scan_time', { ascending: true });
+  if (logsReadError) throw new Error(`Failed to retrieve QR scans: ${logsReadError.message}`);
 
   const timeInLog = (logs || []).find(l => l.scan_type === 'time_in');
   const timeOutLog = (logs || []).find(l => l.scan_type === 'time_out');
+  const controlledEdit = await hasProtectedScans([timeInLog, timeOutLog].filter(Boolean));
 
   // Determine original values
   const origTimeInStr = record?.recorded_time_in
@@ -926,7 +885,7 @@ export async function editDtrRecord({
     : (dateChanged && origTimeOutStr ? buildPhtTimestamp(effectiveDate, origTimeOutStr) : null);
 
   // Ensure record exists in attendance_records
-  if (!record) {
+  if (!record && !controlledEdit) {
     const { data: createdRecord, error: createError } = await supabase
       .from('attendance_records')
       .insert([
@@ -1016,17 +975,6 @@ export async function editDtrRecord({
     });
   }
 
-  // Insert audit history
-  if (historyEntries.length > 0) {
-    const { error: histError } = await supabase
-      .from('dtr_edit_history')
-      .insert(historyEntries);
-
-    if (histError) {
-      console.error('Failed to write dtr_edit_history audit log:', histError);
-    }
-  }
-
   // Update attendance_records (preserving actual_time_in and actual_time_out!)
   const recordUpdates = {
     updated_at: modifiedAt,
@@ -1036,11 +984,58 @@ export async function editDtrRecord({
   if (newTimeInIso) recordUpdates.recorded_time_in = newTimeInIso;
   if (newTimeOutIso) recordUpdates.recorded_time_out = newTimeOutIso;
 
+  if (controlledEdit) {
+    const logUpdates = [];
+    const logInserts = [];
+    for (const [log, scanType, timestamp] of [
+      [timeInLog, 'time_in', newTimeInIso], [timeOutLog, 'time_out', newTimeOutIso],
+    ]) {
+      if (log) {
+        const changes = preserveStatus ? {} : { approval_status: newStatus };
+        if (timestamp) {
+          Object.assign(changes, {
+            recorded_scan_time: timestamp,
+            adjustment_mode: 'manual', adjustment_reason: reason.trim(),
+            adjustment_approved_by: modified_by || null,
+            ...(dateChanged ? { scan_time: timestamp } : {}),
+          });
+        }
+        logUpdates.push({ id: log.id, changes });
+      } else if (timestamp) {
+        logInserts.push({ scan_type: scanType, scan_time: timestamp,
+          recorded_scan_time: timestamp, approval_status: newStatus });
+      }
+    }
+    const { error } = await supabase.rpc('apply_controlled_dtr_edit', {
+      p_account_id: Number(internId), p_record_id: recordId,
+      p_approved_by: modified_by || null,
+      p_log_updates: logUpdates, p_log_inserts: logInserts,
+      p_record_updates: recordUpdates,
+      p_record_create: {
+        attendance_date: effectiveDate,
+        actual_time_in: timeInLog?.actual_scan_time ?? null,
+        actual_time_out: timeOutLog?.actual_scan_time ?? null,
+        recorded_time_in: newTimeInIso || getRecordedScanTime(timeInLog),
+        recorded_time_out: newTimeOutIso || getRecordedScanTime(timeOutLog),
+        status: newStatus,
+      },
+      p_history_entries: historyEntries,
+    });
+    if (error) throw new Error(`Failed to save audited DTR correction: ${error.message}`);
+    return {
+      success: true, modified_fields_count: historyEntries.length, attendance_date: effectiveDate,
+      recorded_time_in: newTimeInDisplay || origTimeInStr,
+      recorded_time_out: newTimeOutDisplay || origTimeOutStr, status: newStatus,
+    };
+  }
+
+  // Preserve the existing persistence path for normal intern corrections.
+  if (historyEntries.length > 0) {
+    const { error: histError } = await supabase.from('dtr_edit_history').insert(historyEntries);
+    if (histError) console.error('Failed to write dtr_edit_history audit log:', histError);
+  }
   if (recordId) {
-    await supabase
-      .from('attendance_records')
-      .update(recordUpdates)
-      .eq('id', recordId);
+    await supabase.from('attendance_records').update(recordUpdates).eq('id', recordId);
   }
 
   // Synchronize attendance_logs (keeping actual_scan_time preserved!)
@@ -1167,7 +1162,7 @@ export async function deleteDtrAttendance({
   // 2. Fetch existing attendance_logs for this date
   const { data: logs, error: logsError } = await supabase
     .from('attendance_logs')
-    .select('id, scan_type, scan_time, remarks, approval_status, attendance_record_id')
+    .select('id, scan_type, scan_time, remarks, approval_status, attendance_record_id, superadmin_controlled')
     .eq('intern_id', internId)
     .gte('scan_time', startIso)
     .lt('scan_time', endExclusiveIso);
@@ -1183,7 +1178,7 @@ export async function deleteDtrAttendance({
   if (record?.id) {
     const { data: linkedLogs } = await supabase
       .from('attendance_logs')
-      .select('id, scan_type, scan_time, remarks, approval_status, attendance_record_id')
+      .select('id, scan_type, scan_time, remarks, approval_status, attendance_record_id, superadmin_controlled')
       .eq('intern_id', internId)
       .eq('attendance_record_id', record.id);
 
@@ -1206,6 +1201,7 @@ export async function deleteDtrAttendance({
   }
 
   const targetLogIds = targetLogs.map(l => l.id);
+  await assertScansDeletable(targetLogs);
 
   // 3. Delete attendance photos for targeted logs
   if (targetLogIds.length > 0) {
@@ -1320,6 +1316,35 @@ export async function deleteDtrAttendance({
 // ─────────────────────────────────────────────────────────────
 
 export async function getDtrEditHistory({ internId, date, limit = 100 } = {}) {
+  const safeLimit = Math.min(500, Math.max(1, Number(limit) || 100));
+  let query = supabase.from('attendance_scan_audit').select('*')
+    .order('created_at', { ascending: false }).order('id', { ascending: false }).limit(safeLimit);
+  if (internId) query = query.eq('account_id', Number(internId));
+  if (date) query = query.eq('attendance_date', getPhtDayBoundsUtc(date).dateKey);
+  const [manual, audit] = await Promise.all([
+    getManualDtrEditHistory({ internId, date, limit: safeLimit }), query,
+  ]);
+  if (audit.error) throw new Error(`Failed to retrieve permanent scan audit: ${audit.error.message}`);
+  const scans = (audit.data || []).map(entry => ({
+    ...entry,
+    id: `scan-${entry.id}`,
+    field_name: entry.event_type === 'control_assigned' ? 'Scan evidence preserved'
+      : entry.event_type === 'scan_time_adjustment' ? 'Morning scan adjustment'
+      : entry.event_type === 'dtr_adjustment' ? 'Manual DTR correction'
+      : entry.time_adjusted ? 'DTR policy adjustment' : 'QR scan recorded',
+    account_name: entry.account_name || `Account #${entry.account_id}`,
+    original_value: entry.actual_scan_time,
+    new_value: entry.dtr_time,
+    modified_by_name: `Superadmin #${entry.approved_by}`,
+    modified_by_role: 'superadmin',
+    modified_at: entry.created_at,
+  }));
+  return [...manual, ...scans]
+    .sort((a, b) => new Date(b.modified_at) - new Date(a.modified_at))
+    .slice(0, safeLimit);
+}
+
+async function getManualDtrEditHistory({ internId, date, limit = 100 } = {}) {
   let query = supabase
     .from('dtr_edit_history')
     .select(`

@@ -69,7 +69,8 @@ export function buildStandardDtrRecord(date, entries = []) {
   const sorted = entries
     .filter(entry => entry && !parseDtrOverride(entry.remarks))
     .map(entry => {
-      const timestamp = timestampOf(entry.actual_scan_time) ?? timestampOf(entry.scan_time);
+      const timestamp = timestampOf(entry.original_scan_time)
+        ?? timestampOf(entry.actual_scan_time) ?? timestampOf(entry.scan_time);
       // All entries belong to this DTR date. Compare original Philippine clocks
       // so moving dates also works when only one side was an actual scan.
       const dayStart = timestamp === null ? null : timestampOf(getPhtDayBoundsUtc(timestamp).startIso);

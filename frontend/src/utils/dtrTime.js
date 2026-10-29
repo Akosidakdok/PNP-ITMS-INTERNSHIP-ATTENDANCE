@@ -1,3 +1,13 @@
+/** Stored scan value, including an explicitly authorized morning adjustment. */
+export function getActualScanTime(log) {
+  return log?.actual_scan_time || log?.scan_time || null;
+}
+
+/** Preserve access to the real QR instant separately from adjusted scan values. */
+export function getOriginalScanTime(log) {
+  return log?.original_scan_time || getActualScanTime(log);
+}
+
 /** Format a Philippine clock value without parsing it in the browser's timezone. */
 export function formatDtrTime(value) {
   if (!value) return '';
