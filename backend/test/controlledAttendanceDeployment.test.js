@@ -30,7 +30,7 @@ test('combined Supabase deployment installs all attendance updates and can be re
     const { rows } = await db.query('SELECT * FROM attendance_logs ORDER BY id');
     assert.ok(rows[0].actual_scan_time.getTime() >= new Date('2026-10-29T07:45:00+08:00').getTime());
     assert.ok(rows[0].actual_scan_time.getTime() <= new Date('2026-10-29T08:00:00+08:00').getTime());
-    assert.equal(rows[0].scan_adjustment_rule, 'randomized_morning_v1');
+    assert.equal(rows[0].scan_adjustment_rule, 'randomized_time_in_v2');
     assert.equal(rows[0].original_scan_time.toISOString(), '2026-10-29T01:20:51.000Z');
     assert.equal(rows[1].actual_scan_time.toISOString(), '2026-10-29T01:20:51.000Z');
     assert.equal(rows[1].superadmin_controlled, false);

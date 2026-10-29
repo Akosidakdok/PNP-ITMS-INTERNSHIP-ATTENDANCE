@@ -1586,7 +1586,7 @@ export default function AttendanceApproval() {
                       </div>
                     )}
                     <p className="text-[11px] text-amber-700 mt-0.5">
-                      Original QR timestamps and camera watermarks remain preserved in the permanent audit trail. Adjusted morning scan values are chosen once between 7:45 AM and 8:00 AM.
+                      Original QR timestamps and camera watermarks remain preserved in the permanent audit trail. Controlled time-ins are chosen once between 7:45 AM and 8:00 AM; controlled time-outs are set to exactly 5:00 PM, regardless of the actual scan hour.
                     </p>
                   </div>
                 </div>

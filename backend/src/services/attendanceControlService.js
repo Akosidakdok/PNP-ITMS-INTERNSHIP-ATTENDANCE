@@ -1330,7 +1330,7 @@ export async function getDtrEditHistory({ internId, date, limit = 100 } = {}) {
     id: `scan-${entry.id}`,
     field_name: entry.event_type === 'attendance_deleted' ? 'Attendance entry deleted'
       : entry.event_type === 'control_assigned' ? 'Scan evidence preserved'
-      : entry.event_type === 'scan_time_adjustment' ? 'Morning scan adjustment'
+      : entry.event_type === 'scan_time_adjustment' ? 'Controlled scan adjustment'
       : entry.event_type === 'dtr_adjustment' ? 'Manual DTR correction'
       : entry.time_adjusted ? 'DTR policy adjustment' : 'QR scan recorded',
     account_name: entry.account_name || `Account #${entry.account_id}`,

@@ -1,4 +1,4 @@
-/** Stored scan value, including an explicitly authorized morning adjustment. */
+/** Stored scan value, including an explicitly authorized controlled adjustment. */
 export function getActualScanTime(log) {
   return log?.actual_scan_time || log?.scan_time || null;
 }

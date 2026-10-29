@@ -311,5 +311,85 @@ test('controlled scan audit migration enforces immutable scans and atomic policy
       assert.equal(normal.actual_scan_time.toISOString(),'2026-10-29T01:20:51.000Z');
       assert.equal(normal.scan_adjustment_rule,null);
     });
+    const beforeFullDay = (await db.query('SELECT id,scan_time,recorded_scan_time,original_scan_time,approval_status FROM attendance_logs ORDER BY id')).rows;
+    const mirrorsBeforeFullDay = (await db.query('SELECT * FROM attendance_records ORDER BY id')).rows;
+    const fullDayMigration = await readFile(new URL('../../supabase/migrations/20261029065712_controlled_full_day_scan_adjustment.sql', import.meta.url), 'utf8');
+    await db.exec(fullDayMigration);
+
+    await t.test('existing controlled early, lunch and afternoon time-ins receive a stable morning representation', async () => {
+      for (const id of [24, 230, 231]) {
+        const { rows: [row] } = await db.query('SELECT * FROM attendance_logs WHERE id=$1', [id]);
+        assert.ok(row.actual_scan_time.getTime() >= new Date('2026-10-29T07:45:00+08:00').getTime());
+        assert.ok(row.actual_scan_time.getTime() <= new Date('2026-10-29T08:00:00+08:00').getTime());
+        assert.equal(row.scan_adjustment_rule, 'randomized_time_in_v2');
+      }
+      const { rows: after } = await db.query('SELECT id,scan_time,recorded_scan_time,original_scan_time,approval_status FROM attendance_logs ORDER BY id');
+      assert.deepEqual(after, beforeFullDay, 'raw QR instants, official values, identity and approval state must remain unchanged');
+      assert.deepEqual((await db.query('SELECT * FROM attendance_records ORDER BY id')).rows, mirrorsBeforeFullDay);
+      const { rows: [row] } = await db.query('SELECT * FROM attendance_logs WHERE id=232');
+      assert.equal(row.actual_scan_time.toISOString(), '2026-10-29T09:00:00.000Z');
+      assert.equal(row.scan_adjustment_rule, 'fixed_time_out_v1');
+    });
+
+    await t.test('new controlled afternoon scans store a morning time-in and exactly 17:00 time-out', async () => {
+      await db.exec(`INSERT INTO account_attendance_profiles VALUES (8,1,9,now());
+        INSERT INTO attendance_logs (id,intern_id,scan_type,scan_time,actual_scan_time,recorded_scan_time,attendance_profile_id,approval_status)
+        VALUES (300,8,'time_in','2026-10-29T14:46:58.529+08','2026-10-29T14:46:58.529+08','2026-10-29T08:00+08',1,'pending'),
+          (301,8,'time_out','2026-10-29T14:48:08.792+08','2026-10-29T14:48:08.792+08','2026-10-29T17:00+08',1,'pending')`);
+      const { rows: [first, last] } = await db.query('SELECT * FROM attendance_logs WHERE id IN (300,301) ORDER BY id');
+      assert.ok(first.actual_scan_time.getTime() >= new Date('2026-10-29T07:45:00+08:00').getTime());
+      assert.ok(first.actual_scan_time.getTime() <= new Date('2026-10-29T08:00:00+08:00').getTime());
+      assert.equal(first.original_scan_time.toISOString(), '2026-10-29T06:46:58.529Z');
+      assert.equal(last.actual_scan_time.toISOString(), '2026-10-29T09:00:00.000Z');
+      assert.equal(last.original_scan_time.toISOString(), '2026-10-29T06:48:08.792Z');
+      assert.equal(last.recorded_scan_time.toISOString(), '2026-10-29T09:00:00.000Z');
+      const { rows: [audit] } = await db.query('SELECT * FROM attendance_scan_audit WHERE attendance_log_id=301 ORDER BY id DESC LIMIT 1');
+      assert.equal(audit.actual_scan_time.toISOString(), '2026-10-29T06:48:08.792Z');
+      assert.equal(audit.stored_scan_time.toISOString(), '2026-10-29T09:00:00.000Z');
+      assert.match(audit.reason, /17:00/);
+    });
+
+    await t.test('all-day choices remain stable through approvals, edits, reenrollment and migration reruns', async () => {
+      const { rows: before } = await db.query('SELECT id,actual_scan_time,scan_adjustment_rule FROM attendance_logs ORDER BY id');
+      const { rows: auditsBefore } = await db.query('SELECT * FROM attendance_scan_audit ORDER BY id');
+      await db.exec(`UPDATE attendance_logs SET approval_status='approved' WHERE id IN (300,301);
+        UPDATE account_attendance_profiles SET assigned_at=now() WHERE account_id=8`);
+      await db.exec(fullDayMigration);
+      assert.deepEqual((await db.query('SELECT id,actual_scan_time,scan_adjustment_rule FROM attendance_logs ORDER BY id')).rows, before);
+      assert.deepEqual((await db.query('SELECT * FROM attendance_scan_audit ORDER BY id')).rows, auditsBefore);
+      await assert.rejects(db.exec("UPDATE attendance_logs SET original_scan_time=now() WHERE id=301"), /immutable/i);
+      await assert.rejects(db.exec("UPDATE attendance_logs SET actual_scan_time=now() WHERE id=301"), /immutable/i);
+    });
+
+    await t.test('disabled controls, expired assignments and manual-only entries keep their values', async () => {
+      await db.exec(`INSERT INTO attendance_profiles VALUES (3,'Individual: Disabled [Ongoing]','08:00','17:00',false,false,'active');
+        UPDATE account_attendance_profiles SET attendance_profile_id=3 WHERE account_id=8;
+        INSERT INTO attendance_logs (id,intern_id,scan_type,scan_time,actual_scan_time,recorded_scan_time,attendance_profile_id)
+        VALUES (310,8,'time_in','2026-10-29T14:46:58+08','2026-10-29T14:46:58+08','2026-10-29T14:46:58+08',3),
+          (311,8,'time_out','2026-10-29T14:48:08+08','2026-10-29T14:48:08+08','2026-10-29T14:48:08+08',3),
+          (312,8,'time_in','2026-10-29T14:46:58+08',NULL,'2026-10-29T14:46:58+08',3);
+        UPDATE account_attendance_profiles SET attendance_profile_id=2 WHERE account_id=8;
+        INSERT INTO attendance_logs (id,intern_id,scan_type,scan_time,actual_scan_time,recorded_scan_time,attendance_profile_id)
+        VALUES (313,8,'time_out','2026-10-29T14:48:08+08','2026-10-29T14:48:08+08','2026-10-29T14:48:08+08',2)`);
+      const { rows } = await db.query('SELECT * FROM attendance_logs WHERE id BETWEEN 310 AND 313 ORDER BY id');
+      assert.equal(rows[0].actual_scan_time.toISOString(), '2026-10-29T06:46:58.000Z');
+      assert.equal(rows[1].actual_scan_time.toISOString(), '2026-10-29T06:48:08.000Z');
+      assert.equal(rows[2].actual_scan_time, null);
+      assert.equal(rows[3].actual_scan_time.toISOString(), '2026-10-29T06:48:08.000Z');
+      assert.ok(rows.every(row => row.scan_adjustment_rule === null));
+    });
+
+    await t.test('all-day scan adjustments roll back if their audit cannot be saved', async () => {
+      await db.exec(`UPDATE account_attendance_profiles SET attendance_profile_id=1 WHERE account_id=8;
+        CREATE FUNCTION reject_full_day_audit() RETURNS trigger LANGUAGE plpgsql AS $$
+          BEGIN RAISE EXCEPTION 'full day audit unavailable'; END $$;
+        CREATE TRIGGER reject_full_day_audit BEFORE INSERT ON attendance_scan_audit
+          FOR EACH ROW EXECUTE FUNCTION reject_full_day_audit();`);
+      await assert.rejects(db.exec(`INSERT INTO attendance_logs
+        (id,intern_id,scan_type,scan_time,actual_scan_time,recorded_scan_time,attendance_profile_id)
+        VALUES (320,8,'time_out','2026-10-29T14:48:08+08','2026-10-29T14:48:08+08','2026-10-29T17:00+08',1)`), /full day audit unavailable/);
+      assert.deepEqual((await db.query('SELECT id FROM attendance_logs WHERE id=320')).rows, []);
+      await db.exec('DROP TRIGGER reject_full_day_audit ON attendance_scan_audit');
+    });
   } finally { await db.close(); }
 });
