@@ -32,6 +32,24 @@ const photo = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP////////
 const user = { id: 7, full_name: 'Test intern', face_registered: true, face_embedding: JSON.stringify(face) };
 const regularProfile = { id: 1, profile_name: 'Regular 8AM–5PM', time_in: '08:00:00', time_out: '17:00:00', first_scan_enabled: true, second_scan_enabled: true };
 
+test('Admin-approved policy assignments use controlled scan persistence', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-10-26T01:13:00Z') });
+  const writes = mockDatabase({ assignment: { attendance_profile_id: 1, assigned_by: 10, approver: { role: 'admin' } } });
+  await scanAttendance({ qr_code: 'VALID', photo, face_embedding: face, user });
+  const inserted = writes.find(write => write.table === 'attendance_logs' && write.action === 'insert').payload;
+  const log = Array.isArray(inserted) ? inserted[0] : inserted;
+  assert.equal(log.recorded_scan_time, '2026-10-26T00:00:00.000Z');
+});
+
+test('DTR scan audit history retains the actual Admin identity', async () => {
+  mockDatabase({ scanAudits: [{ id: 82, account_id: 7, event_type: 'dtr_adjustment', approved_by: 10,
+    actual_scan_time: '2026-10-29T01:20:51Z', dtr_time: '2026-10-29T00:05:00Z',
+    created_at: '2026-10-29T04:00:00Z', policy_snapshot: { approved_by_name: 'Demo Admin', approved_by_role: 'admin' } }] });
+  const history = await getDtrEditHistory({ internId: 7 });
+  assert.equal(history[0].modified_by_role, 'admin');
+  assert.equal(history[0].modified_by_name, 'Demo Admin');
+});
+
 function mockDatabase({ logs = [], profile = regularProfile, fallbackProfile = profile, assignment = null, existingRecord = null, insertError = null, logUpdateError = null, scanAudits = [], logReadError = null, recordReadError = null } = {}) {
   const writes = [];
   supabase.rpc = async (name, payload) => {
@@ -265,7 +283,7 @@ test('a Superadmin-assigned regular morning policy records 08:00 while retaining
 
 for (const [name, assignment, profile, local, expected, logs] of [
   ['unassigned', null, regularProfile, '08:13:27', '08:13:27', []],
-  ['non-Superadmin assignment', { attendance_profile_id: 1, assigned_by: 9, approver: { role: 'admin' } }, regularProfile, '08:13:27', '08:13:27', []],
+  ['non-administrator assignment', { attendance_profile_id: 1, assigned_by: 11, approver: { role: 'supervisor' } }, regularProfile, '08:13:27', '08:13:27', []],
   ['disabled first scan', { attendance_profile_id: 1, assigned_by: 9, approver: { role: 'superadmin' } }, { ...regularProfile, first_scan_enabled: false }, '08:13:27', '08:13:27', []],
   ['lunch', { attendance_profile_id: 1, assigned_by: 9, approver: { role: 'superadmin' } }, regularProfile, '12:30:00', '13:00:00', []],
   ['afternoon time-out', { attendance_profile_id: 1, assigned_by: 9, approver: { role: 'superadmin' } }, regularProfile, '16:42:00', '16:42:00', [{ scan_type: 'time_in', scan_time: '2026-10-26T00:00:00Z' }]],

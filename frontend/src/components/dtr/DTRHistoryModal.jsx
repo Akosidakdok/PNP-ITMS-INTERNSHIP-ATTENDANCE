@@ -74,7 +74,7 @@ export default function DTRHistoryModal({
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-900 flex items-start gap-2">
           <Shield className="w-4 h-4 text-blue-700 flex-shrink-0 mt-0.5" />
           <div>
-            <p className="font-bold">Authorized Superadmin Audit Trail</p>
+            <p className="font-bold">Authorized Administrator Audit Trail</p>
             <p>Controlled-account scans retain the actual QR timestamp alongside the DTR time, approved policy, and automatic or manual adjustment.</p>
           </div>
         </div>

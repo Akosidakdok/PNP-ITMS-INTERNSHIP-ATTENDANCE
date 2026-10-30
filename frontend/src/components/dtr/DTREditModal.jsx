@@ -75,7 +75,7 @@ export default function DTREditModal({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="Superadmin DTR Record Correction"
+      title="DTR Record Correction"
       size="md"
       footer={
         confirming ? (
@@ -226,7 +226,7 @@ export default function DTREditModal({
             <ShieldCheck className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
             <div>
               <p className="font-bold">Audit Trail Notice</p>
-              <p>This action will be permanently recorded in the DTR Edit History with your Superadmin account ID, timestamp, original values, and reason.</p>
+              <p>This action will be permanently recorded in the DTR Edit History with your administrator account ID, timestamp, original values, and reason.</p>
             </div>
           </div>
         )}

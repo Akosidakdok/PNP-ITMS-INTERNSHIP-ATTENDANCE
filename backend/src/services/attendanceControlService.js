@@ -351,7 +351,7 @@ export async function getAssignedProfileForAccount(accountId, dateKey = null) {
       if (isProfileEffectiveOnDate(profile, targetDate)) {
         return {
           ...profile,
-          superadmin_controlled: assignment.approver?.role === 'superadmin',
+          superadmin_controlled: ['admin', 'superadmin'].includes(assignment.approver?.role),
         };
       }
       // If it's an individual profile that has expired, do NOT use it for targetDate; fallback to standard profile below
@@ -768,7 +768,7 @@ export async function setIndividualAttendanceControl(
 }
 
 // ─────────────────────────────────────────────────────────────
-// SUPERADMIN DTR EDITING & AUDIT LOGGING
+// ADMIN AND SUPERADMIN DTR EDITING & AUDIT LOGGING
 // ─────────────────────────────────────────────────────────────
 
 export async function editDtrRecord({
@@ -1312,7 +1312,7 @@ export async function deleteDtrAttendance({
 }
 
 // ─────────────────────────────────────────────────────────────
-// DTR EDIT HISTORY QUERY (SUPERADMIN ONLY)
+// DTR EDIT HISTORY QUERY (ADMIN AND SUPERADMIN)
 // ─────────────────────────────────────────────────────────────
 
 export async function getDtrEditHistory({ internId, date, limit = 100 } = {}) {
@@ -1338,8 +1338,10 @@ export async function getDtrEditHistory({ internId, date, limit = 100 } = {}) {
     new_value: entry.event_type === 'attendance_deleted' ? 'Deleted · scan evidence retained' : entry.dtr_time,
     modified_by_name: entry.event_type === 'attendance_deleted'
       ? entry.policy_snapshot?.deleted_by_name || `Administrator #${entry.approved_by}`
-      : `Superadmin #${entry.approved_by}`,
-    modified_by_role: entry.event_type === 'attendance_deleted' ? entry.policy_snapshot?.deleted_by_role || 'admin' : 'superadmin',
+      : entry.policy_snapshot?.approved_by_name || `Superadmin #${entry.approved_by}`,
+    modified_by_role: entry.event_type === 'attendance_deleted'
+      ? entry.policy_snapshot?.deleted_by_role || 'admin'
+      : entry.policy_snapshot?.approved_by_role || 'superadmin',
     modified_at: entry.created_at,
   }));
   return [...manual, ...scans]

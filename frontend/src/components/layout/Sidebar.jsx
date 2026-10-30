@@ -26,6 +26,7 @@ const superadminNav = [
 
 const adminNav = [
   { to: '/admin', icon: LayoutDashboard, label: 'Dashboard', end: true },
+  { to: '/admin/attendance-control', icon: Sliders, label: 'Attendance Control' },
   { to: '/admin/interns', icon: Users, label: 'Interns' },
   { to: '/admin/supervisors', icon: Briefcase, label: 'Supervisors' },
   { to: '/admin/attendance', icon: CalendarCheck, label: 'Attendance' },

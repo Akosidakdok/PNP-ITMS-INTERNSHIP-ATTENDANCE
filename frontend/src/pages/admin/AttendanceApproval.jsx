@@ -1511,7 +1511,7 @@ export default function AttendanceApproval() {
         size="md"
         footer={
           <div className="flex items-center justify-between w-full gap-2 flex-wrap">
-            {isSuperadmin ? (
+            {['admin', 'superadmin'].includes(role) ? (
               <div className="flex items-center gap-2">
                 <button
                   type="button"

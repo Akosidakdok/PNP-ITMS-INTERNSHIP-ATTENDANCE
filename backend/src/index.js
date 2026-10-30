@@ -754,7 +754,7 @@ app.post('/supervisors', authMiddleware, adminOnlyMiddleware, async (req, res) =
   }
 });
 
-app.get('/admin/accounts', authMiddleware, superadminMiddleware, async (req, res) => {
+app.get('/admin/accounts', authMiddleware, adminOnlyMiddleware, async (req, res) => {
   try {
     const accounts = await getAdminAccounts();
     return res.json({ accounts });
@@ -763,7 +763,7 @@ app.get('/admin/accounts', authMiddleware, superadminMiddleware, async (req, res
   }
 });
 
-app.post('/admin/accounts', authMiddleware, superadminMiddleware, async (req, res) => {
+app.post('/admin/accounts', authMiddleware, adminOnlyMiddleware, async (req, res) => {
   try {
     const account = await createAdminAccount(req.body);
     return res.status(201).json({ account });
@@ -887,7 +887,7 @@ app.post('/admin/dtr/bulk-override', authMiddleware, adminOnlyMiddleware, async 
 });
 
 // ─────────────────────────────────────────────────────────────
-// Admin time corrections; superadmin full DTR correction and audit history.
+// Admin and Superadmin DTR corrections and audit history.
 // ─────────────────────────────────────────────────────────────
 
 app.put('/admin/dtr/:internId/edit-times', authMiddleware, adminOnlyMiddleware, async (req, res) => {
@@ -908,7 +908,7 @@ app.put('/admin/dtr/:internId/edit-times', authMiddleware, adminOnlyMiddleware, 
   }
 });
 
-app.put('/admin/dtr/:internId/edit', authMiddleware, superadminMiddleware, async (req, res) => {
+app.put('/admin/dtr/:internId/edit', authMiddleware, adminOnlyMiddleware, async (req, res) => {
   try {
     const internId = Number(req.params.internId);
     const result = await editDtrRecord({
@@ -1030,7 +1030,7 @@ app.put('/admin/dtr/:internId/batch-alter', authMiddleware, adminOnlyMiddleware,
   }
 });
 
-app.get('/admin/dtr/:internId/history', authMiddleware, superadminMiddleware, async (req, res) => {
+app.get('/admin/dtr/:internId/history', authMiddleware, adminOnlyMiddleware, async (req, res) => {
   try {
     const internId = Number(req.params.internId);
     const history = await getDtrEditHistory({
@@ -1044,7 +1044,7 @@ app.get('/admin/dtr/:internId/history', authMiddleware, superadminMiddleware, as
   }
 });
 
-app.get('/admin/dtr-history', authMiddleware, superadminMiddleware, async (req, res) => {
+app.get('/admin/dtr-history', authMiddleware, adminOnlyMiddleware, async (req, res) => {
   try {
     const history = await getDtrEditHistory({
       limit: req.query.limit ? Number(req.query.limit) : 100,
@@ -1056,10 +1056,10 @@ app.get('/admin/dtr-history', authMiddleware, superadminMiddleware, async (req, 
 });
 
 // ─────────────────────────────────────────────────────────────
-// SUPERADMIN-ONLY: ATTENDANCE CONTROL & PARAMETERS
+// ADMIN AND SUPERADMIN: ATTENDANCE CONTROL & PARAMETERS
 // ─────────────────────────────────────────────────────────────
 
-app.get('/admin/attendance-control/profiles', authMiddleware, superadminMiddleware, async (req, res) => {
+app.get('/admin/attendance-control/profiles', authMiddleware, adminOnlyMiddleware, async (req, res) => {
   try {
     const profiles = await listAttendanceProfiles();
     return res.json({ profiles });
@@ -1068,7 +1068,7 @@ app.get('/admin/attendance-control/profiles', authMiddleware, superadminMiddlewa
   }
 });
 
-app.post('/admin/attendance-control/profiles', authMiddleware, superadminMiddleware, async (req, res) => {
+app.post('/admin/attendance-control/profiles', authMiddleware, adminOnlyMiddleware, async (req, res) => {
   try {
     const profile = await createAttendanceProfile(req.body);
     return res.json({ profile });
@@ -1077,7 +1077,7 @@ app.post('/admin/attendance-control/profiles', authMiddleware, superadminMiddlew
   }
 });
 
-app.put('/admin/attendance-control/profiles/:id', authMiddleware, superadminMiddleware, async (req, res) => {
+app.put('/admin/attendance-control/profiles/:id', authMiddleware, adminOnlyMiddleware, async (req, res) => {
   try {
     const profile = await updateAttendanceProfile(Number(req.params.id), req.body);
     return res.json({ profile });
@@ -1086,7 +1086,7 @@ app.put('/admin/attendance-control/profiles/:id', authMiddleware, superadminMidd
   }
 });
 
-app.patch('/admin/attendance-control/profiles/:id/status', authMiddleware, superadminMiddleware, async (req, res) => {
+app.patch('/admin/attendance-control/profiles/:id/status', authMiddleware, adminOnlyMiddleware, async (req, res) => {
   try {
     const profile = await toggleAttendanceProfileStatus(Number(req.params.id), req.body.status);
     return res.json({ profile });
@@ -1095,7 +1095,7 @@ app.patch('/admin/attendance-control/profiles/:id/status', authMiddleware, super
   }
 });
 
-app.get('/admin/attendance-control/accounts', authMiddleware, superadminMiddleware, async (req, res) => {
+app.get('/admin/attendance-control/accounts', authMiddleware, adminOnlyMiddleware, async (req, res) => {
   try {
     const accounts = await getAccountsWithProfiles();
     return res.json({ accounts });
@@ -1104,7 +1104,7 @@ app.get('/admin/attendance-control/accounts', authMiddleware, superadminMiddlewa
   }
 });
 
-app.post('/admin/attendance-control/assignments', authMiddleware, superadminMiddleware, async (req, res) => {
+app.post('/admin/attendance-control/assignments', authMiddleware, adminOnlyMiddleware, async (req, res) => {
   try {
     const { account_ids, attendance_profile_id } = req.body;
     const assignments = await assignProfileToAccounts({
@@ -1118,7 +1118,7 @@ app.post('/admin/attendance-control/assignments', authMiddleware, superadminMidd
   }
 });
 
-app.delete('/admin/attendance-control/assignments/:accountId', authMiddleware, superadminMiddleware, async (req, res) => {
+app.delete('/admin/attendance-control/assignments/:accountId', authMiddleware, adminOnlyMiddleware, async (req, res) => {
   try {
     const result = await removeAccountProfileAssignment(Number(req.params.accountId));
     return res.json(result);
@@ -1127,7 +1127,7 @@ app.delete('/admin/attendance-control/assignments/:accountId', authMiddleware, s
   }
 });
 
-app.post('/admin/attendance-control/individual/:accountId', authMiddleware, superadminMiddleware, async (req, res) => {
+app.post('/admin/attendance-control/individual/:accountId', authMiddleware, adminOnlyMiddleware, async (req, res) => {
   try {
     const result = await setIndividualAttendanceControl(Number(req.params.accountId), {
       ...req.body,

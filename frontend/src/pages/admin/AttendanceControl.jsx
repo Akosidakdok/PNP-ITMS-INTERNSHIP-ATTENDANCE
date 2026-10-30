@@ -497,7 +497,7 @@ export default function AttendanceControl() {
         <div>
           <h1 className="text-xl sm:text-2xl font-bold text-gray-800 flex items-center gap-2" style={{ fontFamily: 'Outfit, sans-serif' }}>
             <Sliders className="w-6 h-6 text-blue-700" />
-            Superadmin Attendance Control
+            Attendance Control
           </h1>
           <p className="text-gray-500 text-sm mt-0.5">
             Configure automated scan rules, attendance schedules, and account profile assignments.
@@ -525,7 +525,7 @@ export default function AttendanceControl() {
         </div>
       </div>
 
-      <div className="flex items-center gap-1 p-1 bg-gray-100 rounded-xl w-fit" role="tablist" aria-label="Superadmin controls">
+      <div className="flex items-center gap-1 p-1 bg-gray-100 rounded-xl w-fit" role="tablist" aria-label="Administration controls">
         <button type="button" role="tab" aria-selected={activeTab === 'attendance'}
           className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${activeTab === 'attendance' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
           onClick={() => setActiveTab('attendance')}>

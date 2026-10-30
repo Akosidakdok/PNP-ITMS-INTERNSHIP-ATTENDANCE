@@ -88,7 +88,7 @@ function AppRoutes() {
               }
             </ProtectedRoute>
           } />
-        <Route path="attendance-control" element={<ProtectedRoute roles={['superadmin']}><AttendanceControl /></ProtectedRoute>} />
+        <Route path="attendance-control" element={<ProtectedRoute roles={['superadmin', 'admin']}><AttendanceControl /></ProtectedRoute>} />
         <Route path="attendance-parameters" element={<Navigate to="/admin/attendance-control" replace />} />
         <Route path="interns" element={<InternManagement />} />
         <Route path="supervisors" element={<ProtectedRoute roles={['superadmin', 'admin']}><SupervisorManagement /></ProtectedRoute>} />

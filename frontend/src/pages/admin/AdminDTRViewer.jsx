@@ -363,8 +363,8 @@ export default function AdminDTRViewer() {
         <div>
           <h1 className="text-xl sm:text-2xl font-bold text-gray-800" style={{ fontFamily: 'Outfit, sans-serif' }}>Intern DTR Management</h1>
           <p className="text-gray-500 text-sm">
-            {isSuperadmin
-              ? 'Superadmin DTR management, Excel-style date selection & alteration with audit logging'
+            {canAlterDtr
+              ? 'DTR management, Excel-style date selection & alteration with audit logging'
               : 'View Daily Time Records for personnel under your supervision'}
           </p>
         </div>
@@ -379,7 +379,7 @@ export default function AdminDTRViewer() {
               Alter {selectedDates.length} Selected Date{selectedDates.length > 1 ? 's' : ''}
             </button>
           )}
-          {isSuperadmin && (
+          {canAlterDtr && (
             <button
               className="btn btn-secondary flex items-center gap-1.5 text-xs"
               onClick={() => setHistoryModalOpen(true)}
@@ -469,10 +469,10 @@ export default function AdminDTRViewer() {
           
           {/* Instructions Box */}
           <div className="xl:col-span-1 space-y-4">
-            {isSuperadmin ? (
+            {canAlterDtr ? (
               <div className="card p-5 bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-100 space-y-3">
                 <h3 className="font-bold text-sm text-blue-900 flex items-center gap-1.5">
-                  <ShieldCheck className="w-4 h-4 text-blue-700" /> Superadmin DTR Control
+                  <ShieldCheck className="w-4 h-4 text-blue-700" /> Administrator DTR Control
                 </h3>
                 <ul className="text-xs text-blue-800 space-y-2 list-disc list-inside">
                   <li>**Click Date**: Click any date in the table to set it as **Absent**, **Holiday**, or override schedule.</li>
@@ -1221,8 +1221,8 @@ export default function AdminDTRViewer() {
         />
       )}
 
-      {/* Superadmin DTR Modification Audit History Modal */}
-      {isSuperadmin && (
+      {/* Administrator DTR Modification Audit History Modal */}
+      {canAlterDtr && (
         <DTRHistoryModal
           isOpen={historyModalOpen}
           onClose={() => setHistoryModalOpen(false)}
