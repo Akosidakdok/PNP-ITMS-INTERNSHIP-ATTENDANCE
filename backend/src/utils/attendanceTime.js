@@ -6,7 +6,7 @@ export const WORKDAY_START_MINUTE = 8 * 60;
 export const LUNCH_START_MINUTE = 12 * 60;
 export const LUNCH_END_MINUTE = 13 * 60;
 export const WORKDAY_END_MINUTE = 17 * 60;
-export const MAX_RENDERED_MINUTES = 8 * 60;
+export const STANDARD_WORKDAY_MINUTES = 8 * 60;
 
 const DATE_KEY_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
 
@@ -113,13 +113,8 @@ export function processDtrScanTime(value, scanType) {
     return new Date(lunchEnd).toISOString();
   }
 
-  const boundary = phtLocalMinuteTimestamp(
-    dateKey,
-    scanType === 'time_in' ? WORKDAY_START_MINUTE : WORKDAY_END_MINUTE
-  );
-  return new Date(scanType === 'time_in'
-    ? Math.max(timestamp, boundary)
-    : Math.min(timestamp, boundary)).toISOString();
+  const startBoundary = phtLocalMinuteTimestamp(dateKey, WORKDAY_START_MINUTE);
+  return new Date(scanType === 'time_in' ? Math.max(timestamp, startBoundary) : timestamp).toISOString();
 }
 
 /** Explicit recorded values (including custom schedules and corrections) win. */
@@ -130,10 +125,17 @@ export function getRecordedScanTime(log) {
   const actualTs = validTimestamp(log.actual_scan_time);
   const scanTs = validTimestamp(log.scan_time);
 
+  // Explicit corrections and approved schedules retain their saved clocks.
+  // Default scan rules already run when attendance is recorded.
+  if (recordedTs !== null && (['manual', 'automatic'].includes(log.adjustment_mode)
+    || (log.actual_scan_time === null && validTimestamp(log.original_scan_time) === null))) {
+    return log.recorded_scan_time;
+  }
+
   if (recordedTs !== null) {
     const rawTs = actualTs !== null ? actualTs : scanTs;
     const isRawRecordedScan = rawTs !== null && recordedTs === rawTs;
-    candidate = isRawRecordedScan
+    return isRawRecordedScan
       ? processDtrScanTime(log.recorded_scan_time, log.scan_type)
       : log.recorded_scan_time;
   } else {
@@ -166,11 +168,9 @@ export function formatPhtClockTime(value) {
 }
 
 /**
- * Calculates creditable attendance time for a single two-scan Philippine day.
- * Workday starts crediting at 08:00; time before 08:00 is ignored and actual overlap
- * with 12:00-13:00 lunch is deducted. Invalid, incomplete, reversed, and cross-date pairs earn zero.
- * Morning hours run from Time In up to 12:00 PM; afternoon hours run from 1:00 PM up to Time Out.
- * The 12:00 PM to 1:00 PM interval strictly contributes 0 hours.
+ * Counts saved official times, excluding only the overlap with 12:00–13:00 lunch.
+ * Overtime remains uncapped: 08:00–20:00 is 11 hours after lunch.
+ * Invalid, incomplete, reversed, and cross-date pairs earn zero.
  */
 export function calculateRenderedMilliseconds(timeIn, timeOut) {
   const timeInTimestamp = validTimestamp(timeIn);
@@ -187,22 +187,10 @@ export function calculateRenderedMilliseconds(timeIn, timeOut) {
   const timeInDateKey = getPhtDateKey(timeInTimestamp);
   if (getPhtDateKey(timeOutTimestamp) !== timeInDateKey) return 0;
 
-  const workdayStart = phtLocalMinuteTimestamp(timeInDateKey, WORKDAY_START_MINUTE);
   const lunchStart = phtLocalMinuteTimestamp(timeInDateKey, LUNCH_START_MINUTE);
   const lunchEnd = phtLocalMinuteTimestamp(timeInDateKey, LUNCH_END_MINUTE);
-  const workdayEnd = phtLocalMinuteTimestamp(timeInDateKey, WORKDAY_END_MINUTE);
-
-  const creditedStart = Math.max(timeInTimestamp, workdayStart);
-  const creditedEnd = Math.min(timeOutTimestamp, workdayEnd);
-  if (creditedEnd <= creditedStart) return 0;
-
-  // Morning Hours = Time In → 12:00 PM; Afternoon Hours = 1:00 PM → Time Out.
-  // The 12:00 PM to 1:00 PM interval strictly contributes 0 hours.
-  const morningMs = Math.max(0, Math.min(creditedEnd, lunchStart) - creditedStart);
-  const afternoonMs = Math.max(0, creditedEnd - Math.max(creditedStart, lunchEnd));
-  const renderedMilliseconds = morningMs + afternoonMs;
-
-  return Math.max(0, renderedMilliseconds);
+  const lunchOverlap = Math.max(0, Math.min(timeOutTimestamp, lunchEnd) - Math.max(timeInTimestamp, lunchStart));
+  return timeOutTimestamp - timeInTimestamp - lunchOverlap;
 }
 
 /** Returns completed creditable minutes; partial trailing minutes are ignored. */

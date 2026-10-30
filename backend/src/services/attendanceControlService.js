@@ -1,5 +1,6 @@
 import { supabase } from '../supabaseClient.js';
-import { assertScansDeletable, hasProtectedScans } from './scanAuditService.js';
+import { hasProtectedScans } from './scanAuditService.js';
+import { deleteAttendanceAttachment } from './attendanceAttachmentService.js';
 import { getPhtDateKey, getPhtDayBoundsUtc, PHT_UTC_OFFSET_MS, formatPhtClockTime, getRecordedScanTime } from '../utils/attendanceTime.js';
 
 /**
@@ -904,11 +905,8 @@ export async function editDtrRecord({
       .select()
       .single();
 
-    if (createError) {
-      console.error('Error creating attendance_record:', createError);
-    } else {
-      record = createdRecord;
-    }
+    if (createError) throw new Error(`Failed to create DTR record: ${createError.message}`);
+    record = createdRecord;
   }
 
   const recordId = record?.id || null;
@@ -962,7 +960,7 @@ export async function editDtrRecord({
   }
 
   // Audit: Status change
-  if (!preserveStatus && status && origStatus !== newStatus) {
+  if (!preserveStatus && origStatus !== newStatus) {
     historyEntries.push({
       attendance_record_id: recordId,
       account_id: internId,
@@ -1032,10 +1030,11 @@ export async function editDtrRecord({
   // Preserve the existing persistence path for normal intern corrections.
   if (historyEntries.length > 0) {
     const { error: histError } = await supabase.from('dtr_edit_history').insert(historyEntries);
-    if (histError) console.error('Failed to write dtr_edit_history audit log:', histError);
+    if (histError) throw new Error(`Failed to save DTR audit history: ${histError.message}`);
   }
   if (recordId) {
-    await supabase.from('attendance_records').update(recordUpdates).eq('id', recordId);
+    const { error } = await supabase.from('attendance_records').update(recordUpdates).eq('id', recordId);
+    if (error) throw new Error(`Failed to save DTR record: ${error.message}`);
   }
 
   // Synchronize attendance_logs (keeping actual_scan_time preserved!)
@@ -1045,17 +1044,19 @@ export async function editDtrRecord({
       // A date correction moves the DTR bucket; same-day edits keep scan order.
       if (dateChanged) logUpdates.scan_time = newTimeInIso;
       logUpdates.recorded_scan_time = newTimeInIso;
+      Object.assign(logUpdates, { adjustment_mode: 'manual', adjustment_reason: reason.trim(), adjustment_approved_by: modified_by || null });
     } else if (dateChanged && origTimeInStr) {
       const shiftedInIso = buildPhtTimestamp(effectiveDate, origTimeInStr);
       logUpdates.scan_time = shiftedInIso;
       logUpdates.recorded_scan_time = shiftedInIso;
     }
-    await supabase
+    const { error } = await supabase
       .from('attendance_logs')
       .update(logUpdates)
       .eq('id', timeInLog.id);
+    if (error) throw new Error(`Failed to save DTR Time In: ${error.message}`);
   } else if (newTimeInIso) {
-    await supabase
+    const { error } = await supabase
       .from('attendance_logs')
       .insert([
         {
@@ -1068,6 +1069,7 @@ export async function editDtrRecord({
           attendance_record_id: recordId,
         },
       ]);
+    if (error) throw new Error(`Failed to save DTR Time In: ${error.message}`);
   }
 
   if (timeOutLog) {
@@ -1075,17 +1077,19 @@ export async function editDtrRecord({
     if (newTimeOutIso) {
       if (dateChanged) logUpdates.scan_time = newTimeOutIso;
       logUpdates.recorded_scan_time = newTimeOutIso;
+      Object.assign(logUpdates, { adjustment_mode: 'manual', adjustment_reason: reason.trim(), adjustment_approved_by: modified_by || null });
     } else if (dateChanged && origTimeOutStr) {
       const shiftedOutIso = buildPhtTimestamp(effectiveDate, origTimeOutStr);
       logUpdates.scan_time = shiftedOutIso;
       logUpdates.recorded_scan_time = shiftedOutIso;
     }
-    await supabase
+    const { error } = await supabase
       .from('attendance_logs')
       .update(logUpdates)
       .eq('id', timeOutLog.id);
+    if (error) throw new Error(`Failed to save DTR Time Out: ${error.message}`);
   } else if (newTimeOutIso) {
-    await supabase
+    const { error } = await supabase
       .from('attendance_logs')
       .insert([
         {
@@ -1098,6 +1102,7 @@ export async function editDtrRecord({
           attendance_record_id: recordId,
         },
       ]);
+    if (error) throw new Error(`Failed to save DTR Time Out: ${error.message}`);
   }
 
   return {
@@ -1111,7 +1116,7 @@ export async function editDtrRecord({
 }
 
 // ─────────────────────────────────────────────────────────────
-// SUPERADMIN DTR DELETION & AUDIT LOGGING
+// ADMIN AND SUPERADMIN DTR DELETION & AUDIT LOGGING
 // ─────────────────────────────────────────────────────────────
 
 export async function deleteDtrAttendance({
@@ -1145,170 +1150,49 @@ export async function deleteDtrAttendance({
     throw err;
   }
 
-  const { startIso, endExclusiveIso } = getPhtDayBoundsUtc(date);
-
-  // 1. Fetch existing attendance_records row if it exists
-  const { data: record, error: recError } = await supabase
-    .from('attendance_records')
-    .select('*')
-    .eq('account_id', internId)
-    .eq('attendance_date', date)
-    .maybeSingle();
-
-  if (recError) {
-    console.error('Error fetching attendance_record for deletion:', recError);
+  const accountId = Number(internId);
+  const actorId = Number(modified_by);
+  if (!Number.isSafeInteger(accountId) || accountId <= 0) {
+    const error = new Error('Valid Intern ID is required');
+    error.statusCode = 400;
+    throw error;
+  }
+  if (!Number.isSafeInteger(actorId) || actorId <= 0) {
+    const error = new Error('An administrator account is required to delete DTR attendance');
+    error.statusCode = 403;
+    throw error;
+  }
+  if (!['attendance', 'override', 'all'].includes(target)) {
+    const error = new Error('A valid deletion target is required');
+    error.statusCode = 400;
+    throw error;
   }
 
-  // 2. Fetch existing attendance_logs for this date
-  const { data: logs, error: logsError } = await supabase
-    .from('attendance_logs')
-    .select('id, scan_type, scan_time, remarks, approval_status, attendance_record_id, superadmin_controlled')
-    .eq('intern_id', internId)
-    .gte('scan_time', startIso)
-    .lt('scan_time', endExclusiveIso);
-
-  if (logsError) {
-    console.error('Error fetching attendance_logs for deletion:', logsError);
-    throw logsError;
+  const { data, error } = await supabase.rpc('delete_admin_dtr_attendance', {
+    p_account_id: accountId,
+    p_date: date,
+    p_actor_id: actorId,
+    p_reason: reason.trim(),
+    p_target: target,
+  });
+  if (error) {
+    const missingMigration = ['PGRST202', '42883'].includes(error.code);
+    const failure = new Error(missingMigration
+      ? 'DTR deletion requires the latest database update. Run the DTR audited deletion SQL migration in Supabase.'
+      : `Failed to delete DTR attendance: ${error.message}`);
+    failure.statusCode = missingMigration ? 503 : ({ '42501': 403, P0002: 404, '22023': 400, '23514': 409 }[error.code] || 500);
+    throw failure;
   }
-
-  let allLogs = logs || [];
-
-  // Also query by attendance_record_id if record exists to ensure any linked logs are found
-  if (record?.id) {
-    const { data: linkedLogs } = await supabase
-      .from('attendance_logs')
-      .select('id, scan_type, scan_time, remarks, approval_status, attendance_record_id, superadmin_controlled')
-      .eq('intern_id', internId)
-      .eq('attendance_record_id', record.id);
-
-    if (linkedLogs && linkedLogs.length > 0) {
-      const existingIdSet = new Set(allLogs.map(l => l.id));
-      for (const log of linkedLogs) {
-        if (!existingIdSet.has(log.id)) {
-          allLogs.push(log);
-        }
-      }
-    }
-  }
-
-  let targetLogs = [];
-  if (target === 'override') {
-    targetLogs = allLogs.filter(l => typeof l.remarks === 'string' && l.remarks.trim().toUpperCase().startsWith('OVERRIDE:'));
-  } else {
-    // When deleting attendance ('attendance' or 'all'), remove all attendance entries for the date
-    targetLogs = allLogs;
-  }
-
-  const targetLogIds = targetLogs.map(l => l.id);
-  await assertScansDeletable(targetLogs);
-
-  // 3. Delete attendance photos for targeted logs
-  if (targetLogIds.length > 0) {
+  // Storage cannot participate in a PostgreSQL transaction. Remove attachment files
+  // only after the scan/photo deletion and its audit history commit successfully.
+  for (const attendanceId of data?.deleted_log_ids || []) {
     try {
-      await supabase
-        .from('attendance_photos')
-        .delete()
-        .in('attendance_log_id', targetLogIds);
-    } catch (photoErr) {
-      console.warn('Notice deleting attendance_photos:', photoErr);
-    }
-
-    // 4. Delete targeted logs
-    const { error: logsDelErr } = await supabase
-      .from('attendance_logs')
-      .delete()
-      .in('id', targetLogIds);
-
-    if (logsDelErr) {
-      console.error('Error deleting attendance_logs:', logsDelErr);
-      throw logsDelErr;
+      await deleteAttendanceAttachment({ attendanceId, user: null, skipAudit: true });
+    } catch (cleanupError) {
+      console.warn('Failed to clean up attachment after audited DTR deletion:', cleanupError?.message);
     }
   }
-
-  // 5. Delete attendance_records row if target is 'attendance' or 'all',
-  // or if target is 'override' and the record contains no actual biometric scans
-  let recordDeleted = false;
-  const shouldDeleteRecord = target === 'attendance'
-    || target === 'all'
-    || (target === 'override' && !record?.actual_time_in && !record?.actual_time_out);
-
-  if (shouldDeleteRecord) {
-    if (record?.id) {
-      // Detach from dtr_edit_history so history is NOT cascade-deleted
-      try {
-        await supabase
-          .from('dtr_edit_history')
-          .update({ attendance_record_id: null })
-          .eq('attendance_record_id', record.id);
-      } catch (detachErr) {
-        console.warn('Notice detaching dtr_edit_history:', detachErr);
-      }
-
-      const { error: recDelErr } = await supabase
-        .from('attendance_records')
-        .delete()
-        .eq('id', record.id);
-
-      if (recDelErr) {
-        console.error('Error deleting attendance_record by id:', recDelErr);
-      } else {
-        recordDeleted = true;
-      }
-    }
-
-    // Clean up any remaining attendance_records for this intern and date
-    const { error: cleanRecErr } = await supabase
-      .from('attendance_records')
-      .delete()
-      .eq('account_id', internId)
-      .eq('attendance_date', date);
-
-    if (!cleanRecErr) {
-      recordDeleted = true;
-    }
-  }
-
-  // 6. Write audit log into dtr_edit_history
-  const modifiedAt = new Date().toISOString();
-  const fieldName = target === 'override'
-    ? 'Schedule Override'
-    : 'Attendance Record';
-
-  const origDetails = [];
-  if (record) {
-    origDetails.push(`Status: ${record.status || 'N/A'}`);
-    if (record.recorded_time_in) origDetails.push(`In: ${format12HourTime(formatPhtTime(record.recorded_time_in))}`);
-    if (record.recorded_time_out) origDetails.push(`Out: ${format12HourTime(formatPhtTime(record.recorded_time_out))}`);
-  }
-  if (targetLogs.length > 0) {
-    origDetails.push(`${targetLogs.length} scan log(s) removed`);
-  }
-  const originalValue = origDetails.length > 0 ? origDetails.join(', ') : 'Active Record/Override';
-
-  try {
-    await supabase.from('dtr_edit_history').insert([{
-      attendance_record_id: null,
-      account_id: internId,
-      field_name: fieldName,
-      original_value: originalValue,
-      new_value: 'Deleted / Cleared',
-      modified_by: modified_by || null,
-      modified_at: modifiedAt,
-      reason: reason.trim(),
-    }]);
-  } catch (auditErr) {
-    console.warn('Failed to insert dtr_edit_history audit log:', auditErr);
-  }
-
-  return {
-    success: true,
-    internId,
-    date,
-    target,
-    deletedLogsCount: targetLogIds.length,
-    deletedRecord: recordDeleted,
-  };
+  return data;
 }
 
 // ─────────────────────────────────────────────────────────────

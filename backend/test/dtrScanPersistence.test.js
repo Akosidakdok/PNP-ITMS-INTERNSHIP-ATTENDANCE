@@ -6,7 +6,7 @@ process.env.SUPABASE_URL ||= 'http://dtr-scan.test';
 process.env.SUPABASE_SERVICE_ROLE_KEY ||= 'test-key';
 const { supabase } = await import('../src/supabaseClient.js');
 const { scanAttendance } = await import('../src/attendance.js');
-const { getDtrRecords, getAttendanceLogs, getAttendanceReport } = await import('../src/data.js');
+const { getDtrRecords, getAttendanceLogs, getAttendanceReport, setDtrOverride } = await import('../src/data.js');
 const { editDtrRecord, setIndividualAttendanceControl, getDtrEditHistory, deleteDtrAttendance } = await import('../src/services/attendanceControlService.js');
 const { buildDtrRecords } = await import('../src/utils/dtrRecords.js');
 const originalFrom = supabase.from;
@@ -50,9 +50,87 @@ test('DTR scan audit history retains the actual Admin identity', async () => {
   assert.equal(history[0].modified_by_name, 'Demo Admin');
 });
 
+for (const controlled of [false, true]) {
+  test(`Admin Time Out-only correction preserves Time In and status (protected: ${controlled})`, async () => {
+    const logs = [
+      { id: 1, scan_type: 'time_in', scan_time: '2026-10-26T00:00:01.123Z',
+        actual_scan_time: '2026-10-26T00:00:01.123Z', recorded_scan_time: '2026-10-26T00:00:01.123Z',
+        approval_status: 'pending', superadmin_controlled: controlled },
+      { id: 2, scan_type: 'time_out', scan_time: '2026-10-26T08:00:00Z',
+        actual_scan_time: '2026-10-26T08:00:00Z', recorded_scan_time: '2026-10-26T08:00:00Z',
+        approval_status: 'pending', superadmin_controlled: controlled },
+    ];
+    const writes = mockDatabase({ logs, existingRecord: { id: 30, recorded_time_in: logs[0].recorded_scan_time,
+      recorded_time_out: logs[1].recorded_scan_time, status: 'pending' } });
+    const result = await editDtrRecord({ internId: 7, date: '2026-10-26', time_in: null, time_out: '17:00',
+      preserveStatus: true, reason: 'Corrected departure only', modified_by: 10 });
+    assert.equal(result.recorded_time_in, '08:00:01.123');
+    assert.equal(result.recorded_time_out, '17:00');
+    assert.equal(result.status, 'pending');
+    if (controlled) {
+      const { payload } = writes.find(write => write.action === 'apply_controlled_dtr_edit');
+      assert.equal(Object.hasOwn(payload.p_record_updates, 'recorded_time_in'), false);
+      assert.equal(payload.p_record_updates.recorded_time_out, '2026-10-26T09:00:00.000Z');
+      assert.deepEqual(payload.p_log_updates.find(log => log.id === 1).changes, {});
+      assert.deepEqual(payload.p_history_entries.map(entry => entry.field_name), ['Time Out']);
+    } else {
+      const mirror = writes.find(write => write.table === 'attendance_records' && write.action === 'update');
+      assert.equal(Object.hasOwn(mirror.payload, 'recorded_time_in'), false);
+      const out = writes.find(write => write.table === 'attendance_logs' && write.args.some(
+        ([method, key, id]) => method === 'eq' && key === 'id' && id === 2));
+      assert.deepEqual(out.payload, { recorded_scan_time: '2026-10-26T09:00:00.000Z',
+        adjustment_mode: 'manual', adjustment_reason: 'Corrected departure only', adjustment_approved_by: 10 });
+    }
+  });
+}
+
+for (const controlled of [false, true]) {
+  test(`Admin Time Out-only correction approves the saved pair (protected: ${controlled})`, async () => {
+    const logs = [
+      { id: 1, scan_type: 'time_in', scan_time: '2026-10-29T09:14:00Z', original_scan_time: '2026-10-29T09:14:00Z',
+        actual_scan_time: '2026-10-29T09:14:00Z', recorded_scan_time: '2026-10-29T00:00:00Z',
+        approval_status: 'pending', adjustment_mode: 'manual', superadmin_controlled: controlled },
+    ];
+    const writes = mockDatabase({ logs, existingRecord: { id: 30, status: 'pending', recorded_time_in: logs[0].recorded_scan_time } });
+    const result = await editDtrRecord({ internId: 7, date: '2026-10-29', time_out: '17:00', status: 'approved',
+      reason: 'Verified departure', modified_by: 10 });
+    assert.equal(result.status, 'approved');
+    let updated;
+    if (controlled) {
+      const { payload } = writes.find(write => write.action === 'apply_controlled_dtr_edit');
+      assert.equal(payload.p_record_updates.status, 'approved');
+      assert.equal(payload.p_log_updates[0].changes.approval_status, 'approved');
+      assert.equal(payload.p_log_inserts[0].approval_status, 'approved');
+      updated = [{ ...logs[0], ...payload.p_log_updates[0].changes }, { ...payload.p_log_inserts[0], actual_scan_time: null }];
+    } else {
+      const update = writes.find(write => write.table === 'attendance_logs' && write.action === 'update');
+      const insert = writes.find(write => write.table === 'attendance_logs' && write.action === 'insert');
+      updated = [{ ...logs[0], ...update.payload }, insert.payload[0]];
+    }
+    const [record] = buildDtrRecords(updated);
+    assert.equal(record.time_in, '08:00');
+    assert.equal(record.time_out, '17:00');
+    assert.equal(record.is_complete, true);
+    assert.equal(record.approval_status, 'approved');
+    assert.equal(record.approved_minutes, 480);
+  });
+}
+
+test('a failed ordinary DTR update cannot report a successful correction', async () => {
+  mockDatabase({ logs: [{ id: 1, scan_type: 'time_in', scan_time: '2026-10-29T00:00Z', approval_status: 'pending' }],
+    existingRecord: { id: 30, status: 'pending', recorded_time_in: '2026-10-29T00:00Z' },
+    logUpdateError: { message: 'save rejected' } });
+  await assert.rejects(editDtrRecord({ internId: 7, date: '2026-10-29', time_out: '17:00', status: 'approved',
+    reason: 'Verified departure', modified_by: 10 }), /save rejected/);
+});
+
 function mockDatabase({ logs = [], profile = regularProfile, fallbackProfile = profile, assignment = null, existingRecord = null, insertError = null, logUpdateError = null, scanAudits = [], logReadError = null, recordReadError = null } = {}) {
   const writes = [];
   supabase.rpc = async (name, payload) => {
+    if (name === 'delete_admin_dtr_attendance') {
+      writes.push({ table: 'rpc', action: name, payload });
+      return { data: { success: true, deletedLogsCount: logs.length, audit_preserved: true }, error: logUpdateError };
+    }
     if (name === 'apply_controlled_dtr_edit') {
       writes.push({ table: 'rpc', action: name, payload });
       return { data: { record_id: existingRecord?.id || 30 }, error: logUpdateError };
@@ -109,8 +187,9 @@ for (const [scanType, localTime, expected] of [
   ['time_out', '13:00:00', '13:00:00'],
   ['time_out', '13:01:00', '13:01:00'],
   ['time_out', '16:59:59', '16:59:59'],
-  ['time_out', '17:00:01', '17:00:00'],
-  ['time_out', '18:00:00', '17:00:00'],
+  ['time_out', '17:00:01', '17:00:01'],
+  ['time_out', '18:00:00', '18:00:00'],
+  ['time_out', '19:00:00', '19:00:00'],
 ]) {
   test(`scan persists raw and processed values separately: ${scanType} ${localTime}`, async t => {
     const raw = new Date(`2026-10-26T${localTime}+08:00`).toISOString();
@@ -219,10 +298,14 @@ test('Superadmin DTR history includes original scans and automatic policy adjust
   assert.equal(history[0].reason, 'Approved regular morning policy');
 });
 
-test('protected DTR deletion stops before deleting photos, logs, or records', async () => {
+test('protected DTR deletion uses an audited transaction instead of directly deleting scan evidence', async () => {
   const writes = mockDatabase({ logs: [{ id: 1, superadmin_controlled: true, scan_type: 'time_in' }], existingRecord: { id: 30 } });
-  await assert.rejects(deleteDtrAttendance({ internId: 7, date: '2026-10-26', reason: 'Requested deletion', modified_by: 9 }), /protected/i);
-  assert.equal(writes.length, 0);
+  const result = await deleteDtrAttendance({ internId: 7, date: '2026-10-26', reason: 'Requested deletion', modified_by: 9 });
+  assert.equal(result.success, true);
+  assert.equal(result.audit_preserved, true);
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0].action, 'delete_admin_dtr_attendance');
+  assert.equal(writes[0].payload.p_actor_id, 9);
 });
 
 test('legacy protected scans use the atomic correction path after unassignment', async () => {
@@ -336,4 +419,47 @@ test('history, DTR export input, and generated reports agree on processed values
   const [report] = await getAttendanceReport({ month: 10, year: 2026 });
   assert.equal(report.total_minutes, 480);
   assert.equal(report.rendered_minutes, 480);
+});
+
+for (const [departure, minutes] of [['19:00', 600], ['20:00', 660]]) {
+  test(`saved ${departure} overtime agrees across attendance history, DTR and cumulative report totals`, async () => {
+    const logs = [
+      { id: 1, intern_id: 7, scan_type: 'time_in', scan_time: '2026-09-24T00:00:00Z',
+        actual_scan_time: '2026-09-24T00:00:00Z', recorded_scan_time: '2026-09-24T00:00:00Z',
+        adjustment_mode: 'manual', approval_status: 'approved' },
+      { id: 2, intern_id: 7, scan_type: 'time_out', scan_time: `2026-09-24T${departure}:00+08:00`,
+        actual_scan_time: '2026-09-24T09:00:00Z', recorded_scan_time: `2026-09-24T${departure}:00+08:00`,
+        adjustment_mode: 'manual', approval_status: 'approved' },
+    ];
+    mockDatabase({ logs });
+    assert.equal((await getAttendanceLogs()).logs[1].scan_time, logs[1].recorded_scan_time);
+    const [dtr] = await getDtrRecords(7, { month: 9, year: 2026 });
+    assert.equal(dtr.time_out, departure);
+    assert.equal(dtr.approved_minutes, minutes);
+    const [report] = await getAttendanceReport({ month: 9, year: 2026 });
+    assert.equal(report.total_minutes, minutes);
+    assert.equal(report.rendered_minutes, minutes);
+  });
+}
+
+test('custom overtime credits can save eleven hours while invalid daily hours remain rejected', async () => {
+  const writes = mockDatabase();
+  for (const type of ['HOURS', 'OTHERS', 'HOLIDAY', 'SCHOOL']) {
+    const saved = await setDtrOverride(7, { date: '2026-09-24', type, hours: 11, remarks: 'Approved overtime' });
+    assert.ok(saved.remarks.startsWith(`OVERRIDE:${type}:11:`));
+    const before = writes.length;
+    for (const hours of [-1, 25, Infinity]) {
+      await assert.rejects(setDtrOverride(7, { date: '2026-09-24', type, hours }), /between 0 and 24/);
+    }
+    assert.equal(writes.length, before);
+  }
+});
+
+test('explicit custom schedule clocks inside lunch retain their exact configured time', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-10-26T01:00:00Z') });
+  const writes = mockDatabase({ profile: { ...regularProfile, profile_name: 'Custom half day', time_in: '12:30:00' },
+    assignment: { attendance_profile_id: 1, assigned_by: 10, approver: { role: 'admin' } } });
+  await scanAttendance({ qr_code: 'VALID', user, photo, face_embedding: face });
+  const log = writes.find(write => write.table === 'attendance_logs' && write.action === 'insert').payload[0];
+  assert.equal(log.recorded_scan_time, '2026-10-26T04:30:00.000Z');
 });

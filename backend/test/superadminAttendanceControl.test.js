@@ -85,7 +85,7 @@ test('buildStandardDtrRecord preserves actual scan times alongside official DTR 
   assert.equal(record.time_out, '17:00');
   assert.equal(record.actual_time_in, '07:42');
   assert.equal(record.actual_time_out, '16:52');
-  assert.equal(record.approved_minutes, 480); // 8 hours credited
+  assert.equal(record.approved_minutes, 480); // 08:00–17:00 excluding lunch
   assert.equal(record.total_hours, 8);
 });
 

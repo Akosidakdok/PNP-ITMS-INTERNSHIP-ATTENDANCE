@@ -1,9 +1,10 @@
 import useDeleteConfirmation from '../common/useDeleteConfirmation.jsx';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Clock, Calendar, RotateCcw, ShieldCheck, AlertCircle, Check, Info, Trash2, AlertTriangle } from 'lucide-react';
 import Modal from '../common/Modal.jsx';
 import api from '../../utils/api.js';
 import toast from 'react-hot-toast';
+import { buildDtrTimeChanges, normalizeDtrTimeInput } from '../../utils/dtrTimeEdit.js';
 
 const MONTH_NAMES = [
   'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
@@ -38,6 +39,8 @@ export default function DTRBatchAlterModal({
   const [timeIn, setTimeIn] = useState('08:00');
   const [timeOut, setTimeOut] = useState('17:00');
   const [originalTimes, setOriginalTimes] = useState({ timeIn: '08:00', timeOut: '17:00' });
+  const timeInRef = useRef(null);
+  const timeOutRef = useRef(null);
   const [status, setStatus] = useState('approved');
 
   // Override options
@@ -69,8 +72,8 @@ export default function DTRBatchAlterModal({
             setClearTarget('override');
           } else {
             setActiveTab('time');
-            const initialTimeIn = (existing.time_in || '').slice(0, 5);
-            const initialTimeOut = (existing.time_out || '').slice(0, 5);
+            const initialTimeIn = normalizeDtrTimeInput(existing.time_in || existing.am_time_in || '') || '';
+            const initialTimeOut = normalizeDtrTimeInput(existing.time_out || existing.pm_time_out || '') || '';
             setTimeIn(initialTimeIn);
             setTimeOut(initialTimeOut);
             setOriginalTimes({ timeIn: initialTimeIn, timeOut: initialTimeOut });
@@ -79,9 +82,9 @@ export default function DTRBatchAlterModal({
           }
         } else {
           setActiveTab('time');
-          setTimeIn('08:00');
-          setTimeOut('17:00');
-          setOriginalTimes({ timeIn: '08:00', timeOut: '17:00' });
+          setTimeIn(isSuperadmin ? '08:00' : '');
+          setTimeOut(isSuperadmin ? '17:00' : '');
+          setOriginalTimes({ timeIn: '', timeOut: '' });
           setStatus('approved');
           setClearTarget('attendance');
         }
@@ -98,7 +101,7 @@ export default function DTRBatchAlterModal({
         setClearTarget('attendance');
       }
     }
-  }, [isOpen, selectedDates, existingRecords]);
+  }, [isOpen, selectedDates, existingRecords, isSuperadmin]);
 
   const handleSubmit = async (e, confirmed = false) => {
     e?.preventDefault();
@@ -114,11 +117,26 @@ export default function DTRBatchAlterModal({
       toast.error('No dates selected.');
       return;
     }
-    const timeInChanged = timeIn !== originalTimes.timeIn;
-    const timeOutChanged = timeOut !== originalTimes.timeOut;
-    if (isSingleAdminTimeEdit && activeTab === 'time' && !timeInChanged && !timeOutChanged) {
-      toast.error('Change Time In or Time Out before saving.');
-      return;
+    let timeChanges;
+    if (activeTab === 'time') {
+      for (const [input, label] of [[timeInRef.current, 'Time In'], [timeOutRef.current, 'Time Out']]) {
+        if (input?.validity.badInput) {
+          toast.error(`Complete ${label}, including AM/PM, before saving.`);
+          input.focus();
+          return;
+        }
+      }
+      try {
+        timeChanges = isSingleAdminTimeEdit
+          ? buildDtrTimeChanges(timeIn, timeOut, originalTimes)
+          : { time_in: normalizeDtrTimeInput(timeIn), time_out: normalizeDtrTimeInput(timeOut) };
+        if (!isSingleAdminTimeEdit && (!timeChanges.time_in || !timeChanges.time_out)) {
+          throw new Error('Enter valid Time In and Time Out values, such as 08:00 and 17:00.');
+        }
+      } catch (error) {
+        toast.error(error.message);
+        return;
+      }
     }
 
     if (activeTab === 'clear' && !confirmed) {
@@ -128,8 +146,8 @@ export default function DTRBatchAlterModal({
         warning: clearTarget === 'override'
           ? 'This permanently removes schedule overrides for the selected dates and cannot be undone.'
           : clearTarget === 'all'
-            ? 'This permanently removes attendance records and schedule overrides for the selected dates and cannot be undone.'
-            : 'This permanently removes attendance records for the selected dates and cannot be undone.',
+            ? 'This removes attendance records, photos, and schedule overrides for the selected dates. Original QR evidence and your deletion reason remain in audit history. This cannot be undone.'
+            : 'This removes attendance records and photos for the selected dates. Original QR evidence and your deletion reason remain in audit history. This cannot be undone.',
         onConfirm: () => handleSubmit(null, true),
       });
       return;
@@ -144,9 +162,9 @@ export default function DTRBatchAlterModal({
       };
 
       if (activeTab === 'time') {
-        payload.time_in = timeIn;
-        payload.time_out = timeOut;
-        payload.status = status;
+        payload.time_in = timeChanges.time_in;
+        payload.time_out = timeChanges.time_out;
+        payload.status = isSuperadmin ? status : 'approved';
       } else if (activeTab === 'override') {
         payload.override_type = overrideType.toUpperCase();
         payload.hours = (overrideType === 'hours' || overrideType === 'others')
@@ -157,15 +175,25 @@ export default function DTRBatchAlterModal({
         payload.clear_target = clearTarget;
       }
 
+      let response;
       if (isSingleAdminTimeEdit && activeTab === 'time') {
-        await api.put(`/admin/dtr/${intern.id}/edit-times`, {
+        response = await api.put(`/admin/dtr/${intern.id}/edit-times`, {
           date: selectedDates[0],
-          time_in: timeInChanged ? timeIn : null,
-          time_out: timeOutChanged ? timeOut : null,
+          time_in: timeChanges.time_in,
+          time_out: timeChanges.time_out,
           reason: reason.trim(),
         }, { timeout: 60000 });
       } else {
-        await api.put(`/admin/dtr/${intern.id}/batch-alter`, payload, { timeout: 60000 });
+        response = await api.put(`/admin/dtr/${intern.id}/batch-alter`, payload, { timeout: 60000 });
+      }
+
+      const failedDates = response?.data?.errors || [];
+      if (failedDates.length > 0) {
+        const updatedCount = response.data.modifiedCount || 0;
+        toast.error(`${updatedCount} of ${selectedDates.length} dates updated. Failed: ${failedDates.map(item => item.date).join(', ')}. ${failedDates[0].error}`, { duration: 8000 });
+        if (onSaveSuccess) onSaveSuccess();
+        onClose();
+        return;
       }
 
       let successMsg = '';
@@ -360,10 +388,12 @@ export default function DTRBatchAlterModal({
               </div>
             </div>
 
-            <div className={`grid grid-cols-1 ${isSingleAdminTimeEdit ? 'sm:grid-cols-2' : 'sm:grid-cols-3'} gap-3`}>
+            <div className={`grid grid-cols-1 ${isSuperadmin ? 'sm:grid-cols-3' : 'sm:grid-cols-2'} gap-3`}>
               <div className="form-group">
-                <label className="form-label font-bold text-slate-700">Official Time In</label>
+                <label htmlFor="dtr-official-time-in" className="form-label font-bold text-slate-700">Official Time In</label>
                 <input
+                  id="dtr-official-time-in"
+                  ref={timeInRef}
                   type="time"
                   step="60"
                   className="form-input text-xs font-semibold"
@@ -374,8 +404,10 @@ export default function DTRBatchAlterModal({
               </div>
 
               <div className="form-group">
-                <label className="form-label font-bold text-slate-700">Official Time Out</label>
+                <label htmlFor="dtr-official-time-out" className="form-label font-bold text-slate-700">Official Time Out</label>
                 <input
+                  id="dtr-official-time-out"
+                  ref={timeOutRef}
                   type="time"
                   step="60"
                   className="form-input text-xs font-semibold"
@@ -385,7 +417,7 @@ export default function DTRBatchAlterModal({
                 />
               </div>
 
-              {!isSingleAdminTimeEdit && <div className="form-group">
+              {isSuperadmin && <div className="form-group">
                 <label className="form-label font-bold text-slate-700">Approval Status</label>
                 <select
                   className="form-input form-select text-xs font-semibold"
@@ -398,8 +430,8 @@ export default function DTRBatchAlterModal({
                 </select>
               </div>}
             </div>
-            {isSingleAdminTimeEdit && (
-              <p className="text-[11px] text-slate-500">Only changed times are saved. Approval status remains unchanged; add a reason below for the audit history.</p>
+            {!isSuperadmin && (
+              <p className="text-[11px] text-slate-500">{isSingleAdminTimeEdit ? 'Edit either time independently. Unchanged times stay the same. ' : ''}Saved corrections are automatically approved.</p>
             )}
           </div>
         )}
@@ -426,11 +458,11 @@ export default function DTRBatchAlterModal({
 
             {(overrideType === 'hours' || overrideType === 'others') && (
               <div className="form-group">
-                <label className="form-label font-bold text-slate-700">Credited Hours per Date (0 to 8)</label>
+                <label className="form-label font-bold text-slate-700">Credited Hours per Date (0 to 24)</label>
                 <input
                   type="number"
                   min="0"
-                  max="8"
+                  max="24"
                   step="0.25"
                   className="form-input font-bold text-xs"
                   value={overrideHours}
@@ -553,7 +585,7 @@ export default function DTRBatchAlterModal({
                       Delete Attendance Record
                     </div>
                     <p className="text-[11px] text-slate-500 mt-0.5">
-                      Permanently removes official time entries, biometric scans, and photos for the {count} selected date(s). The date(s) will be cleared and marked as absent/unrecorded.
+                      Removes active attendance entries and photos for the {count} selected date(s). Original QR evidence and the deletion reason remain in audit history.
                     </p>
                   </div>
                 </label>
@@ -601,7 +633,7 @@ export default function DTRBatchAlterModal({
                       Full Reset (Delete Attendance & Clear Overrides)
                     </div>
                     <p className="text-[11px] text-slate-500 mt-0.5">
-                      Completely wipes all attendance logs, records, photos, and schedule overrides for the {count} selected date(s).
+                      Removes active attendance records, photos, and schedule overrides for the {count} selected date(s). Original QR evidence and the deletion reason remain in audit history.
                     </p>
                   </div>
                 </label>

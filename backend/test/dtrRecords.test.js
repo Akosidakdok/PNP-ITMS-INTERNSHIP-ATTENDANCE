@@ -17,6 +17,47 @@ const scan = (id, localTime, scanType, approvalStatus = 'approved', remarks = nu
   remarks,
 });
 
+test('a saved manual 08:00–17:00 correction is complete even when the real time-in QR was after 17:00', () => {
+  const entries = [
+    { id: 777, scan_type: 'time_in', scan_time: '2026-10-29T09:14:13.783Z',
+      original_scan_time: '2026-10-29T09:14:13.783Z', actual_scan_time: '2026-10-28T23:59:18Z',
+      recorded_scan_time: '2026-10-29T00:00:00Z', adjustment_mode: 'manual', approval_status: 'approved' },
+    { id: 786, scan_type: 'time_out', scan_time: '2026-10-29T09:00:00Z', actual_scan_time: null,
+      original_scan_time: null, recorded_scan_time: '2026-10-29T09:00:00Z', approval_status: 'approved' },
+  ];
+  const originals = structuredClone(entries);
+  const [record] = buildDtrRecords(entries);
+  assert.equal(record.time_in, '08:00');
+  assert.equal(record.time_out, '17:00');
+  assert.equal(record.is_complete, true);
+  assert.equal(record.approval_status, 'approved');
+  assert.equal(record.approved_minutes, 480);
+  assert.deepEqual(entries, originals);
+});
+
+test('manual official corrections pair existing QR scans whose original clocks are reversed', () => {
+  const [record] = buildDtrRecords([
+    { ...scan(1, '17:14:00', 'time_in'), actual_scan_time: '2026-08-27T17:14:00+08:00',
+      recorded_scan_time: '2026-08-27T08:00:00+08:00', adjustment_mode: 'manual' },
+    { ...scan(2, '17:00:00', 'time_out'), actual_scan_time: '2026-08-27T17:00:00+08:00',
+      recorded_scan_time: '2026-08-27T17:00:00+08:00' },
+  ]);
+  assert.equal(record.is_complete, true);
+  assert.equal(record.time_out, '17:00');
+  assert.equal(record.approved_minutes, 480);
+});
+
+test('automatic policy times alone do not turn reversed original scans into a complete day', () => {
+  const [record] = buildDtrRecords([
+    { ...scan(1, '17:14:00', 'time_in'), actual_scan_time: '2026-08-27T17:14:00+08:00',
+      recorded_scan_time: '2026-08-27T08:00:00+08:00', adjustment_mode: 'automatic' },
+    { ...scan(2, '17:00:00', 'time_out'), actual_scan_time: '2026-08-27T17:00:00+08:00',
+      recorded_scan_time: '2026-08-27T17:00:00+08:00', adjustment_mode: 'automatic' },
+  ]);
+  assert.equal(record.is_complete, false);
+  assert.equal(record.approved_minutes, 0);
+});
+
 test('a two-scan afternoon day produces one complete approved DTR record', () => {
   const [record] = buildDtrRecords([
     scan(1, '15:03:00', 'time_in'),
@@ -33,27 +74,27 @@ test('a two-scan afternoon day produces one complete approved DTR record', () =>
   assert.equal(record.is_complete, true);
 });
 
-test('an ordinary 08:00 to 18:00 scan pair uses the official 17:00 departure', () => {
+test('an ordinary 08:00 to 18:00 scan pair preserves its overtime departure', () => {
   const record = buildStandardDtrRecord('2026-08-27', [
     scan(1, '08:00:00', 'time_in'),
     scan(2, '18:00:00', 'time_out'),
   ]);
 
-  assert.equal(record.time_out, '17:00');
-  assert.equal(record.total_minutes, 480);
-  assert.equal(record.total_hours, 8);
+  assert.equal(record.time_out, '18:00');
+  assert.equal(record.total_minutes, 540);
+  assert.equal(record.total_hours, 9);
 });
 
-test('an ordinary early arrival and late departure use the official workday', () => {
+test('an early arrival keeps the regular start while a late departure retains overtime', () => {
   const record = buildStandardDtrRecord('2026-08-27', [
     scan(1, '07:10:00', 'time_in'),
     scan(2, '18:30:00', 'time_out'),
   ]);
 
   assert.equal(record.time_in, '08:00');
-  assert.equal(record.time_out, '17:00');
-  assert.equal(record.total_minutes, 480);
-  assert.equal(record.total_hours, 8);
+  assert.equal(record.time_out, '18:30');
+  assert.equal(record.total_minutes, 570);
+  assert.equal(record.total_hours, 9.5);
 });
 
 test('DTR output and totals use recorded times while audit times keep the original scans', () => {
@@ -87,7 +128,7 @@ test('explicit custom or manually recorded times remain authoritative', () => {
   ]);
   assert.equal(record.time_in, '08:30');
   assert.equal(record.time_out, '18:30');
-  assert.equal(record.total_minutes, 450);
+  assert.equal(record.total_minutes, 540);
 });
 
 test('two scans before 08:00 remain a complete pair with zero credited minutes', () => {
@@ -177,7 +218,7 @@ test('manual override credit stays separate from raw worked time', () => {
   assert.equal(summary.approved_minutes, 360);
 });
 
-test('excused and suspended overrides respect the eight-hour policy', () => {
+test('excused retains its fixed eight-hour credit and suspended remains zero', () => {
   const excused = buildDtrRecords([
     scan(1, '08:00:00', 'time_in', 'approved', 'OVERRIDE:EXCUSED:8:Official activity'),
   ])[0];
@@ -267,7 +308,7 @@ test('school override synonyms (school_class, school_f2f, f2f) normalize to SCHO
   });
 });
 
-test('an 08:30 to 16:30 scan pair renders exactly 7 hours excluding lunch break', () => {
+test('08:30 to 16:30 excludes lunch and renders seven hours', () => {
   const [record] = buildDtrRecords([
     scan(1, '08:30:00', 'time_in'),
     scan(2, '16:30:00', 'time_out'),

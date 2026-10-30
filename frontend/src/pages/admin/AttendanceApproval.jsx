@@ -1600,6 +1600,7 @@ export default function AttendanceApproval() {
       {previewRecord && (
         <DTREditModal
           isOpen={dtrEditOpen}
+          autoApprove={!isSuperadmin}
           onClose={() => setDtrEditOpen(false)}
           intern={{ id: previewRecord.intern_id, full_name: previewRecord.full_name }}
           date={getPhtDateStr(previewRecord.scan_time)}

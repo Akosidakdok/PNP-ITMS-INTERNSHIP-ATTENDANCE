@@ -8,6 +8,7 @@ import api from '../../utils/api.js';
 import Modal from '../../components/common/Modal.jsx';
 import toast from 'react-hot-toast';
 import { divisionLabel } from '../../utils/display.js';
+import { estimateDtrScheduleHours } from '../../utils/dtrTimeEdit.js';
 
 const getTodayDateStr = () => {
   try {
@@ -302,34 +303,7 @@ export default function AttendanceControl() {
     );
   });
 
-  // Calculate expected rendered hours between two times (deducting 1 hour lunch if spanning 12:00-13:00)
-  const calculateEstimatedHours = (inStr, outStr) => {
-    if (!inStr || !outStr) return null;
-    try {
-      const [hIn, mIn] = inStr.split(':').map(Number);
-      const [hOut, mOut] = outStr.split(':').map(Number);
-      const startMin = hIn * 60 + mIn;
-      const endMin = hOut * 60 + mOut;
-      if (endMin <= startMin) return null;
 
-      const elapsedMinutes = endMin - startMin;
-      const lunchStart = 12 * 60;
-      const lunchEnd = 13 * 60;
-      const overlapStart = Math.max(startMin, lunchStart);
-      const overlapEnd = Math.min(endMin, lunchEnd);
-      const lunchOverlap = Math.max(0, overlapEnd - overlapStart);
-
-      const creditedMinutes = Math.max(0, elapsedMinutes - lunchOverlap);
-      const hours = (creditedMinutes / 60).toFixed(1).replace(/\.0$/, '');
-      return {
-        hours,
-        elapsedHours: (elapsedMinutes / 60).toFixed(1).replace(/\.0$/, ''),
-        lunchDeducted: lunchOverlap > 0,
-      };
-    } catch {
-      return null;
-    }
-  };
 
   // Open Individual Intern Attendance Control Modal
   const handleOpenIndividualControl = (account) => {
@@ -1535,7 +1509,7 @@ export default function AttendanceControl() {
 
               {/* Dynamic Workday Credit Preview */}
               {(() => {
-                const est = calculateEstimatedHours(customScheduleForm.time_in, customScheduleForm.time_out);
+                const est = estimateDtrScheduleHours(customScheduleForm.time_in, customScheduleForm.time_out);
                 if (!est) return null;
                 return (
                   <div className="p-3 rounded-lg bg-emerald-50/70 border border-emerald-200/80 flex items-center justify-between text-xs text-emerald-900">
@@ -1547,11 +1521,7 @@ export default function AttendanceControl() {
                       <span className="font-bold text-sm text-emerald-800">
                         {est.hours} Hours / day
                       </span>
-                      {est.lunchDeducted && (
-                        <span className="text-[10px] text-emerald-600 block">
-                          ({est.elapsedHours} hrs elapsed − 1 hr lunch deduction)
-                        </span>
-                      )}
+                      <span className="text-[10px] text-emerald-600 block">Excludes 12:00–1:00 PM; includes overtime.</span>
                     </div>
                   </div>
                 );

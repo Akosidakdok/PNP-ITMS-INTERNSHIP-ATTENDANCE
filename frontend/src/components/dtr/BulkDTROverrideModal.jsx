@@ -655,7 +655,7 @@ export default function BulkDTROverrideModal({
             <input
               type="number"
               min="0"
-              max="8"
+              max="24"
               step="0.25"
               className="form-input font-bold text-sm"
               value={hours}

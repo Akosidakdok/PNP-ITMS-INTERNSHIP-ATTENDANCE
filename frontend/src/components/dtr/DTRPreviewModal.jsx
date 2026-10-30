@@ -155,7 +155,7 @@ export default function DTRPreviewModal({
         new_date: editDate !== origDate ? editDate : undefined,
         time_in: editTimeIn,
         time_out: editTimeOut,
-        status: editStatus,
+        status: currentUser?.role === 'admin' ? 'approved' : editStatus,
         reason: editReason.trim(),
       };
 
@@ -352,7 +352,7 @@ export default function DTRPreviewModal({
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
+                    {currentUser?.role === 'superadmin' ? <div>
                       <label className="font-semibold text-gray-700 block mb-1">Approval Status</label>
                       <select
                         className="form-input form-select text-xs w-full"
@@ -363,7 +363,7 @@ export default function DTRPreviewModal({
                         <option value="pending">Pending</option>
                         <option value="rejected">Rejected</option>
                       </select>
-                    </div>
+                    </div> : <p className="text-xs text-slate-500">Saved corrections are automatically approved.</p>}
 
                     <div>
                       <label className="font-semibold text-gray-700 block mb-1">

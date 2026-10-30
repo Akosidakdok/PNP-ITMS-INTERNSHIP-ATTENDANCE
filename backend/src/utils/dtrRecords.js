@@ -1,5 +1,5 @@
 import {
-  MAX_RENDERED_MINUTES,
+  STANDARD_WORKDAY_MINUTES,
   calculateRenderedMinutes,
   getPhtDateKey,
   getPhtDayBoundsUtc,
@@ -18,6 +18,12 @@ function timestampOf(value) {
 
 function normalizeStatus(value) {
   return VALID_APPROVAL_STATUSES.has(value) ? value : 'pending';
+}
+
+function isManualDtrEntry(entry) {
+  return entry?.adjustment_mode === 'manual'
+    || (entry?.actual_scan_time === null && timestampOf(entry?.original_scan_time) === null
+      && timestampOf(entry?.recorded_scan_time) !== null);
 }
 
 function minutesFromRecord(record) {
@@ -80,8 +86,17 @@ export function buildStandardDtrRecord(date, entries = []) {
     .sort((a, b) => a._timestamp - b._timestamp);
 
   const timeInEntry = sorted.find(entry => entry.scan_type === 'time_in') || null;
+  const officialTimeIn = timestampOf(getRecordedScanTime(timeInEntry));
   const timeOutEntry = timeInEntry
-    ? sorted.find(entry => entry.scan_type === 'time_out' && entry._timestamp > timeInEntry._timestamp) || null
+    ? sorted.find(entry => {
+      if (entry.scan_type !== 'time_out') return false;
+      if (entry._timestamp > timeInEntry._timestamp) return true;
+      // A manual correction can make a valid official day even when the real QR
+      // clocks were reversed. Preserve raw evidence; pair the corrected values.
+      const officialTimeOut = timestampOf(getRecordedScanTime(entry));
+      return (isManualDtrEntry(timeInEntry) || isManualDtrEntry(entry))
+        && officialTimeIn !== null && officialTimeOut !== null && officialTimeOut > officialTimeIn;
+    }) || null
     : sorted.find(entry => entry.scan_type === 'time_out') || null;
 
   const isComplete = Boolean(timeInEntry && timeOutEntry);
@@ -138,7 +153,7 @@ function buildOverrideRecord(date, entries, overrideLog, override) {
   const normalEntries = entries.filter(entry => !parseDtrOverride(entry.remarks));
   const standardRecord = buildStandardDtrRecord(date, normalEntries);
   const requestedMinutes = Math.round(Math.max(0, Number(override.hours) || 0) * 60);
-  const totalMinutes = Math.min(MAX_RENDERED_MINUTES, requestedMinutes);
+  const totalMinutes = requestedMinutes;
 
   if (override.type === 'SUSPENDED') {
     return {
@@ -218,7 +233,7 @@ function buildOverrideRecord(date, entries, overrideLog, override) {
     };
   }
 
-  const creditedMinutes = override.type === 'EXCUSED' ? MAX_RENDERED_MINUTES : totalMinutes;
+  const creditedMinutes = override.type === 'EXCUSED' ? STANDARD_WORKDAY_MINUTES : totalMinutes;
   const keepScans = override.type === 'HOURS';
   const base = keepScans ? standardRecord : buildStandardDtrRecord(date, []);
 

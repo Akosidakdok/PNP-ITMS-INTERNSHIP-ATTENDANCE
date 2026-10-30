@@ -31,5 +31,16 @@ test('the DTR preview exposes correction and audit controls to both administrato
       assert.equal(html.includes('DTR Record Correction'), permitted, `${role}: correction`);
       assert.equal(html.includes('View Audit History'), permitted, `${role}: history`);
     }
+    const { default: BatchEditor } = await server.ssrLoadModule('/src/components/dtr/DTRBatchAlterModal.jsx');
+    const editor = renderToStaticMarkup(createElement(BatchEditor, {
+      isOpen: true, onClose() {}, intern: { id: 7, full_name: 'Test Intern' }, selectedDates: ['2026-10-29'],
+    }));
+    assert.match(editor, /id="dtr-official-time-out" type="time"/);
+    assert.match(editor, /id="dtr-official-time-in" type="time"/);
+    assert.ok(editor.includes('Official Time Out'));
+    assert.ok(!editor.includes('(24-hour)'));
+    assert.ok(editor.includes('Edit either time independently.'));
+    assert.ok(editor.includes('Saved corrections are automatically approved.'));
+    assert.ok(!editor.includes('Approval Status'));
   } finally { await server.close(); }
 });

@@ -11,6 +11,7 @@ export default function DTREditModal({
   date,
   record,
   onSaveSuccess,
+  autoApprove = false,
 }) {
   const [dateInput, setDateInput] = useState('');
   const [timeIn, setTimeIn] = useState('');
@@ -52,7 +53,7 @@ export default function DTREditModal({
         new_date: dateInput !== date ? dateInput : undefined,
         time_in: timeIn,
         time_out: timeOut,
-        status,
+        status: autoApprove ? 'approved' : status,
         reason: reason.trim(),
       });
       toast.success('DTR record successfully updated with audit log.');
@@ -192,7 +193,7 @@ export default function DTREditModal({
           </div>
         </div>
 
-        <div className="form-group">
+        {autoApprove ? <p className="text-xs text-slate-500">Saved corrections are automatically approved.</p> : <div className="form-group">
           <label className="form-label font-semibold text-gray-700">Attendance Status</label>
           <select
             className="form-input form-select text-sm"
@@ -203,7 +204,7 @@ export default function DTREditModal({
             <option value="pending">Pending</option>
             <option value="rejected">Rejected</option>
           </select>
-        </div>
+        </div>}
 
         {/* Mandatory Reason */}
         <div className="form-group">

@@ -1098,11 +1098,11 @@ export default function AdminDTRViewer() {
             {/* Custom Hours Input if hours or others selected */}
             {(overrideForm.type === 'hours' || overrideForm.type === 'others') && (
               <div className="form-group bg-blue-50 border border-blue-200 rounded-xl p-3">
-                <label className="form-label font-bold text-xs text-blue-900">Custom Hours to Credit (0 to 8)</label>
+                <label className="form-label font-bold text-xs text-blue-900">Custom Hours to Credit (0 to 24)</label>
                 <input
                   type="number"
                   min="0"
-                  max="8"
+                  max="24"
                   step="0.25"
                   className="form-input font-bold text-sm"
                   value={overrideForm.hours}

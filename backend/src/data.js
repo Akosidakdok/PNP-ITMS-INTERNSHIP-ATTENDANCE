@@ -291,7 +291,7 @@ async function addCalculatedRenderedHours(interns = []) {
 
   const { data: logs, error } = await supabase
     .from('attendance_logs')
-    .select('id, intern_id, scan_time, actual_scan_time, original_scan_time, recorded_scan_time, scan_type, approval_status, remarks')
+    .select('id, intern_id, scan_time, actual_scan_time, original_scan_time, recorded_scan_time, adjustment_mode, scan_type, approval_status, remarks')
     .in('intern_id', internIds)
     .order('scan_time', { ascending: true });
 
@@ -1597,7 +1597,7 @@ export async function getDtrRecords(userId, { month, year, startDate, endDate, l
     return q;
   };
 
-  let { data: logs, error } = await buildQuery('id, intern_id, scan_time, actual_scan_time, original_scan_time, recorded_scan_time, scan_type, approval_status, remarks');
+  let { data: logs, error } = await buildQuery('id, intern_id, scan_time, actual_scan_time, original_scan_time, recorded_scan_time, adjustment_mode, scan_type, approval_status, remarks');
   if (error) {
     const fallback = await buildQuery('id, intern_id, scan_time, scan_type, approval_status, remarks');
     if (fallback.error) throw fallback.error;
@@ -1653,10 +1653,10 @@ export async function setDtrOverride(internId, payload = {}) {
 
   const numericHours = Number(hours);
   if (
-    (formattedType === 'HOURS' || formattedType === 'OTHERS')
-    && (!Number.isFinite(numericHours) || numericHours < 0 || numericHours > 8)
+    ['HOURS', 'OTHERS', 'HOLIDAY', 'SCHOOL'].includes(formattedType)
+    && (!Number.isFinite(numericHours) || numericHours < 0 || numericHours > 24)
   ) {
-    const validationError = new Error('Custom credited hours must be between 0 and 8');
+    const validationError = new Error('Custom credited hours must be between 0 and 24');
     validationError.statusCode = 400;
     throw validationError;
   }

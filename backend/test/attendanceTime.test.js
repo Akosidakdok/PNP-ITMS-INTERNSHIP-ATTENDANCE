@@ -2,7 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  MAX_RENDERED_MINUTES,
   calculateRenderedMilliseconds,
   calculateRenderedMinutes,
   getPhtDateKey,
@@ -26,7 +25,7 @@ for (const [scanType, input, expected] of [
   ...['13:00:00', '13:01:00', '13:05:00', '13:30:00'].map(time => ['time_in', time, time]),
   ...['13:00:00', '13:01:00', '13:05:00', '13:30:00'].map(time => ['time_out', time, time]),
   ...['16:00:00', '16:30:00', '16:59:00', '16:59:59', '16:59:59.999'].map(time => ['time_out', time, time]),
-  ...['17:00:00', '17:00:00.001', '17:00:01', '17:01:00', '17:30:00', '18:00:00'].map(time => ['time_out', time, '17:00:00']),
+  ...['17:00:00', '17:00:00.001', '17:00:01', '17:01:00', '17:30:00', '18:00:00'].map(time => ['time_out', time, time]),
 ]) {
   test(`${scanType}: ${input} is recorded as ${expected} PHT`, () => {
     const raw = new Date(onAugust28(input));
@@ -38,7 +37,7 @@ for (const [scanType, input, expected] of [
 
 test('DTR boundaries use the Philippine date even on the previous UTC date', () => {
   assert.equal(processDtrScanTime('2026-08-27T16:00:00Z', 'time_in'), '2026-08-28T00:00:00.000Z');
-  assert.equal(processDtrScanTime('2026-08-28T15:59:59Z', 'time_out'), '2026-08-28T09:00:00.000Z');
+  assert.equal(processDtrScanTime('2026-08-28T15:59:59Z', 'time_out'), '2026-08-28T15:59:59.000Z');
   assert.equal(processDtrScanTime('2026-08-28T00:00:01Z', 'time_in'), '2026-08-28T00:00:01.000Z');
 });
 
@@ -49,14 +48,14 @@ test('invalid or missing scans never fabricate a DTR timestamp', () => {
   assert.equal(processDtrScanTime(onAugust28('08:00:00'), 'unknown'), null);
 });
 
-test('an exact 08:00 to 17:00 workday renders eight hours after lunch', () => {
+test('08:00 to 17:00 renders eight hours after lunch', () => {
   assert.equal(
     calculateRenderedMinutes(onAugust28('08:00:00'), onAugust28('17:00:00')),
     480
   );
 });
 
-test('an 08:30 to 16:30 workday renders seven hours (3h30m morning + 3h30m afternoon)', () => {
+test('08:30 to 16:30 renders seven hours after lunch', () => {
   assert.equal(
     calculateRenderedMinutes(onAugust28('08:30:00'), onAugust28('16:30:00')),
     420
@@ -77,7 +76,7 @@ test('an 08:00 to 12:00 morning period renders exactly 4 hours (240 minutes)', (
   );
 });
 
-test('an 08:00 to 12:30 period renders 4 hours as lunch interval contributes 0 hours', () => {
+test('08:00 to 12:30 excludes its half-hour lunch overlap', () => {
   assert.equal(
     calculateRenderedMinutes(onAugust28('08:00:00'), onAugust28('12:30:00')),
     240
@@ -91,45 +90,45 @@ test('an afternoon-only 13:00 to 17:00 period renders 4 hours', () => {
   );
 });
 
-test('a 12:30 to 17:00 period renders 4 hours starting at 1:00 PM', () => {
+test('12:30 to 17:00 excludes its half-hour lunch overlap', () => {
   assert.equal(
     calculateRenderedMinutes(onAugust28('12:30:00'), onAugust28('17:00:00')),
     240
   );
 });
 
-test('a 08:00 to 18:00 day caps at 8 hours (480 minutes) under 17:00 boundary', () => {
+test('08:00 to 18:00 retains nine hours including overtime after lunch', () => {
   assert.equal(
     calculateRenderedMinutes(onAugust28('08:00:00'), onAugust28('18:00:00')),
-    480
+    540
   );
 });
 
-test('early arrivals and late departures do not earn hours outside 08:00-17:00', () => {
+test('saved early and late times retain overtime and exclude lunch', () => {
   assert.equal(
     calculateRenderedMinutes(onAugust28('06:30:00'), onAugust28('20:15:00')),
-    480
+    765
   );
 });
 
-test('Example A: 07:40 to 17:30 renders 8 hours (480 minutes)', () => {
+test('07:40 to 17:30 renders eight hours fifty minutes after lunch', () => {
   assert.equal(
     calculateRenderedMinutes(onAugust28('07:40:00'), onAugust28('17:30:00')),
-    480
+    530
   );
 });
 
-test('Example B: 08:25 to 16:30 renders 7 hours 5 minutes (425 minutes)', () => {
+test('08:25 to 16:30 renders seven hours five minutes after lunch', () => {
   assert.equal(
     calculateRenderedMinutes(onAugust28('08:25:00'), onAugust28('16:30:00')),
     425
   );
 });
 
-test('Example C: 07:45 to 16:45 renders 7 hours 45 minutes (465 minutes)', () => {
+test('07:45 to 16:45 renders eight hours after lunch', () => {
   assert.equal(
     calculateRenderedMinutes(onAugust28('07:45:00'), onAugust28('16:45:00')),
-    465
+    480
   );
 });
 
@@ -140,7 +139,7 @@ test('an afternoon 15:03 to 16:05 pair renders exactly 62 minutes', () => {
   );
 });
 
-test('only the actual overlap with the 12:00 to 13:00 lunch is deducted', () => {
+test('only the actual overlap with 12:00–13:00 is excluded', () => {
   assert.equal(
     calculateRenderedMinutes(onAugust28('11:30:00'), onAugust28('12:30:00')),
     30
@@ -163,7 +162,7 @@ test('only the actual overlap with the 12:00 to 13:00 lunch is deducted', () => 
   );
 });
 
-test('a pair entirely inside lunch renders zero minutes', () => {
+test('saved times entirely inside 12:00–13:00 earn no hours', () => {
   assert.equal(
     calculateRenderedMinutes(onAugust28('12:10:00'), onAugust28('12:50:00')),
     0
