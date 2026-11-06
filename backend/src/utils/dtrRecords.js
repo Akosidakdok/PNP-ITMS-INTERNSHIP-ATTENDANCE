@@ -6,6 +6,7 @@ import {
   getRecordedScanTime,
   formatPhtClockTime,
 } from './attendanceTime.js';
+import { getHolidayName, indexHolidayEvents } from './attendanceHolidays.js';
 
 const VALID_APPROVAL_STATUSES = new Set(['pending', 'approved', 'rejected']);
 const VALID_OVERRIDE_TYPES = new Set(['SUSPENDED', 'EXCUSED', 'HOURS', 'OTHERS', 'ABSENT', 'HOLIDAY', 'SCHOOL']);
@@ -52,7 +53,7 @@ export function parseDtrOverride(remarks) {
   }
   if (!VALID_OVERRIDE_TYPES.has(type)) return null;
 
-  if (type === 'HOURS' || type === 'OTHERS' || type === 'HOLIDAY' || type === 'SCHOOL') {
+  if (type === 'HOURS' || type === 'OTHERS' || type === 'SCHOOL') {
     const hours = Number(parts[2]);
     return {
       type,
@@ -71,7 +72,7 @@ export function parseDtrOverride(remarks) {
   };
 }
 
-export function buildStandardDtrRecord(date, entries = []) {
+export function buildStandardDtrRecord(date, entries = [], holidayName = null) {
   const sorted = entries
     .filter(entry => entry && !parseDtrOverride(entry.remarks))
     .map(entry => {
@@ -102,7 +103,7 @@ export function buildStandardDtrRecord(date, entries = []) {
   const isComplete = Boolean(timeInEntry && timeOutEntry);
   const recordedTimeIn = getRecordedScanTime(timeInEntry);
   const recordedTimeOut = getRecordedScanTime(timeOutEntry);
-  const totalMinutes = isComplete
+  const totalMinutes = !holidayName && isComplete
     ? calculateRenderedMinutes(recordedTimeIn, recordedTimeOut)
     : 0;
 
@@ -146,6 +147,7 @@ export function buildStandardDtrRecord(date, entries = []) {
     remarks,
     time_in_id: timeInEntry?.id ?? null,
     time_out_id: timeOutEntry?.id ?? null,
+    ...(holidayName && { holiday_name: holidayName }),
   };
 }
 
@@ -186,27 +188,6 @@ function buildOverrideRecord(date, entries, overrideLog, override) {
       worked_minutes: 0,
       approved_minutes: 0,
       total_hours: 0,
-      override_remarks: override.remarks,
-      override_id: overrideLog.id ?? null,
-    };
-  }
-
-  if (override.type === 'HOLIDAY') {
-    const creditedMinutes = totalMinutes;
-    return {
-      ...buildStandardDtrRecord(date, []),
-      approval_status: 'approved',
-      am_status: creditedMinutes > 0 ? 'approved' : null,
-      pm_status: creditedMinutes > 0 ? 'approved' : null,
-      remarks: override.remarks || 'Holiday',
-      is_complete: true,
-      is_override: true,
-      override_type: 'holiday',
-      override_hours: hoursFromMinutes(creditedMinutes),
-      total_minutes: creditedMinutes,
-      worked_minutes: 0,
-      approved_minutes: creditedMinutes,
-      total_hours: hoursFromMinutes(creditedMinutes),
       override_remarks: override.remarks,
       override_id: overrideLog.id ?? null,
     };
@@ -262,8 +243,11 @@ function buildOverrideRecord(date, entries, overrideLog, override) {
   };
 }
 
-export function buildDtrRecords(logs = []) {
+export function buildDtrRecords(logs = [], {
+  holidayEvents = [], divisionId, startDate, endDateExclusive,
+} = {}) {
   const grouped = new Map();
+  const holidays = indexHolidayEvents(holidayEvents, divisionId);
 
   for (const log of logs) {
     const timestamp = timestampOf(log?.scan_time);
@@ -273,6 +257,15 @@ export function buildDtrRecords(logs = []) {
     grouped.get(date).push(log);
   }
 
+  if (startDate && endDateExclusive) {
+    for (const day = new Date(`${startDate}T00:00:00Z`);;) {
+      const date = day.toISOString().slice(0, 10);
+      if (date >= endDateExclusive) break;
+      if (!grouped.has(date) && getHolidayName(date, holidays)) grouped.set(date, []);
+      day.setUTCDate(day.getUTCDate() + 1);
+    }
+  }
+
   return [...grouped.entries()]
     .map(([date, entries]) => {
       const overrideCandidates = entries
@@ -280,6 +273,23 @@ export function buildDtrRecords(logs = []) {
         .filter(candidate => candidate.override)
         .sort((a, b) => (timestampOf(a.entry.scan_time) || 0) - (timestampOf(b.entry.scan_time) || 0));
       const selectedOverride = overrideCandidates.at(-1);
+      const manualHoliday = selectedOverride?.override.type === 'HOLIDAY';
+      const holidayName = getHolidayName(date, holidays)
+        || (manualHoliday ? selectedOverride.override.remarks || 'Holiday' : null);
+
+      if (holidayName) {
+        const record = buildStandardDtrRecord(date, entries, holidayName);
+        if (!manualHoliday) return record;
+        return {
+          ...record,
+          remarks: selectedOverride.override.remarks || 'Holiday',
+          is_override: true,
+          override_type: 'holiday',
+          override_hours: 0,
+          override_remarks: selectedOverride.override.remarks,
+          override_id: selectedOverride.entry.id ?? null,
+        };
+      }
 
       return selectedOverride
         ? buildOverrideRecord(date, entries, selectedOverride.entry, selectedOverride.override)
@@ -312,7 +322,7 @@ export function summarizeDtrRecords(records = []) {
       approvedMinutes += recordApprovedMinutes;
       if (record.is_complete) approvedDays += 1;
     }
-    if (Boolean(record?.time_in) && record?.am_status !== 'rejected') {
+    if (!record?.holiday_name && Boolean(record?.time_in) && record?.am_status !== 'rejected') {
       daysPresent += 1;
     }
   }

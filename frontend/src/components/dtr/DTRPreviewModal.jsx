@@ -162,26 +162,24 @@ export default function DTRPreviewModal({
       const res = await api.put(`/admin/dtr/${internId}/edit`, payload);
 
       // Immediately regenerate preview using the updated official DTR values
-      const updated = {
-        ...activeRecord,
-        date: res.data?.attendance_date || editDate,
-        attendance_date: res.data?.attendance_date || editDate,
-        time_in: res.data?.recorded_time_in || editTimeIn,
-        am_time_in: res.data?.recorded_time_in || editTimeIn,
-        time_out: res.data?.recorded_time_out || editTimeOut,
-        pm_time_out: res.data?.recorded_time_out || editTimeOut,
-        approval_status: res.data?.status || editStatus,
-        status: res.data?.status || editStatus,
-      };
+      const savedDate = res.data?.attendance_date || editDate;
+      const [year, month] = savedDate.split('-').map(Number);
+      const updated = await api.get(`/admin/dtr/${internId}`, { params: { year, month } })
+        .then(({ data }) => data?.records?.find(item => item.date === savedDate))
+        .catch(() => null);
+
+      onSaveSuccess?.(updated);
+      if (!updated) {
+        toast.success('Official DTR updated. Reopen the record to refresh the preview.');
+        onClose();
+        return;
+      }
 
       setActiveRecord(updated);
       setIsEditing(false);
       setEditReason('');
       toast.success('Official DTR updated. Preview regenerated successfully.');
 
-      if (onSaveSuccess) {
-        onSaveSuccess(updated);
-      }
     } catch (err) {
       toast.error(err.response?.data?.error || 'Failed to update official DTR record.');
     } finally {
@@ -519,6 +517,9 @@ export default function DTRPreviewModal({
                   <div style={{ fontSize: '18px', fontWeight: '900', color: '#0f172a', marginTop: '2px' }}>
                     {officialDateFormatted || 'Official Date Not Set'}
                   </div>
+                  {activeRecord.holiday_name && (
+                    <div style={{ fontWeight: 'bold', color: '#854d0e' }}>{activeRecord.holiday_name}</div>
+                  )}
                 </div>
 
                 {/* Official Time In & Time Out Display Grid */}
@@ -555,7 +556,11 @@ export default function DTRPreviewModal({
                   <div>
                     <span style={{ color: '#64748b' }}>Rendered Hours: </span>
                     <span style={{ fontWeight: 'bold', color: '#0f172a' }}>
-                      {activeRecord.is_complete ? formatDuration(getRecordMinutes(activeRecord)) : (getRecordMinutes(activeRecord) > 0 ? formatDuration(getRecordMinutes(activeRecord)) : 'Pending completion')}
+                      {activeRecord.holiday_name
+                        ? '00:00'
+                        : activeRecord.is_complete || getRecordMinutes(activeRecord) > 0
+                          ? formatDuration(getRecordMinutes(activeRecord))
+                          : 'Pending completion'}
                     </span>
                   </div>
                   <div>

@@ -114,7 +114,8 @@ export function processDtrScanTime(value, scanType) {
   }
 
   const startBoundary = phtLocalMinuteTimestamp(dateKey, WORKDAY_START_MINUTE);
-  return new Date(scanType === 'time_in' ? Math.max(timestamp, startBoundary) : timestamp).toISOString();
+  const endBoundary = phtLocalMinuteTimestamp(dateKey, WORKDAY_END_MINUTE);
+  return new Date(scanType === 'time_in' ? Math.max(timestamp, startBoundary) : Math.min(timestamp, endBoundary)).toISOString();
 }
 
 /** Explicit recorded values (including custom schedules and corrections) win. */

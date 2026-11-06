@@ -5,6 +5,7 @@ import { supabase } from './supabaseClient.js';
 import { revokeAccountSessions } from './services/sessionService.js';
 import { getPhtDateKey, getPhtDayBoundsUtc, toOfficialAttendanceLog } from './utils/attendanceTime.js';
 import { buildDtrRecords, summarizeDtrRecords } from './utils/dtrRecords.js';
+import { calendarEventAppliesToDivision } from './utils/attendanceHolidays.js';
 import { getAssignedProfileForAccount } from './services/attendanceControlService.js';
 import { validateUploadFile } from './utils/fileValidation.js';
 import { getAttachmentsForLogs, deleteAttendanceAttachment } from './services/attendanceAttachmentService.js';
@@ -13,6 +14,7 @@ import { assertScansDeletable, deleteProtectedScan } from './services/scanAuditS
 
 const INTERN_ROLE = 'intern';
 const ADMIN_ROLE = 'admin';
+const DTR_LOG_FIELDS = 'id, intern_id, scan_time, actual_scan_time, original_scan_time, recorded_scan_time, adjustment_mode, scan_type, approval_status, remarks';
 const ALLOWED_DOCUMENT_TYPES = new Set([
   'Endorsement Letter',
   'Curriculum Vitae/Resume',
@@ -285,17 +287,49 @@ function normalizeEvaluationFields(fields) {
   return normalized;
 }
 
+async function readAttendancePages(query) {
+  const pageSize = 500;
+  const rows = [];
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await query.range(from, from + pageSize - 1);
+    if (error) throw error;
+    rows.push(...(data || []));
+    if (!data || data.length < pageSize) return rows;
+  }
+}
+
+function getHolidayEvents(startDate, endDateExclusive) {
+  // Read both legacy rows and rows with the optional division scope.
+  let query = supabase.from('calendar_events').select('*')
+    .eq('event_type', 'holiday').order('id', { ascending: true });
+  if (startDate) query = query.gte('event_date', startDate);
+  if (endDateExclusive) query = query.lt('event_date', endDateExclusive);
+  return readAttendancePages(query);
+}
+
+function getAccountDivisionId(account) {
+  return account?.division_id ?? account?.department_id ?? null;
+}
+
+async function getCalendarAccountDivision(userId) {
+  let { data, error } = await supabase.from('accounts').select('division_id').eq('id', userId).maybeSingle();
+  if (error?.code === '42703') {
+    ({ data, error } = await supabase.from('accounts').select('department_id').eq('id', userId).maybeSingle());
+  }
+  if (error) throw error;
+  return getAccountDivisionId(data);
+}
+
 async function addCalculatedRenderedHours(interns = []) {
   const internIds = interns.map(intern => intern.id).filter(Boolean);
   if (internIds.length === 0) return interns;
 
-  const { data: logs, error } = await supabase
+  const logQuery = supabase
     .from('attendance_logs')
-    .select('id, intern_id, scan_time, actual_scan_time, original_scan_time, recorded_scan_time, adjustment_mode, scan_type, approval_status, remarks')
+    .select(DTR_LOG_FIELDS)
     .in('intern_id', internIds)
-    .order('scan_time', { ascending: true });
-
-  if (error) throw error;
+    .order('scan_time', { ascending: true }).order('id', { ascending: true });
+  const [logs, holidayEvents] = await Promise.all([readAttendancePages(logQuery), getHolidayEvents()]);
 
   const logsByIntern = new Map(internIds.map(id => [String(id), []]));
   for (const log of logs || []) {
@@ -305,7 +339,9 @@ async function addCalculatedRenderedHours(interns = []) {
   }
 
   return interns.map(intern => {
-    const records = buildDtrRecords(logsByIntern.get(String(intern.id)) || []);
+    const records = buildDtrRecords(logsByIntern.get(String(intern.id)) || [], {
+      holidayEvents, divisionId: getAccountDivisionId(intern),
+    });
     const summary = summarizeDtrRecords(records);
     return {
       ...intern,
@@ -1109,6 +1145,27 @@ export async function getAttendanceLogs({ status, date, page = 1, limit = 15, di
     }
   }
 
+  const holidaysByIntern = new Map();
+  if (internIds.length > 0) {
+    const dates = data.map(log => getPhtDateKey(log.scan_time)).sort();
+    const firstDay = getPhtDayBoundsUtc(dates[0]);
+    const lastDay = getPhtDayBoundsUtc(dates.at(-1));
+    const overrideQuery = supabase.from('attendance_logs').select('id, intern_id, scan_time, remarks')
+      .in('intern_id', internIds).like('remarks', 'OVERRIDE:%')
+      .gte('scan_time', firstDay.startIso).lt('scan_time', lastDay.endExclusiveIso)
+      .order('id', { ascending: true });
+    const [holidayEvents, overrides] = await Promise.all([
+      getHolidayEvents(firstDay.dateKey, getPhtDateKey(lastDay.endExclusiveIso)),
+      readAttendancePages(overrideQuery),
+    ]);
+    for (const id of internIds) {
+      const entries = [...data, ...overrides].filter(log => log.intern_id === id);
+      const records = buildDtrRecords(entries, { holidayEvents, divisionId: getAccountDivisionId(accountsMap[id]) });
+      holidaysByIntern.set(id, new Map(records.filter(record => record.holiday_name)
+        .map(record => [record.date, record.holiday_name])));
+    }
+  }
+
   const attendanceLogIds = (data || []).map(log => log.id).filter(Boolean);
   let attachmentsMap = {};
   try {
@@ -1122,8 +1179,10 @@ export async function getAttendanceLogs({ status, date, page = 1, limit = 15, di
     const originalPhoto = log.attendance_photos?.[0]?.photo || null;
     const attachment = attachmentsMap[log.id] || null;
     const photo = attachment?.image_url || originalPhoto;
+    const holidayName = holidaysByIntern.get(log.intern_id)?.get(getPhtDateKey(log.scan_time));
     return {
       ...toOfficialAttendanceLog(log),
+      ...(holidayName && { holiday_name: holidayName, total_minutes: 0 }),
       photo,
       original_photo: originalPhoto,
       attachment,
@@ -1520,6 +1579,8 @@ export async function getAttendanceReport({ startDate, endDate, month, year, div
   const { data: rawInterns, error: internsError } = await internQuery;
   if (internsError) throw internsError;
   const interns = await hydrateDivisionNames(rawInterns || []);
+  if (interns.length === 0) return [];
+  const holidayEvents = await getHolidayEvents();
 
   const reportData = await Promise.all(
     interns.map(async (intern) => {
@@ -1528,9 +1589,9 @@ export async function getAttendanceReport({ startDate, endDate, month, year, div
 
       const [periodDtr, allTimeDtr] = await Promise.all([
         hasDateRange
-          ? getDtrRecords(intern.id, { startDate, endDate })
-          : getDtrRecords(intern.id, { month: mNum, year: yNum }),
-        getDtrRecords(intern.id, { allTime: true }),
+          ? getDtrRecords(intern.id, { startDate, endDate, intern, holidayEvents })
+          : getDtrRecords(intern.id, { month: mNum, year: yNum, intern, holidayEvents }),
+        getDtrRecords(intern.id, { allTime: true, intern, holidayEvents }),
       ]);
       const periodSummary = summarizeDtrRecords(periodDtr);
       const cumulativeSummary = summarizeDtrRecords(allTimeDtr);
@@ -1555,20 +1616,14 @@ export async function getAttendanceReport({ startDate, endDate, month, year, div
   return reportData;
 }
 
-export async function getDtrRecords(userId, { month, year, startDate, endDate, limit = 31, allTime = false } = {}) {
+export async function getDtrRecords(userId, {
+  month, year, startDate, endDate, limit = 31, allTime = false, intern, holidayEvents,
+} = {}) {
   const hasDateRange = startDate !== undefined || endDate !== undefined;
-  const dateRangeBounds = hasDateRange ? getAttendanceDateRangeBounds(startDate, endDate) : null;
+  let { startIso, endExclusiveIso } = hasDateRange ? getAttendanceDateRangeBounds(startDate, endDate) : {};
 
-  const buildQuery = (selectFields) => {
-    let q = supabase
-      .from('attendance_logs')
-      .select(selectFields)
-      .eq('intern_id', userId)
-      .order('scan_time', { ascending: true });
-
-    if (dateRangeBounds) {
-      q = q.gte('scan_time', dateRangeBounds.startIso).lt('scan_time', dateRangeBounds.endExclusiveIso);
-    } else if (month !== undefined || year !== undefined) {
+  if (!hasDateRange) {
+    if (month !== undefined || year !== undefined) {
       const monthNumber = Number(month);
       const yearNumber = Number(year);
       if (
@@ -1585,25 +1640,33 @@ export async function getDtrRecords(userId, { month, year, startDate, endDate, l
       const startKey = `${yearNumber}-${String(monthNumber).padStart(2, '0')}-01`;
       const nextMonth = new Date(Date.UTC(yearNumber, monthNumber, 1));
       const nextMonthKey = nextMonth.toISOString().slice(0, 10);
-      const { startIso } = getPhtDayBoundsUtc(startKey);
-      const { startIso: endExclusiveIso } = getPhtDayBoundsUtc(nextMonthKey);
-      q = q.gte('scan_time', startIso).lt('scan_time', endExclusiveIso);
+      startIso = getPhtDayBoundsUtc(startKey).startIso;
+      endExclusiveIso = getPhtDayBoundsUtc(nextMonthKey).startIso;
     } else if (!allTime) {
       const normalizedLimit = Math.max(1, Math.floor(Number(limit) || 31));
       const firstIncludedDay = new Date(Date.now() - (normalizedLimit - 1) * 24 * 60 * 60 * 1000);
-      const { startIso } = getPhtDayBoundsUtc(firstIncludedDay);
-      q = q.gte('scan_time', startIso);
+      startIso = getPhtDayBoundsUtc(firstIncludedDay).startIso;
     }
+  }
+
+  const buildQuery = (selectFields) => {
+    let q = supabase.from('attendance_logs').select(selectFields).eq('intern_id', userId)
+      .order('scan_time', { ascending: true }).order('id', { ascending: true });
+    if (startIso) q = q.gte('scan_time', startIso);
+    if (endExclusiveIso) q = q.lt('scan_time', endExclusiveIso);
     return q;
   };
 
-  let { data: logs, error } = await buildQuery('id, intern_id, scan_time, actual_scan_time, original_scan_time, recorded_scan_time, adjustment_mode, scan_type, approval_status, remarks');
-  if (error) {
-    const fallback = await buildQuery('id, intern_id, scan_time, scan_type, approval_status, remarks');
-    if (fallback.error) throw fallback.error;
-    logs = fallback.data;
-  }
-  return buildDtrRecords(logs || []);
+  const firstDate = startIso ? getPhtDateKey(startIso) : undefined;
+  const endDateExclusive = endExclusiveIso ? getPhtDateKey(endExclusiveIso) : undefined;
+  const [logs, events, divisionId] = await Promise.all([
+    readAttendancePages(buildQuery(DTR_LOG_FIELDS)).catch(() =>
+      readAttendancePages(buildQuery('id, intern_id, scan_time, scan_type, approval_status, remarks'))
+    ),
+    holidayEvents ?? getHolidayEvents(firstDate, endDateExclusive),
+    intern ? getAccountDivisionId(intern) : getCalendarAccountDivision(userId),
+  ]);
+  return buildDtrRecords(logs, { holidayEvents: events, divisionId, startDate: firstDate, endDateExclusive });
 }
 
 export function getDtrSummary(records = []) {
@@ -1653,7 +1716,7 @@ export async function setDtrOverride(internId, payload = {}) {
 
   const numericHours = Number(hours);
   if (
-    ['HOURS', 'OTHERS', 'HOLIDAY', 'SCHOOL'].includes(formattedType)
+    ['HOURS', 'OTHERS', 'SCHOOL'].includes(formattedType)
     && (!Number.isFinite(numericHours) || numericHours < 0 || numericHours > 24)
   ) {
     const validationError = new Error('Custom credited hours must be between 0 and 24');
@@ -1720,9 +1783,9 @@ export async function setDtrOverride(internId, payload = {}) {
 
   const creditedHours = formattedType === 'EXCUSED'
     ? 8
-    : (formattedType === 'SUSPENDED' || formattedType === 'ABSENT')
+    : (formattedType === 'SUSPENDED' || formattedType === 'ABSENT' || formattedType === 'HOLIDAY')
       ? 0
-      : (formattedType === 'HOLIDAY' || formattedType === 'SCHOOL')
+      : formattedType === 'SCHOOL'
         ? (Number.isFinite(numericHours) && numericHours > 0 ? numericHours : 0)
         : numericHours;
   const cleanRemarks = String(remarks || '').trim();
@@ -1832,6 +1895,8 @@ export async function ensureCalendarNotificationsForUser(userId) {
       .limit(20);
 
     if (eventsError || !events || events.length === 0) return;
+    const divisionId = events.some(event => event.event_type === 'holiday' && event.holiday_division_id != null)
+      ? await getCalendarAccountDivision(userId) : null;
 
     const { data: existingNotifs, error: notifError } = await supabase
       .from('notifications')
@@ -1844,6 +1909,7 @@ export async function ensureCalendarNotificationsForUser(userId) {
     const newNotifs = [];
 
     for (const event of events) {
+      if (!calendarEventAppliesToDivision(event, divisionId)) continue;
       const eventTime = new Date(event.created_at).getTime();
       if (clearedAt > 0 && eventTime <= clearedAt) {
         continue;
@@ -2247,7 +2313,7 @@ export async function deleteDocument(id, userId, isAdmin) {
   return { success: true };
 }
 
-export async function getCalendarEvents({ year, month, startDate, endDate }) {
+export async function getCalendarEvents({ year, month, startDate, endDate, internId }) {
   let query = supabase.from('calendar_events').select('*, creator:accounts(full_name)');
 
   if (startDate !== undefined || endDate !== undefined) {
@@ -2277,7 +2343,9 @@ export async function getCalendarEvents({ year, month, startDate, endDate }) {
   const { data, error } = await query.order('event_date', { ascending: true });
 
   if (error) throw error;
-  return data || [];
+  if (internId === undefined) return data || [];
+  const divisionId = await getCalendarAccountDivision(internId);
+  return (data || []).filter(event => calendarEventAppliesToDivision(event, divisionId));
 }
 
 export async function assertCalendarEventMutationAccess(eventId, user) {
@@ -2312,11 +2380,15 @@ export async function assertCalendarEventMutationAccess(eventId, user) {
 export async function broadcastCalendarEventNotification(event) {
   if (!event) return;
   try {
-    const { data: interns, error: internsError } = await supabase
+    let query = supabase
       .from('accounts')
       .select('id')
       .eq('role', INTERN_ROLE)
       .eq('status', 'active');
+    if (event.event_type === 'holiday' && event.holiday_division_id != null) {
+      query = query.eq('division_id', event.holiday_division_id);
+    }
+    const { data: interns, error: internsError } = await query;
 
     if (internsError) throw internsError;
     if (!interns || interns.length === 0) return;
@@ -2342,6 +2414,13 @@ export async function broadcastCalendarEventNotification(event) {
   }
 }
 
+async function validateHolidayDivision(value) {
+  if (value === null || value === '') return null;
+  const divisionId = positiveId(value, 'holiday division ID');
+  if (!await findDivisionById(divisionId)) throw validationError('Holiday division does not exist');
+  return divisionId;
+}
+
 export async function createCalendarEvent(payload, userId) {
   const allowedTypes = new Set(['holiday', 'announcement', 'memo', 'suspension']);
   const title = String(payload?.title || '').trim();
@@ -2354,11 +2433,14 @@ export async function createCalendarEvent(payload, userId) {
   }
   validateDateInput(eventDate, 'Event date');
 
+  const divisionId = eventType === 'holiday' && payload.holiday_division_id !== undefined
+    ? await validateHolidayDivision(payload.holiday_division_id) : null;
   const eventRow = {
     title,
     description: String(payload.description || '').trim(),
     event_date: eventDate,
     event_type: eventType,
+    ...(divisionId !== null && { holiday_division_id: divisionId }),
     created_by: userId,
     created_at: new Date().toISOString(),
   };
@@ -2392,18 +2474,32 @@ export async function updateCalendarEvent(id, payload) {
     throw validationError;
   }
   if (updates.event_date !== undefined) validateDateInput(updates.event_date, 'Event date');
+  if (updates.event_type && updates.event_type !== 'holiday') {
+    updates.holiday_division_id = null;
+  } else if (payload?.holiday_division_id !== undefined) {
+    updates.holiday_division_id = await validateHolidayDivision(payload.holiday_division_id);
+  }
   if (Object.keys(updates).length === 0) {
     const validationError = new Error('At least one calendar event field is required');
     validationError.statusCode = 400;
     throw validationError;
   }
 
-  const { data, error } = await supabase
+  const eventId = positiveId(id, 'calendar event ID');
+  const save = fields => supabase
     .from('calendar_events')
-    .update(updates)
-    .eq('id', positiveId(id, 'calendar event ID'))
+    .update(fields)
+    .eq('id', eventId)
     .select()
     .single();
+  let { data, error } = await save(updates);
+  if (updates.holiday_division_id === null && ['PGRST204', '42703'].includes(error?.code)
+    && error.message?.includes('holiday_division_id')) {
+    // A legacy database has no scope to clear. Keep scoped writes strict.
+    delete updates.holiday_division_id;
+    if (Object.keys(updates).length === 0) throw error;
+    ({ data, error } = await save(updates));
+  }
   if (error) throw error;
   return data;
 }
@@ -2651,7 +2747,7 @@ export async function bulkMarkHoliday({ date, holiday_name }) {
   return setBulkDtrOverride({
     internIds: interns.map(intern => intern.id),
     date,
-    type: 'suspended',
+    type: 'holiday',
     hours: 0,
     remarks: finalRemarks,
   });

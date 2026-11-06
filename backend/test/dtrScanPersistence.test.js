@@ -6,7 +6,8 @@ process.env.SUPABASE_URL ||= 'http://dtr-scan.test';
 process.env.SUPABASE_SERVICE_ROLE_KEY ||= 'test-key';
 const { supabase } = await import('../src/supabaseClient.js');
 const { scanAttendance } = await import('../src/attendance.js');
-const { getDtrRecords, getAttendanceLogs, getAttendanceReport, setDtrOverride } = await import('../src/data.js');
+const { getDtrRecords, getAttendanceLogs, getAttendanceReport, getInternById, setDtrOverride,
+  createCalendarEvent, updateCalendarEvent, deleteCalendarEvent } = await import('../src/data.js');
 const { editDtrRecord, setIndividualAttendanceControl, getDtrEditHistory, deleteDtrAttendance } = await import('../src/services/attendanceControlService.js');
 const { buildDtrRecords } = await import('../src/utils/dtrRecords.js');
 const originalFrom = supabase.from;
@@ -124,7 +125,7 @@ test('a failed ordinary DTR update cannot report a successful correction', async
     reason: 'Verified departure', modified_by: 10 }), /save rejected/);
 });
 
-function mockDatabase({ logs = [], profile = regularProfile, fallbackProfile = profile, assignment = null, existingRecord = null, insertError = null, logUpdateError = null, scanAudits = [], logReadError = null, recordReadError = null } = {}) {
+function mockDatabase({ logs = [], calendarEvents = [], divisionId, profile = regularProfile, fallbackProfile = profile, assignment = null, existingRecord = null, insertError = null, logUpdateError = null, scanAudits = [], logReadError = null, recordReadError = null } = {}) {
   const writes = [];
   supabase.rpc = async (name, payload) => {
     if (name === 'delete_admin_dtr_attendance') {
@@ -142,22 +143,41 @@ function mockDatabase({ logs = [], profile = regularProfile, fallbackProfile = p
     const result = () => {
       if (state.action !== 'select') {
         writes.push({ ...state });
+        if (table === 'calendar_events') {
+          if (state.action === 'insert') {
+            const event = { id: 1, ...state.payload[0] };
+            calendarEvents.push(event);
+            return { data: event, error: null };
+          }
+          if (state.action === 'delete') return { data: calendarEvents.pop(), error: null };
+          Object.assign(calendarEvents[0], state.payload);
+          return { data: calendarEvents[0], error: null };
+        }
         if (table === 'attendance_logs' && insertError) return { data: null, error: insertError };
         if (table === 'attendance_logs' && state.action === 'update' && logUpdateError) return { data: null, error: logUpdateError };
         return { data: { id: 30, ...(Array.isArray(state.payload) ? state.payload[0] : state.payload) }, error: null };
       }
       if (table === 'qr_codes') return { data: { id: 1 }, error: null };
-      if (table === 'accounts') return { data: state.args.some(([method]) => method === 'neq') ? [] : state.single ? user : [user], error: null };
+      if (table === 'accounts') {
+        const account = { ...user, division_id: divisionId };
+        return { data: state.args.some(([method]) => method === 'neq') ? [] : state.single ? account : [account], error: null };
+      }
+      if (table === 'divisions') return { data: state.single ? { id: divisionId } : [], error: null };
+      if (table === 'calendar_events') return { data: calendarEvents.filter(event => event.event_type === 'holiday'), error: null };
       if (table === 'attendance_profiles') return { data: state.args.some(([method]) => method === 'not')
         ? fallbackProfile : profile?.status === 'inactive' ? null : profile, error: null };
       if (table === 'account_attendance_profiles') return { data: assignment, error: null };
       if (table === 'attendance_records') return { data: existingRecord, error: recordReadError };
       if (table === 'attendance_scan_audit') return { data: scanAudits, error: null };
-      if (table === 'attendance_logs') return { data: logReadError ? null : state.single ? null : logs, count: logs.length, error: logReadError };
+      if (table === 'attendance_logs') {
+        const matchingLogs = state.args.some(([method]) => method === 'like')
+          ? logs.filter(log => log.remarks?.startsWith('OVERRIDE:')) : logs;
+        return { data: logReadError || state.single ? null : matchingLogs, count: matchingLogs.length, error: logReadError };
+      }
       return { data: [], error: null };
     };
     const query = {};
-    for (const method of ['select', 'eq', 'neq', 'in', 'gte', 'lt', 'gt', 'order', 'limit', 'not', 'or', 'range']) {
+    for (const method of ['select', 'eq', 'neq', 'in', 'gte', 'lt', 'gt', 'order', 'limit', 'not', 'or', 'range', 'like']) {
       query[method] = (...args) => { state.args.push([method, ...args]); return query; };
     }
     for (const method of ['insert', 'update', 'delete']) {
@@ -187,9 +207,9 @@ for (const [scanType, localTime, expected] of [
   ['time_out', '13:00:00', '13:00:00'],
   ['time_out', '13:01:00', '13:01:00'],
   ['time_out', '16:59:59', '16:59:59'],
-  ['time_out', '17:00:01', '17:00:01'],
-  ['time_out', '18:00:00', '18:00:00'],
-  ['time_out', '19:00:00', '19:00:00'],
+  ['time_out', '17:00:01', '17:00:00'],
+  ['time_out', '18:00:00', '17:00:00'],
+  ['time_out', '19:00:00', '17:00:00'],
 ]) {
   test(`scan persists raw and processed values separately: ${scanType} ${localTime}`, async t => {
     const raw = new Date(`2026-10-26T${localTime}+08:00`).toISOString();
@@ -444,7 +464,7 @@ for (const [departure, minutes] of [['19:00', 600], ['20:00', 660]]) {
 
 test('custom overtime credits can save eleven hours while invalid daily hours remain rejected', async () => {
   const writes = mockDatabase();
-  for (const type of ['HOURS', 'OTHERS', 'HOLIDAY', 'SCHOOL']) {
+  for (const type of ['HOURS', 'OTHERS', 'SCHOOL']) {
     const saved = await setDtrOverride(7, { date: '2026-09-24', type, hours: 11, remarks: 'Approved overtime' });
     assert.ok(saved.remarks.startsWith(`OVERRIDE:${type}:11:`));
     const before = writes.length;
@@ -462,4 +482,50 @@ test('explicit custom schedule clocks inside lunch retain their exact configured
   await scanAttendance({ qr_code: 'VALID', user, photo, face_embedding: face });
   const log = writes.find(write => write.table === 'attendance_logs' && write.action === 'insert').payload[0];
   assert.equal(log.recorded_scan_time, '2026-10-26T04:30:00.000Z');
+});
+
+test('changing a calendar holiday recomputes DTR, monitoring and accumulated hours without scan writes', async () => {
+  const date = '2026-10-26';
+  const logs = [
+    { id: 1, intern_id: 7, scan_type: 'time_in', scan_time: `${date}T08:00:00+08:00`, approval_status: 'approved' },
+    { id: 2, intern_id: 7, scan_type: 'time_out', scan_time: `${date}T17:00:00+08:00`, approval_status: 'approved' },
+  ];
+  const writes = mockDatabase({ logs, divisionId: 3 });
+  const period = { month: 10, year: 2026 };
+  const event = await createCalendarEvent({
+    title: 'City Special Working Holiday', event_type: 'holiday', event_date: date, holiday_division_id: 3,
+  }, 9);
+  assert.equal(event.holiday_division_id, 3);
+
+  async function assertCredit(minutes, name) {
+    const [record] = await getDtrRecords(7, period);
+    assert.equal(record.holiday_name, name);
+    assert.equal(record.time_in_id, 1);
+    assert.equal(record.time_out_id, 2);
+    assert.equal(record.total_minutes, minutes);
+    const [report] = await getAttendanceReport(period);
+    assert.equal(report.total_minutes, minutes);
+    assert.equal(report.rendered_minutes, minutes);
+    assert.equal((await getInternById(7)).rendered_minutes, minutes);
+    const { logs: monitored } = await getAttendanceLogs();
+    assert.deepEqual(monitored.map(log => log.holiday_name), [name, name]);
+  }
+
+  await assertCredit(0, 'City Special Working Holiday');
+  await updateCalendarEvent(event.id, { title: 'Provincial Holiday', holiday_division_id: null });
+  await assertCredit(0, 'Provincial Holiday');
+  await updateCalendarEvent(event.id, { event_type: 'memo' });
+  await assertCredit(480, undefined);
+  await updateCalendarEvent(event.id, { event_type: 'holiday' });
+  await assertCredit(0, 'Provincial Holiday');
+  await deleteCalendarEvent(event.id);
+  await assertCredit(480, undefined);
+  assert.equal(writes.some(write => ['attendance_logs', 'attendance_records'].includes(write.table)), false);
+});
+
+test('saving a holiday override discards positive credit before persistence', async () => {
+  const writes = mockDatabase();
+  await setDtrOverride(7, { date: '2026-09-24', type: 'HOLIDAY', hours: 11, remarks: 'Local Holiday' });
+  const insert = writes.find(write => write.table === 'attendance_logs' && write.action === 'insert');
+  assert.equal(insert.payload[0].remarks, 'OVERRIDE:HOLIDAY:0:Local Holiday');
 });

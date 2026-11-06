@@ -36,8 +36,8 @@ test('totals exclude only lunch overlap while keeping overtime', () => {
   assert.equal(calculateRenderedMinutes(time('12:00'), time('13:00')), 0);
 });
 
-test('default scans preserve late departures and manual saved times are never normalized away', () => {
-  assert.equal(processDtrScanTime(time('19:00'), 'time_out'), new Date(time('19:00')).toISOString());
+test('default scans cap late departures and manual saved times are never normalized away', () => {
+  assert.equal(processDtrScanTime(time('19:00'), 'time_out'), new Date(time('17:00')).toISOString());
   assert.equal(getRecordedScanTime({ scan_type: 'time_in', actual_scan_time: time('07:30'),
     recorded_scan_time: time('07:30'), adjustment_mode: 'manual' }), time('07:30'));
   assert.equal(getRecordedScanTime({ scan_type: 'time_out', actual_scan_time: null,
@@ -52,7 +52,7 @@ test('pending overtime stays pending and does not earn approved hours', () => {
   assert.equal(record.approved_minutes, 0);
 });
 
-for (const type of ['HOURS', 'OTHERS', 'HOLIDAY', 'SCHOOL']) {
+for (const type of ['HOURS', 'OTHERS', 'SCHOOL']) {
   test(`explicit ${type} custom credit can retain eleven hours`, () => {
     const [record] = buildDtrRecords([{ scan_type: 'time_in', scan_time: time('08:00'),
       remarks: `OVERRIDE:${type}:11:Approved overtime`, approval_status: 'approved' }]);

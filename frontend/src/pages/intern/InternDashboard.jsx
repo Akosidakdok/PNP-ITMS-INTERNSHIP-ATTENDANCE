@@ -100,7 +100,8 @@ export default function InternDashboard() {
     (sum, record) => sum + getApprovedMinutes(record),
     0
   );
-  const approvedMinutes = toNonNegativeMinutes(dtrSummary?.approved_minutes) ?? fallbackApprovedMinutes;
+  const approvedMinutes = toNonNegativeMinutes(intern?.rendered_minutes)
+    ?? toNonNegativeMinutes(dtrSummary?.approved_minutes) ?? fallbackApprovedMinutes;
 
   const rawRequiredHours = intern?.required_hours;
   const parsedRequiredHours = rawRequiredHours === null || rawRequiredHours === undefined || rawRequiredHours === ''
@@ -330,11 +331,12 @@ export default function InternDashboard() {
                 <div key={r.id || `${r.date || 'dtr'}-${r.time_in || index}`} className="flex items-center justify-between p-2 rounded-lg hover:bg-gray-50">
                   <div>
                     <p className="text-sm font-medium text-gray-800">{r.date}</p>
+                    {r.holiday_name && <p className="text-xs font-semibold text-amber-700">{r.holiday_name}</p>}
                     <p className="text-xs text-gray-400">{r.time_in ? `In: ${r.time_in}` : '—'} {r.time_out ? `| Out: ${r.time_out}` : ''}</p>
                   </div>
                   <div className="text-right">
                     <p className="text-sm font-bold text-blue-600">
-                      {r.is_complete ? formatDuration(getRecordMinutes(r)) : 'Incomplete'}
+                      {r.holiday_name ? '00:00' : r.is_complete ? formatDuration(getRecordMinutes(r)) : 'Incomplete'}
                     </p>
                     <span className={`badge badge-${r.approval_status} text-xs`}>{r.approval_status}</span>
                   </div>

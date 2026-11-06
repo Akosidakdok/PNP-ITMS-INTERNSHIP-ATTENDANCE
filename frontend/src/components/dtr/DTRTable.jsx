@@ -15,6 +15,14 @@ const toNonNegativeMinutes = (value) => {
   return Number.isFinite(minutes) ? Math.max(0, Math.round(minutes)) : null;
 };
 
+function getHolidayLabel(record) {
+  const name = record?.holiday_name || (record?.override_type === 'holiday'
+    ? record.override_remarks || record.remarks || 'Holiday'
+    : '');
+  const label = name.trim().replace(/^holiday:\s*/i, '');
+  return label && label.toLowerCase() !== 'holiday' ? `Holiday: ${label}` : name ? 'Holiday' : '';
+}
+
 const getRecordMinutes = (record) => {
   const fallbackMinutes = record?.total_hours === null
     || record?.total_hours === undefined
@@ -38,43 +46,6 @@ const formatDuration = (value) => {
   const minutes = toNonNegativeMinutes(value) ?? 0;
   return `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, '0')}m`;
 };
-
-function getHolidayName(year, month, day) {
-  // Fixed dates
-  if (month === 1 && day === 1) return "New Year's Day";
-  if (month === 4 && day === 9) return "Araw ng Kagitingan";
-  if (month === 5 && day === 1) return "Labor Day";
-  if (month === 6 && day === 12) return "Independence Day";
-  if (month === 11 && day === 30) return "Bonifacio Day";
-  if (month === 12 && day === 25) return "Christmas Day";
-  if (month === 12 && day === 30) return "Rizal Day";
-
-  // Movable holidays for 2024, 2025, 2026, 2027
-  if (year === 2024) {
-    if (month === 3 && day === 28) return "Maundy Thursday";
-    if (month === 3 && day === 29) return "Good Friday";
-    if (month === 8 && day === 26) return "National Heroes Day";
-  }
-  if (year === 2025) {
-    if (month === 4 && day === 17) return "Maundy Thursday";
-    if (month === 4 && day === 18) return "Good Friday";
-    if (month === 8 && day === 25) return "National Heroes Day";
-  }
-  if (year === 2026) {
-    if (month === 4 && day === 2) return "Maundy Thursday";
-    if (month === 4 && day === 3) return "Good Friday";
-    if (month === 8 && day === 31) return "National Heroes Day";
-  }
-  if (year === 2027) {
-    if (month === 3 && day === 25) return "Maundy Thursday";
-    if (month === 3 && day === 26) return "Good Friday";
-    if (month === 8 && day === 30) return "National Heroes Day";
-  }
-
-  return null;
-}
-
-
 
 /** Color-coded approval status badge */
 function StatusBadge({ status, large = false }) {
@@ -133,8 +104,8 @@ export default function DTRTable({
 
   // Keep aggregation in integer minutes. Official rendered time includes only
   // approved records; all-status worked time remains visible for reconciliation.
-  const workedMinutes = records.reduce((sum, record) => sum + getWorkedMinutes(record), 0);
-  const approvedMinutes = records.reduce((sum, record) => sum + getApprovedMinutes(record), 0);
+  const workedMinutes = records.reduce((sum, record) => sum + (getHolidayLabel(record) ? 0 : getWorkedMinutes(record)), 0);
+  const approvedMinutes = records.reduce((sum, record) => sum + (getHolidayLabel(record) ? 0 : getApprovedMinutes(record)), 0);
   const approvedHrs = Math.floor(approvedMinutes / 60);
   const approvedMin = approvedMinutes % 60;
 
@@ -236,14 +207,14 @@ export default function DTRTable({
 
         {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(day => {
           const rec = recordsByDay[day];
-          const holiday = getHolidayName(year, month, day);
+          const holiday = getHolidayLabel(rec);
           const dateStr = month && year ? format(new Date(year, month - 1, day), 'EEE, MMM d') : day;
           const isoDateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
           const isSelected = isSelectable && selectedDates.includes(isoDateStr);
           
           // Skip empty weekends to save space if not selectable and not selected
           const isWeekend = month && year ? [0, 6].includes(new Date(year, month - 1, day).getDay()) : false;
-          if (!isSelectable && !rec && !holiday && isWeekend) return null;
+          if (!isSelectable && !rec && isWeekend) return null;
 
           return (
             <div 
@@ -251,10 +222,10 @@ export default function DTRTable({
               className={`p-3 rounded-xl border transition-all dtr-mobile-list__card ${
                 isSelected
                   ? 'bg-blue-50 border-blue-500 ring-2 ring-blue-500 shadow-sm'
+                  : holiday
+                  ? 'bg-yellow-50/70 border-yellow-300 shadow-xs cursor-pointer active:bg-yellow-100/50'
                   : rec?.override_type === 'absent'
                   ? 'bg-red-50/70 border-red-300 shadow-xs cursor-pointer active:bg-red-100/50'
-                  : (rec?.override_type === 'holiday' || holiday)
-                  ? 'bg-yellow-50/70 border-yellow-300 shadow-xs cursor-pointer active:bg-yellow-100/50'
                   : rec?.override_type === 'suspended'
                   ? 'bg-blue-50/70 border-blue-300 shadow-xs cursor-pointer active:bg-blue-100/50'
                   : rec?.override_type === 'school'
@@ -297,13 +268,11 @@ export default function DTRTable({
               </div>
               
               {holiday ? (
-                <div className="text-xs font-bold text-yellow-900 bg-yellow-100 border border-yellow-300 p-1.5 rounded-lg italic">{holiday}</div>
+                <div className="text-xs font-bold text-yellow-900 bg-yellow-100 border border-yellow-300 p-1.5 rounded-lg italic">{holiday} · 00:00</div>
               ) : rec?.is_override ? (
                 <div className={`text-[11px] font-bold p-1.5 rounded-lg inline-block mt-1 ${
                   rec.override_type === 'absent'
                     ? 'text-red-800 bg-red-100 border border-red-300'
-                    : rec.override_type === 'holiday'
-                    ? 'text-yellow-900 bg-yellow-100 border border-yellow-300'
                     : rec.override_type === 'suspended'
                     ? 'text-blue-800 bg-blue-100 border border-blue-300'
                     : rec.override_type === 'school'
@@ -312,8 +281,6 @@ export default function DTRTable({
                 }`}>
                   {rec.override_type === 'absent'
                     ? (rec.remarks ? `Absent: ${rec.remarks}` : 'Absent')
-                    : rec.override_type === 'holiday'
-                    ? (rec.remarks ? `Holiday: ${rec.remarks}` : 'Holiday')
                     : rec.override_type === 'suspended'
                     ? (rec.remarks ? `Suspended: ${rec.remarks}` : 'Suspended')
                     : rec.override_type === 'school'
@@ -560,10 +527,11 @@ export default function DTRTable({
             const rec = recordsByDay[day];
             const dateObj = new Date(year, month - 1, day);
             const dayOfWeek = dateObj.getDay(); // 0 = Sunday, 6 = Saturday
-            const holidayName = getHolidayName(year, month, day);
+            const holidayLabel = getHolidayLabel(rec);
             const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
             const isoDateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
             const isSelected = isSelectable && selectedDates.includes(isoDateStr);
+            const holidayBackground = isSelected ? '#fef08a' : '#fef9c3';
 
             // Click helper
             const handleRowClick = (e) => {
@@ -617,12 +585,12 @@ export default function DTRTable({
             const renderDateCell = (dayNum, currentRec, overrideType) => {
               const isClickable = Boolean(onDateClick) && !exportMode;
               const effectiveType = overrideType || currentRec?.override_type;
-              const dateBgColor = isSelected
+              const dateBgColor = effectiveType === 'holiday'
+                ? holidayBackground
+                : isSelected
                 ? '#dbeafe'
                 : effectiveType === 'absent'
                 ? '#fee2e2'
-                : effectiveType === 'holiday'
-                ? '#fef9c3'
                 : effectiveType === 'suspended'
                 ? '#dbeafe'
                 : effectiveType === 'school'
@@ -667,6 +635,32 @@ export default function DTRTable({
               );
             };
 
+            if (holidayLabel) {
+              return (
+                <tr
+                  key={day}
+                  onClick={handleRowClick}
+                  style={rowStyle}
+                  className={rowClassName}
+                >
+                  {renderSelectCell()}
+                  {renderDateCell(day, rec, 'holiday')}
+                  <td colSpan={6} style={tdStyle({
+                    textAlign: 'center',
+                    fontWeight: 'bold',
+                    fontStyle: 'italic',
+                    backgroundColor: holidayBackground, // Holiday = yellow
+                    color: '#854d0e',
+                    fontSize: '9px',
+                    letterSpacing: '1px',
+                    height: '18px'
+                  })}>
+                    {holidayLabel.toUpperCase()} · 00:00
+                  </td>
+                </tr>
+              );
+            }
+
             if (rec?.is_override) {
               if (rec.override_type === 'absent') {
                 const absentLabel = rec.remarks
@@ -692,33 +686,6 @@ export default function DTRTable({
                       height: '18px'
                     })}>
                       {absentLabel}
-                    </td>
-                  </tr>
-                );
-              } else if (rec.override_type === 'holiday') {
-                const holidayLabel = rec.remarks
-                  ? `HOLIDAY: ${rec.remarks.toUpperCase()}`
-                  : 'HOLIDAY';
-                return (
-                  <tr
-                    key={day}
-                    onClick={handleRowClick}
-                    style={rowStyle}
-                    className={rowClassName}
-                  >
-                    {renderSelectCell()}
-                    {renderDateCell(day, rec, 'holiday')}
-                    <td colSpan={6} style={tdStyle({
-                      textAlign: 'center',
-                      fontWeight: 'bold',
-                      fontStyle: 'italic',
-                      backgroundColor: isSelected ? '#fef08a' : '#fef9c3', // Holiday = yellow
-                      color: '#854d0e',
-                      fontSize: '9px',
-                      letterSpacing: '1px',
-                      height: '18px'
-                    })}>
-                      {holidayLabel}
                     </td>
                   </tr>
                 );
@@ -841,8 +808,7 @@ export default function DTRTable({
               }
             }
 
-            if ((isWeekend || holidayName) && !rec) {
-              const isHoliday = Boolean(holidayName);
+            if (isWeekend && !rec) {
               return (
                 <tr
                   key={day}
@@ -851,21 +817,21 @@ export default function DTRTable({
                   className={rowClassName}
                 >
                   {renderSelectCell()}
-                  {renderDateCell(day, rec, isHoliday ? 'holiday' : undefined)}
+                  {renderDateCell(day, rec)}
                   {/* Spanned label across all remaining columns */}
                   <td colSpan={6} style={tdStyle({
                     textAlign: 'center',
                     fontWeight: 'bold',
                     fontStyle: 'italic',
                     backgroundColor: isSelected
-                      ? (isHoliday ? '#fef08a' : '#e5e7eb')
-                      : (isHoliday ? '#fef9c3' : '#f3f4f6'), // Yellow for holiday, gray for weekend
-                    color: isHoliday ? '#854d0e' : '#6b7280',
+                      ? '#e5e7eb'
+                      : '#f3f4f6', // Gray for weekend
+                    color: '#6b7280',
                     fontSize: '9px',
                     letterSpacing: '1px',
                     height: '18px'
                   })}>
-                    {holidayName ? holidayName.toUpperCase() : dayOfWeek === 6 ? 'SATURDAY' : 'SUNDAY'}
+                    {dayOfWeek === 6 ? 'SATURDAY' : 'SUNDAY'}
                   </td>
                 </tr>
               );

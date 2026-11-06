@@ -103,3 +103,54 @@ test('calendar policy migration removes broad supervisor writes', async () => {
   assert.match(sql, /for delete to authenticated[\s\S]*calendar_events\.created_by = me\.id/);
   assert.match(sql, /me\.role in \('superadmin', 'admin'\)/);
 });
+
+test('holiday scope migration leaves existing events program-wide and validates local scope', async () => {
+  const { PGlite } = await import('@electric-sql/pglite');
+  const migration = await readFile(
+    new URL('../../supabase/migrations/20261106004312_calendar_holiday_division_scope.sql', import.meta.url), 'utf8'
+  );
+  const db = new PGlite();
+  try {
+    await db.exec("CREATE TABLE calendar_events (event_type text); INSERT INTO calendar_events VALUES ('holiday')");
+    await db.exec(migration);
+    const { rows } = await db.query('SELECT holiday_division_id FROM calendar_events');
+    assert.deepEqual(rows, [{ holiday_division_id: null }]);
+    await db.exec("INSERT INTO calendar_events VALUES ('holiday', 3)");
+    await assert.rejects(db.exec("INSERT INTO calendar_events VALUES ('holiday', -1)"), /check constraint/);
+  } finally {
+    await db.close();
+  }
+});
+
+test('unscoped Calendar writes work before the scope migration without broadening scoped writes', async () => {
+  const attempts = [];
+  supabase.from = table => {
+    let fields;
+    const query = {
+      insert(rows) { fields = rows[0]; return query; },
+      update(updates) { fields = updates; return query; },
+      select() { return query; },
+      eq() { return query; },
+      single() {
+        if (table === 'divisions') return { data: { id: 3 }, error: null };
+        assert.equal(table, 'calendar_events');
+        attempts.push({ ...fields });
+        return Object.hasOwn(fields, 'holiday_division_id')
+          ? { error: { code: 'PGRST204', message: 'Missing holiday_division_id column' } }
+          : { data: null, error: null };
+      },
+    };
+    return query;
+  };
+
+  const holiday = { title: 'Program Holiday', event_date: '2026-11-02', event_type: 'holiday' };
+  await createCalendarEvent({ ...holiday, holiday_division_id: '' }, 7);
+  assert.equal(Object.hasOwn(attempts[0], 'holiday_division_id'), false);
+  await updateCalendarEvent(1, { event_type: 'memo' });
+  assert.deepEqual(attempts.slice(1), [
+    { event_type: 'memo', holiday_division_id: null }, { event_type: 'memo' },
+  ]);
+  await assert.rejects(updateCalendarEvent(1, { ...holiday, holiday_division_id: 3 }), { code: 'PGRST204' });
+  assert.equal(attempts.length, 4);
+  assert.equal(attempts[3].holiday_division_id, 3);
+});

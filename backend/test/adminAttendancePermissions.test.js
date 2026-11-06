@@ -14,6 +14,11 @@ test('the requested APIs allow Admin and Superadmin while rejecting other roles'
     ['get', '/admin/accounts'], ['post', '/admin/accounts'],
     ['put', '/admin/dtr/:internId/edit'],
     ['get', '/admin/dtr/:internId/history'], ['get', '/admin/dtr-history'],
+  ];
+  for (const [method, route] of routes) {
+    assert.ok(source.includes(`app.${method}('${route}', authMiddleware, adminOnlyMiddleware,`), `${method} ${route}`);
+  }
+  const attendanceControlRoutes = [
     ['get', '/admin/attendance-control/profiles'], ['post', '/admin/attendance-control/profiles'],
     ['put', '/admin/attendance-control/profiles/:id'],
     ['patch', '/admin/attendance-control/profiles/:id/status'],
@@ -22,8 +27,8 @@ test('the requested APIs allow Admin and Superadmin while rejecting other roles'
     ['delete', '/admin/attendance-control/assignments/:accountId'],
     ['post', '/admin/attendance-control/individual/:accountId'],
   ];
-  for (const [method, route] of routes) {
-    assert.ok(source.includes(`app.${method}('${route}', authMiddleware, adminOnlyMiddleware,`), `${method} ${route}`);
+  for (const [method, route] of attendanceControlRoutes) {
+    assert.ok(source.includes(`app.${method}('${route}', authMiddleware, superadminMiddleware,`), `${method} ${route}`);
   }
   for (const role of ['admin', 'superadmin', 'supervisor', 'intern', null]) {
     let allowed = false;

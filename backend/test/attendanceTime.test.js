@@ -21,11 +21,11 @@ for (const [scanType, input, expected] of [
   // Scans between 12:00 PM and 12:59 PM are automatically treated as 1:00 PM (13:00:00)
   ...['12:00:00', '12:01:00', '12:10:00', '12:30:00', '12:45:00', '12:59:00', '12:59:59', '12:59:59.999'].map(time => ['time_in', time, '13:00:00']),
   ...['12:00:00', '12:01:00', '12:10:00', '12:30:00', '12:45:00', '12:59:00', '12:59:59', '12:59:59.999'].map(time => ['time_out', time, '13:00:00']),
-  // Scans at 1:00 PM or later retain their actual scan time
+  // Scans after lunch retain their actual scan time up to the time-out cap
   ...['13:00:00', '13:01:00', '13:05:00', '13:30:00'].map(time => ['time_in', time, time]),
   ...['13:00:00', '13:01:00', '13:05:00', '13:30:00'].map(time => ['time_out', time, time]),
   ...['16:00:00', '16:30:00', '16:59:00', '16:59:59', '16:59:59.999'].map(time => ['time_out', time, time]),
-  ...['17:00:00', '17:00:00.001', '17:00:01', '17:01:00', '17:30:00', '18:00:00'].map(time => ['time_out', time, time]),
+  ...['17:00:00', '17:00:00.001', '17:00:01', '17:01:00', '17:30:00', '18:00:00'].map(time => ['time_out', time, '17:00:00']),
 ]) {
   test(`${scanType}: ${input} is recorded as ${expected} PHT`, () => {
     const raw = new Date(onAugust28(input));
@@ -37,7 +37,7 @@ for (const [scanType, input, expected] of [
 
 test('DTR boundaries use the Philippine date even on the previous UTC date', () => {
   assert.equal(processDtrScanTime('2026-08-27T16:00:00Z', 'time_in'), '2026-08-28T00:00:00.000Z');
-  assert.equal(processDtrScanTime('2026-08-28T15:59:59Z', 'time_out'), '2026-08-28T15:59:59.000Z');
+  assert.equal(processDtrScanTime('2026-08-28T15:59:59Z', 'time_out'), '2026-08-28T09:00:00.000Z');
   assert.equal(processDtrScanTime('2026-08-28T00:00:01Z', 'time_in'), '2026-08-28T00:00:01.000Z');
 });
 

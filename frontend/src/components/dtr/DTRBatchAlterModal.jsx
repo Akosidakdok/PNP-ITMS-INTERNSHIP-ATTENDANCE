@@ -169,7 +169,7 @@ export default function DTRBatchAlterModal({
         payload.override_type = overrideType.toUpperCase();
         payload.hours = (overrideType === 'hours' || overrideType === 'others')
           ? Number(overrideHours)
-          : (overrideType === 'excused' ? 8 : ((overrideType === 'holiday' || overrideType === 'school') && Number(overrideHours) > 0 ? Number(overrideHours) : 0));
+          : (overrideType === 'excused' ? 8 : (overrideType === 'school' && Number(overrideHours) > 0 ? Number(overrideHours) : 0));
         payload.remarks = overrideRemarks.trim();
       } else if (activeTab === 'clear') {
         payload.clear_target = clearTarget;

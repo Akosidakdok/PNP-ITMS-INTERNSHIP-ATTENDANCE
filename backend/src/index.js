@@ -1057,10 +1057,10 @@ app.get('/admin/dtr-history', authMiddleware, adminOnlyMiddleware, async (req, r
 });
 
 // ─────────────────────────────────────────────────────────────
-// ADMIN AND SUPERADMIN: ATTENDANCE CONTROL & PARAMETERS
+// SUPERADMIN: ATTENDANCE CONTROL & PARAMETERS
 // ─────────────────────────────────────────────────────────────
 
-app.get('/admin/attendance-control/profiles', authMiddleware, adminOnlyMiddleware, async (req, res) => {
+app.get('/admin/attendance-control/profiles', authMiddleware, superadminMiddleware, async (req, res) => {
   try {
     const profiles = await listAttendanceProfiles();
     return res.json({ profiles });
@@ -1069,7 +1069,7 @@ app.get('/admin/attendance-control/profiles', authMiddleware, adminOnlyMiddlewar
   }
 });
 
-app.post('/admin/attendance-control/profiles', authMiddleware, adminOnlyMiddleware, async (req, res) => {
+app.post('/admin/attendance-control/profiles', authMiddleware, superadminMiddleware, async (req, res) => {
   try {
     const profile = await createAttendanceProfile(req.body);
     return res.json({ profile });
@@ -1078,7 +1078,7 @@ app.post('/admin/attendance-control/profiles', authMiddleware, adminOnlyMiddlewa
   }
 });
 
-app.put('/admin/attendance-control/profiles/:id', authMiddleware, adminOnlyMiddleware, async (req, res) => {
+app.put('/admin/attendance-control/profiles/:id', authMiddleware, superadminMiddleware, async (req, res) => {
   try {
     const profile = await updateAttendanceProfile(Number(req.params.id), req.body);
     return res.json({ profile });
@@ -1087,7 +1087,7 @@ app.put('/admin/attendance-control/profiles/:id', authMiddleware, adminOnlyMiddl
   }
 });
 
-app.patch('/admin/attendance-control/profiles/:id/status', authMiddleware, adminOnlyMiddleware, async (req, res) => {
+app.patch('/admin/attendance-control/profiles/:id/status', authMiddleware, superadminMiddleware, async (req, res) => {
   try {
     const profile = await toggleAttendanceProfileStatus(Number(req.params.id), req.body.status);
     return res.json({ profile });
@@ -1096,7 +1096,7 @@ app.patch('/admin/attendance-control/profiles/:id/status', authMiddleware, admin
   }
 });
 
-app.get('/admin/attendance-control/accounts', authMiddleware, adminOnlyMiddleware, async (req, res) => {
+app.get('/admin/attendance-control/accounts', authMiddleware, superadminMiddleware, async (req, res) => {
   try {
     const accounts = await getAccountsWithProfiles();
     return res.json({ accounts });
@@ -1105,7 +1105,7 @@ app.get('/admin/attendance-control/accounts', authMiddleware, adminOnlyMiddlewar
   }
 });
 
-app.post('/admin/attendance-control/assignments', authMiddleware, adminOnlyMiddleware, async (req, res) => {
+app.post('/admin/attendance-control/assignments', authMiddleware, superadminMiddleware, async (req, res) => {
   try {
     const { account_ids, attendance_profile_id } = req.body;
     const assignments = await assignProfileToAccounts({
@@ -1119,7 +1119,7 @@ app.post('/admin/attendance-control/assignments', authMiddleware, adminOnlyMiddl
   }
 });
 
-app.delete('/admin/attendance-control/assignments/:accountId', authMiddleware, adminOnlyMiddleware, async (req, res) => {
+app.delete('/admin/attendance-control/assignments/:accountId', authMiddleware, superadminMiddleware, async (req, res) => {
   try {
     const result = await removeAccountProfileAssignment(Number(req.params.accountId));
     return res.json(result);
@@ -1128,7 +1128,7 @@ app.delete('/admin/attendance-control/assignments/:accountId', authMiddleware, a
   }
 });
 
-app.post('/admin/attendance-control/individual/:accountId', authMiddleware, adminOnlyMiddleware, async (req, res) => {
+app.post('/admin/attendance-control/individual/:accountId', authMiddleware, superadminMiddleware, async (req, res) => {
   try {
     const result = await setIndividualAttendanceControl(Number(req.params.accountId), {
       ...req.body,
@@ -1348,7 +1348,9 @@ app.get('/calendar-events', authMiddleware, async (req, res) => {
     return res.status(400).json({ error: 'Provide a year and month or a start and end date' });
   }
   try {
-    const events = await getCalendarEvents({ year, month, startDate, endDate });
+    const events = await getCalendarEvents({
+      year, month, startDate, endDate, internId: req.user.role === 'intern' ? req.user.id : undefined,
+    });
     return res.json({ events });
   } catch (error) {
     return res.status(error.statusCode || 500).json({ error: error.message });

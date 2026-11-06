@@ -304,9 +304,9 @@ export default function AdminDTRViewer() {
       const type = overrideForm.type;
       const hoursToSave = type === 'excused'
         ? 8
-        : (type === 'absent' || type === 'suspended' || type === 'none')
+        : (type === 'absent' || type === 'suspended' || type === 'holiday' || type === 'none')
           ? 0
-          : (type === 'holiday' || type === 'school')
+          : type === 'school'
             ? (Number(overrideForm.hours) > 0 ? Number(overrideForm.hours) : 0)
             : Number(overrideForm.hours || 0);
 

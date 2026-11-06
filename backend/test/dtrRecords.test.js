@@ -74,27 +74,28 @@ test('a two-scan afternoon day produces one complete approved DTR record', () =>
   assert.equal(record.is_complete, true);
 });
 
-test('an ordinary 08:00 to 18:00 scan pair preserves its overtime departure', () => {
+test('an ordinary 08:00 to 18:00 scan pair caps credit at 17:00', () => {
   const record = buildStandardDtrRecord('2026-08-27', [
     scan(1, '08:00:00', 'time_in'),
     scan(2, '18:00:00', 'time_out'),
   ]);
 
-  assert.equal(record.time_out, '18:00');
-  assert.equal(record.total_minutes, 540);
-  assert.equal(record.total_hours, 9);
+  assert.equal(record.time_out, '17:00');
+  assert.equal(record.actual_time_out, '18:00');
+  assert.equal(record.total_minutes, 480);
+  assert.equal(record.total_hours, 8);
 });
 
-test('an early arrival keeps the regular start while a late departure retains overtime', () => {
+test('early arrival and late departure both use regular workday boundaries', () => {
   const record = buildStandardDtrRecord('2026-08-27', [
     scan(1, '07:10:00', 'time_in'),
     scan(2, '18:30:00', 'time_out'),
   ]);
 
   assert.equal(record.time_in, '08:00');
-  assert.equal(record.time_out, '18:30');
-  assert.equal(record.total_minutes, 570);
-  assert.equal(record.total_hours, 9.5);
+  assert.equal(record.time_out, '17:00');
+  assert.equal(record.total_minutes, 480);
+  assert.equal(record.total_hours, 8);
 });
 
 test('DTR output and totals use recorded times while audit times keep the original scans', () => {
@@ -355,4 +356,51 @@ test('scans entirely inside 12:00-12:59 PM lunch interval render zero hours', ()
   assert.equal(record.time_out, '13:00');
   assert.equal(record.total_minutes, 0);
   assert.equal(record.total_hours, 0);
+});
+
+test('all configured holiday labels take priority over scans and other overrides in Manila time', () => {
+  const logs = [
+    { ...scan(1, '00:00:00', 'time_in'), scan_time: '2026-08-26T16:00:00Z' },
+    scan(2, '17:00:00', 'time_out'),
+    scan(3, '08:00:00', 'time_in', 'approved', 'OVERRIDE:HOURS:8:Manual credit'),
+  ];
+  for (const title of ['Regular Holiday', 'Special Non-Working Holiday', 'Special Working Holiday',
+    'National Holiday', 'City Holiday', 'Provincial Holiday', 'Government-Declared Holiday', 'New Classification']) {
+    const holidayEvents = [{ event_date: '2026-08-27', event_type: 'holiday', title, holiday_division_id: 3 }];
+    const [record] = buildDtrRecords(logs, { holidayEvents, divisionId: 3 });
+    assert.equal(record.holiday_name, title);
+    assert.deepEqual([record.time_in_id, record.time_out_id], [1, 2]);
+    assert.deepEqual([record.total_minutes, record.worked_minutes, record.approved_minutes, record.total_hours], [0, 0, 0, 0]);
+    assert.equal(summarizeDtrRecords([record]).approved_minutes, 0);
+    assert.equal(buildDtrRecords(logs, { holidayEvents, divisionId: 4 })[0].total_minutes, 480);
+    assert.equal(buildDtrRecords(logs, { holidayEvents: [{ ...holidayEvents[0], event_type: 'memo' }], divisionId: 3 })[0].total_minutes, 480);
+    assert.equal(buildDtrRecords(logs)[0].total_minutes, 480);
+  }
+});
+
+test('unscanned holidays appear in a requested period and incomplete scans remain visible', () => {
+  const holidayEvents = [{ event_date: '2026-08-27', event_type: 'holiday', title: 'Program Holiday' }];
+  const options = { holidayEvents, startDate: '2026-08-27', endDateExclusive: '2026-08-28' };
+  const [empty] = buildDtrRecords([], options);
+  assert.equal(empty.holiday_name, 'Program Holiday');
+  assert.equal(empty.total_minutes, 0);
+  const [partial] = buildDtrRecords([scan(1, '08:30:00', 'time_in')], options);
+  assert.equal(partial.time_in, '08:30');
+  assert.equal(partial.is_complete, false);
+  assert.equal(partial.total_minutes, 0);
+});
+
+test('legacy positive holiday overrides have zero credit and preserve scan evidence', () => {
+  const [record] = buildDtrRecords([
+    scan(1, '08:00:00', 'time_in'),
+    scan(2, '17:00:00', 'time_out'),
+    scan(3, '08:00:00', 'time_in', 'approved', 'OVERRIDE:HOLIDAY:8:Legacy Holiday'),
+  ]);
+  assert.equal(record.holiday_name, 'Legacy Holiday');
+  assert.equal(record.override_hours, 0);
+  assert.equal(record.time_in_id, 1);
+  assert.equal(record.time_out_id, 2);
+  const summary = summarizeDtrRecords([record]);
+  assert.equal(summary.approved_minutes, 0);
+  assert.equal(summary.days_present, 0);
 });

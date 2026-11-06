@@ -11,7 +11,7 @@ import toast from 'react-hot-toast';
 import { useCalendar, EVENT_TYPES, getCalendarYearOptions } from '../../hooks/useCalendar.js';
 import { useAuth } from '../../context/AuthContext.jsx';
 
-const INIT_FORM = { title: '', description: '', event_date: '', event_type: 'announcement' };
+const INIT_FORM = { title: '', description: '', event_date: '', event_type: 'announcement', holiday_division_id: '' };
 
 export default function AdminCalendar() {
   const { user } = useAuth();
@@ -19,6 +19,7 @@ export default function AdminCalendar() {
   const [form, setForm] = useState(INIT_FORM);
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [divisions, setDivisions] = useState(null);
   const calendarRef = useRef(null);
   const [currentDate, setCurrentDate] = useState({
     month: new Date().getMonth(),
@@ -38,6 +39,16 @@ export default function AdminCalendar() {
     || user?.role === 'admin'
     || (user?.role === 'supervisor' && Number(event?.created_by) === Number(user.id));
   const selectedEventCanEdit = !selectedEvent || canManageEvent(selectedEvent);
+  const showHolidayScope = modal === 'form' && form.event_type === 'holiday';
+
+  useEffect(() => {
+    if (!showHolidayScope || divisions !== null) return undefined;
+    let active = true;
+    api.get('/divisions')
+      .then(({ data }) => { if (active) setDivisions(data.divisions || []); })
+      .catch(() => { if (active) toast.error('Unable to load divisions'); });
+    return () => { active = false; };
+  }, [showHolidayScope, divisions]);
 
   useEffect(() => {
     const mediaQuery = window.matchMedia('(max-width: 767px)');
@@ -77,9 +88,9 @@ export default function AdminCalendar() {
   };
 
   const openEdit = (event) => {
-    const { id, title, description, event_date, event_type } = event.extendedProps;
+    const { id, title, description, event_date, event_type, holiday_division_id } = event.extendedProps;
     setSelectedEvent(event.extendedProps);
-    setForm({ id, title, description: description || '', event_date, event_type });
+    setForm({ id, title, description: description || '', event_date, event_type, holiday_division_id: holiday_division_id ?? '' });
     setModal('form');
   };
 
@@ -306,6 +317,20 @@ export default function AdminCalendar() {
               {EVENT_TYPES.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
             </select>
           </div>
+          {showHolidayScope && (
+            <div className="form-group">
+              <label className="form-label form-label-sm" htmlFor="holiday-division">Applies to</label>
+              <select id="holiday-division" className="form-input form-select" value={form.holiday_division_id}
+                disabled={!selectedEventCanEdit || divisions === null}
+                onChange={e => setForm(f => ({ ...f, holiday_division_id: e.target.value }))}>
+                <option value="">All divisions</option>
+                {form.holiday_division_id && !divisions?.some(d => String(d.id) === String(form.holiday_division_id)) && (
+                  <option value={form.holiday_division_id}>Division #{form.holiday_division_id}</option>
+                )}
+                {divisions?.map(division => <option key={division.id} value={division.id}>{division.name}</option>)}
+              </select>
+            </div>
+          )}
           <div className="form-group"><label className="form-label form-label-sm">Description</label><textarea className="form-input" rows={3} value={form.description} disabled={!selectedEventCanEdit} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} /></div>
         </div>
       </Modal>

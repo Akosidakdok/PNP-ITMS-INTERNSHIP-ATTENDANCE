@@ -773,7 +773,15 @@ export default function AttendanceApproval() {
       key: 'approval_status', label: 'Status',
       render: v => <span className={`badge badge-${v}`}>{v}</span>
     },
-    { key: 'remarks', label: 'Remarks', render: v => <span className="text-xs text-gray-500">{v || '—'}</span> },
+    {
+      key: 'remarks', label: 'Remarks',
+      render: (v, row) => (
+        <div className="text-xs text-gray-500">
+          {row.holiday_name && <p className="font-semibold text-amber-700">{row.holiday_name} · 00:00</p>}
+          {v || (!row.holiday_name && '—')}
+        </div>
+      ),
+    },
     {
       key: 'photo', label: 'Selfie Preview',
       render: (v, row) => {

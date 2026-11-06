@@ -44,3 +44,20 @@ test('the DTR preview exposes correction and audit controls to both administrato
     assert.ok(!editor.includes('Approval Status'));
   } finally { await server.close(); }
 });
+
+test('Admin navigation omits Attendance Control while Superadmin retains the protected route', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const [sidebar, app] = await Promise.all([
+    readFile(new URL('../src/components/layout/Sidebar.jsx', import.meta.url), 'utf8'),
+    readFile(new URL('../src/App.jsx', import.meta.url), 'utf8'),
+  ]);
+  const adminNav = sidebar.match(/const adminNav = \[([\s\S]*?)\];/)[1];
+  assert.doesNotMatch(adminNav, /attendance-control|attendance-parameters/);
+  assert.match(sidebar.match(/const superadminNav = \[([\s\S]*?)\];/)[1], /attendance-control/);
+  for (const path of ['attendance-control', 'attendance-parameters']) {
+    assert.ok(app.includes(`path="${path}" element={<ProtectedRoute roles={['superadmin']}>`));
+  }
+  for (const path of ['interns', 'attendance', 'dtr', 'documents', 'evaluations', 'calendar', 'reports', 'scan']) {
+    assert.ok(app.includes(`path="${path}"`), path);
+  }
+});
